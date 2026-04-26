@@ -1,0 +1,30 @@
+{
+  "name": "prv",
+  "version": "0.0.0",
+  "description": "Pull-Request like View — local GitHub-style diff viewer for AI-agent changes and arbitrary directory comparisons.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "prv": "./src/cli.ts"
+  },
+  "scripts": {
+    "dev": "bun --hot src/cli.ts",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit",
+    "build": "bun build --compile --target=bun src/cli.ts --outfile dist/prv"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "diff2html": "^3.4.56",
+    "highlight.js": "^11.11.1",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  }
+}
