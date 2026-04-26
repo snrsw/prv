@@ -70,11 +70,7 @@ export function DiffPanel({ file, anchorId }: { file: FileDiff; anchorId: string
           <DiffStat totals={totals} />
         </span>
         <label className="viewed-toggle">
-          <input
-            type="checkbox"
-            checked={viewed}
-            onChange={(e) => setViewed(e.target.checked)}
-          />
+          <input type="checkbox" checked={viewed} onChange={(e) => setViewed(e.target.checked)} />
           <span>Viewed</span>
         </label>
       </header>

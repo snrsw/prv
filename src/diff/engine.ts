@@ -10,7 +10,9 @@ async function computeRawDiff(mode: DiffMode): Promise<string> {
     return result.stdout.toString();
   }
   if (mode.right.kind === "ref") {
-    const r = await $`git -C ${mode.cwd} diff --no-color ${mode.leftRef} ${mode.right.ref}`.nothrow().quiet();
+    const r = await $`git -C ${mode.cwd} diff --no-color ${mode.leftRef} ${mode.right.ref}`
+      .nothrow()
+      .quiet();
     return r.stdout.toString();
   }
   const tracked = await $`git -C ${mode.cwd} diff --no-color ${mode.leftRef}`.nothrow().quiet();
@@ -24,7 +26,10 @@ async function rawUntrackedDiffs(cwd: string): Promise<string> {
   const files = list.stdout.toString().split("\n").filter(Boolean);
   const diffs = await Promise.all(
     files.map(async (file) => {
-      const r = await $`git diff --no-color --no-index /dev/null ${file}`.cwd(realCwd).nothrow().quiet();
+      const r = await $`git diff --no-color --no-index /dev/null ${file}`
+        .cwd(realCwd)
+        .nothrow()
+        .quiet();
       return r.stdout.toString();
     }),
   );
@@ -33,8 +38,7 @@ async function rawUntrackedDiffs(cwd: string): Promise<string> {
 
 export async function computeDiff(mode: DiffMode): Promise<FileDiff[]> {
   const raw = await computeRawDiff(mode);
-  const [aRoot, bRoot] =
-    mode.kind === "path-vs-path" ? [mode.a, mode.b] : [mode.cwd, mode.cwd];
+  const [aRoot, bRoot] = mode.kind === "path-vs-path" ? [mode.a, mode.b] : [mode.cwd, mode.cwd];
   return parseUnifiedDiff(raw, aRoot, bRoot);
 }
 

@@ -95,7 +95,12 @@ test("git HEAD vs worktree: untracked files are reported as added", async () => 
   writeFileSync(join(repo, "tracked.txt"), "first changed\n");
   writeFileSync(join(repo, "fresh.md"), "brand new\n");
 
-  const diffs = await computeDiff({ kind: "git", cwd: repo, leftRef: "HEAD", right: { kind: "worktree" } });
+  const diffs = await computeDiff({
+    kind: "git",
+    cwd: repo,
+    leftRef: "HEAD",
+    right: { kind: "worktree" },
+  });
 
   const byPath = Object.fromEntries(diffs.map((d) => [d.path, d]));
   expect(byPath["tracked.txt"]?.status).toBe("modified");
@@ -110,7 +115,12 @@ test("git HEAD vs worktree: one modified tracked file produces one FileDiff", as
   await $`git -C ${repo} -c user.email=t@t -c user.name=T commit -q -m init`.quiet();
   writeFileSync(join(repo, "hello.txt"), "hello world\n");
 
-  const diffs = await computeDiff({ kind: "git", cwd: repo, leftRef: "HEAD", right: { kind: "worktree" } });
+  const diffs = await computeDiff({
+    kind: "git",
+    cwd: repo,
+    leftRef: "HEAD",
+    right: { kind: "worktree" },
+  });
 
   expect(diffs).toHaveLength(1);
   expect(diffs[0]?.path).toBe("hello.txt");

@@ -45,9 +45,11 @@ async function main() {
 
 async function openBrowser(url: string) {
   const cmd =
-    process.platform === "darwin" ? ["open", url]
-    : process.platform === "win32" ? ["cmd", "/c", "start", url]
-    : ["xdg-open", url];
+    process.platform === "darwin"
+      ? ["open", url]
+      : process.platform === "win32"
+        ? ["cmd", "/c", "start", url]
+        : ["xdg-open", url];
   await Bun.spawn(cmd, { stdout: "ignore", stderr: "ignore" }).exited;
 }
 

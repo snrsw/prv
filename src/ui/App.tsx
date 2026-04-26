@@ -80,7 +80,9 @@ export function App() {
 
   const onSelect = useCallback((path: string) => {
     setActivePath(path);
-    document.getElementById(pathToAnchor(path))?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document
+      .getElementById(pathToAnchor(path))
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
   return (
@@ -173,4 +175,3 @@ function SidebarIcon() {
     </svg>
   );
 }
-

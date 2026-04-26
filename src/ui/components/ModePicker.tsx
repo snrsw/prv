@@ -4,7 +4,13 @@ import { CheckIcon, ChevronDown } from "./icons";
 
 type GitMode = Extract<ServerMode, { kind: "git" }>;
 
-export function ModePicker({ mode, onChange }: { mode: GitMode; onChange: (next: GitMode) => void }) {
+export function ModePicker({
+  mode,
+  onChange,
+}: {
+  mode: GitMode;
+  onChange: (next: GitMode) => void;
+}) {
   const [branches, setBranches] = useState<string[]>([]);
 
   useEffect(() => {
@@ -35,7 +41,9 @@ export function ModePicker({ mode, onChange }: { mode: GitMode; onChange: (next:
           if (side.kind === "ref") onChange({ ...mode, leftRef: side.ref });
         }}
       />
-      <span className="mode-picker-sep" aria-hidden="true">↔</span>
+      <span className="mode-picker-sep" aria-hidden="true">
+        ↔
+      </span>
       <SidePicker
         label="compare"
         branches={branches}
@@ -239,4 +247,3 @@ function CommitIcon() {
     </svg>
   );
 }
-

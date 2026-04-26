@@ -43,7 +43,12 @@ function collapseSingleChildDirs(node: TreeNode): TreeNode {
   if (children.length === 1) {
     const only = children[0]!;
     if (only.kind === "dir") {
-      return { kind: "dir", name: `${node.name}/${only.name}`, path: only.path, children: only.children };
+      return {
+        kind: "dir",
+        name: `${node.name}/${only.name}`,
+        path: only.path,
+        children: only.children,
+      };
     }
   }
   return { ...node, children };
@@ -78,7 +83,13 @@ export function FileTree({
       </div>
       <ul className="file-tree">
         {tree.map((node) => (
-          <TreeItem key={node.path} node={node} onSelect={onSelect} activePath={activePath} depth={0} />
+          <TreeItem
+            key={node.path}
+            node={node}
+            onSelect={onSelect}
+            activePath={activePath}
+            depth={0}
+          />
         ))}
       </ul>
     </>

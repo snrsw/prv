@@ -37,8 +37,8 @@
   --fs-code-lh: 20px;
   --fs-path: 14px;
   --ff-sans:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial,
-    sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji";
   --ff-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
   /* Spacing scale */
@@ -195,7 +195,9 @@ input:focus-visible {
   font: inherit;
   color: var(--fg-default);
   cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
 }
 .mode-picker-trigger:hover {
   background: var(--border-muted);
@@ -331,7 +333,9 @@ input:focus-visible {
   border-radius: 6px;
   padding: 8px 10px;
   color: var(--fg-muted);
-  transition: border-color 120ms ease, background-color 120ms ease;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
 }
 .mode-picker-path-field:focus-within {
   border-color: var(--accent-fg);
@@ -691,7 +695,6 @@ input:focus-visible {
   flex: 0 0 auto;
 }
 
-
 .file-card-path {
   font-family: var(--ff-sans);
   font-size: var(--fs-path);
@@ -773,7 +776,6 @@ input:focus-visible {
 .viewed-toggle:hover {
   background: var(--border-muted);
 }
-
 
 .binary-notice {
   padding: var(--sp-5);
