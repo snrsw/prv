@@ -4,11 +4,19 @@ import { ChevronDown } from "./icons";
 
 type PathMode = Extract<ServerMode, { kind: "path-vs-path" }>;
 
-export function PathPicker({ mode, onChange }: { mode: PathMode; onChange: (next: PathMode) => void }) {
+export function PathPicker({
+  mode,
+  onChange,
+}: {
+  mode: PathMode;
+  onChange: (next: PathMode) => void;
+}) {
   return (
     <div className="mode-picker">
       <PathSide label="base" value={mode.a} onChange={(a) => onChange({ ...mode, a })} />
-      <span className="mode-picker-sep" aria-hidden="true">↔</span>
+      <span className="mode-picker-sep" aria-hidden="true">
+        ↔
+      </span>
       <PathSide label="compare" value={mode.b} onChange={(b) => onChange({ ...mode, b })} />
     </div>
   );
@@ -89,7 +97,14 @@ function PathSide({
   const filtered = useMemo(() => {
     const base = basenameOf(draft).toLowerCase();
     if (!base) return siblings.slice(0, 50);
-    return siblings.filter((d) => d.slice(parent === "/" ? 1 : parent.length + 1).toLowerCase().startsWith(base)).slice(0, 50);
+    return siblings
+      .filter((d) =>
+        d
+          .slice(parent === "/" ? 1 : parent.length + 1)
+          .toLowerCase()
+          .startsWith(base),
+      )
+      .slice(0, 50);
   }, [siblings, draft, parent]);
 
   const clampedActive = filtered.length === 0 ? 0 : Math.min(activeIndex, filtered.length - 1);
@@ -122,7 +137,9 @@ function PathSide({
         onClick={() => setOpen((o) => !o)}
       >
         <span className="mode-picker-label">{label}</span>
-        <span className="mode-picker-value" title={value}>{abbreviatePath(value)}</span>
+        <span className="mode-picker-value" title={value}>
+          {abbreviatePath(value)}
+        </span>
         <ChevronDown />
       </button>
       {open && (
@@ -149,7 +166,8 @@ function PathSide({
                   if (filtered.length > 0) setActiveIndex((i) => (i + 1) % filtered.length);
                 } else if (e.key === "ArrowUp") {
                   e.preventDefault();
-                  if (filtered.length > 0) setActiveIndex((i) => (i - 1 + filtered.length) % filtered.length);
+                  if (filtered.length > 0)
+                    setActiveIndex((i) => (i - 1 + filtered.length) % filtered.length);
                 } else if (e.key === "Tab") {
                   if (filtered.length > 0) {
                     e.preventDefault();
@@ -157,7 +175,11 @@ function PathSide({
                   }
                 } else if (e.key === "Enter") {
                   e.preventDefault();
-                  if (filtered.length > 0 && filtered[clampedActive] && filtered[clampedActive] !== draft) {
+                  if (
+                    filtered.length > 0 &&
+                    filtered[clampedActive] &&
+                    filtered[clampedActive] !== draft
+                  ) {
                     completeTo(filtered[clampedActive]!);
                   } else {
                     commit();
@@ -189,7 +211,8 @@ function PathSide({
             </ul>
           )}
           <div className="mode-picker-path-hint">
-            <kbd>tab</kbd> complete <span>·</span> <kbd>↵</kbd> save <span>·</span> <kbd>esc</kbd> cancel
+            <kbd>tab</kbd> complete <span>·</span> <kbd>↵</kbd> save <span>·</span> <kbd>esc</kbd>{" "}
+            cancel
           </div>
         </div>
       )}
