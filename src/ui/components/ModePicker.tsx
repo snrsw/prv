@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { GitRight, RefsResponse, ServerMode } from "../types";
+import type { GitRight, ServerMode } from "../types";
+import { useBranches } from "../useBranches";
 import { CheckIcon, ChevronDown } from "./icons";
 
 type GitMode = Extract<ServerMode, { kind: "git" }>;
@@ -11,24 +12,7 @@ export function ModePicker({
   mode: GitMode;
   onChange: (next: GitMode) => void;
 }) {
-  const [branches, setBranches] = useState<string[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const url = new URL("/api/refs", window.location.origin);
-    url.searchParams.set("cwd", mode.cwd);
-    fetch(url)
-      .then((r) => r.json() as Promise<RefsResponse>)
-      .then((data) => {
-        if (!cancelled) setBranches(data.branches);
-      })
-      .catch(() => {
-        /* refs are a nicety; free-text input still works */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [mode.cwd]);
+  const branches = useBranches(mode.cwd);
 
   return (
     <div className="mode-picker">

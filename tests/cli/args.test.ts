@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "../../src/cli";
+import { mkTempRepo } from "../support";
 
 test("no args → git mode HEAD vs worktree at cwd, open=true, port=0", async () => {
   const opts = await parseArgs([], "/work");
@@ -28,9 +29,8 @@ test("--port 8765 sets port", async () => {
 });
 
 test("diff <ref> <path>: ref classified as ref, existing dir as path → ref-vs-path with refOnLeft=true", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "prv-cli-"));
-  await $`git -C ${repo} init -q`.quiet();
-  await $`git -C ${repo} -c user.email=t@t -c user.name=T commit -q --allow-empty -m init`.quiet();
+  const repo = await mkTempRepo("prv-cli-");
+  await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
   const folder = mkdtempSync(join(tmpdir(), "prv-cli-folder-"));
 
   const opts = await parseArgs(["diff", "HEAD", folder], repo);
@@ -45,9 +45,8 @@ test("diff <ref> <path>: ref classified as ref, existing dir as path → ref-vs-
 });
 
 test("diff <path> <ref>: refOnLeft=false when path comes first", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "prv-cli-"));
-  await $`git -C ${repo} init -q`.quiet();
-  await $`git -C ${repo} -c user.email=t@t -c user.name=T commit -q --allow-empty -m init`.quiet();
+  const repo = await mkTempRepo("prv-cli-");
+  await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
   const folder = mkdtempSync(join(tmpdir(), "prv-cli-folder-"));
 
   const opts = await parseArgs(["diff", folder, "HEAD"], repo);
@@ -71,9 +70,8 @@ test("diff <path> <path>: both existing dirs → path-vs-path", async () => {
 });
 
 test("diff <ref> <ref>: both resolve as refs → git mode with both refs", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "prv-cli-"));
-  await $`git -C ${repo} init -q -b main`.quiet();
-  await $`git -C ${repo} -c user.email=t@t -c user.name=T commit -q --allow-empty -m init`.quiet();
+  const repo = await mkTempRepo("prv-cli-");
+  await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
   await $`git -C ${repo} branch feature`.quiet();
 
   const opts = await parseArgs(["diff", "main", "feature"], repo);
@@ -87,21 +85,17 @@ test("diff <ref> <ref>: both resolve as refs → git mode with both refs", async
 });
 
 test("diff <neither> <neither>: throws when args are neither paths nor refs", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "prv-cli-"));
-  await $`git -C ${repo} init -q`.quiet();
-  await $`git -C ${repo} -c user.email=t@t -c user.name=T commit -q --allow-empty -m init`.quiet();
+  const repo = await mkTempRepo("prv-cli-");
+  await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
 
   await expect(parseArgs(["diff", "no-such-thing", "also-bogus"], repo)).rejects.toThrow();
 });
 
 test("diff: when an arg is both a valid ref and an existing dir, path interpretation wins", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "prv-cli-"));
-  await $`git -C ${repo} init -q -b main`.quiet();
-  await $`git -C ${repo} -c user.email=t@t -c user.name=T commit -q --allow-empty -m init`.quiet();
-  // Create a directory named "main" — same name as the branch
+  const repo = await mkTempRepo("prv-cli-");
+  await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
   const ambiguous = join(repo, "main");
   mkdirSync(ambiguous);
-  // Right side: an unambiguous ref so we can reach the ref-vs-path branch
   const opts = await parseArgs(["diff", ambiguous, "HEAD"], repo);
 
   expect(opts.mode).toEqual({

@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 import { createServer } from "../../src/server";
 import type { FileDiff } from "../../src/diff/engine";
+import { mkTempRepo } from "../support";
 
 let server: ReturnType<typeof createServer>;
 
@@ -40,11 +41,10 @@ test("GET /api/diff?mode=path-vs-path returns FileDiff[] for two dirs", async ()
 });
 
 test("GET /api/diff?mode=git&right=worktree returns FileDiff[] of HEAD vs worktree", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "prv-srv-git-"));
-  await $`git -C ${repo} init -q`.quiet();
+  const repo = await mkTempRepo("prv-srv-git-");
   writeFileSync(join(repo, "hello.txt"), "hello\n");
-  await $`git -C ${repo} -c user.email=t@t -c user.name=T add hello.txt`.quiet();
-  await $`git -C ${repo} -c user.email=t@t -c user.name=T commit -q -m init`.quiet();
+  await $`git -C ${repo} add hello.txt`.quiet();
+  await $`git -C ${repo} commit -q -m init`.quiet();
   writeFileSync(join(repo, "hello.txt"), "hello world\n");
 
   const url = new URL("/api/diff", server.url);
@@ -62,11 +62,10 @@ test("GET /api/diff?mode=git&right=worktree returns FileDiff[] of HEAD vs worktr
 });
 
 test("GET /api/refs returns local branch names", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "prv-srv-refs-"));
-  await $`git -C ${repo} init -q -b main`.quiet();
+  const repo = await mkTempRepo("prv-srv-refs-");
   writeFileSync(join(repo, "f.txt"), "x\n");
-  await $`git -C ${repo} -c user.email=t@t -c user.name=T add f.txt`.quiet();
-  await $`git -C ${repo} -c user.email=t@t -c user.name=T commit -q -m init`.quiet();
+  await $`git -C ${repo} add f.txt`.quiet();
+  await $`git -C ${repo} commit -q -m init`.quiet();
   await $`git -C ${repo} branch feature`.quiet();
 
   const url = new URL("/api/refs", server.url);
