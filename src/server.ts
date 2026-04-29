@@ -30,9 +30,15 @@ export function createServer(options: ServerOptions) {
         GET: async (req) => {
           const cwd = new URL(req.url).searchParams.get("cwd");
           if (!cwd) return Response.json({ error: "cwd required" }, { status: 400 });
-          const fmt = "%(refname:short)";
-          const r = await $`git -C ${cwd} branch --format=${fmt}`.nothrow().quiet();
-          const branches = r.stdout.toString().split("\n").filter(Boolean);
+          const fmt = "%(symref)\t%(refname:short)";
+          const r = await $`git -C ${cwd} for-each-ref --format=${fmt} refs/heads refs/remotes`
+            .nothrow()
+            .quiet();
+          const branches = r.stdout
+            .toString()
+            .split("\n")
+            .filter((line) => line.startsWith("\t"))
+            .map((line) => line.slice(1));
           return Response.json({ branches });
         },
       },
