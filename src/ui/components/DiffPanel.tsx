@@ -57,36 +57,33 @@ export function DiffPanel({
     const key = JSON.stringify({ p: file.path, s: file.status, m: mode });
     if (lastFetchedKey.current === key) return;
     lastFetchedKey.current = key;
-    let cancelled = false;
+    const controller = new AbortController();
     setContent(null);
     setContentError(null);
     setContentLoading(true);
     (async () => {
       try {
         const primary: FileSide = file.status === "deleted" ? "old" : "new";
-        let result = await fetchFileContent(mode, file.path, primary);
+        let result = await fetchFileContent(mode, file.path, primary, controller.signal);
         if (result.kind === "missing" && primary === "new") {
-          const fallback = await fetchFileContent(mode, file.path, "old");
+          const fallback = await fetchFileContent(mode, file.path, "old", controller.signal);
           if (fallback.kind !== "missing") result = fallback;
         }
-        if (cancelled) return;
         setContent(result);
       } catch (e) {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setContentError(e instanceof Error ? e.message : String(e));
       } finally {
-        if (!cancelled) setContentLoading(false);
+        if (!controller.signal.aborted) setContentLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [expanded, view, file.binary, file.path, file.status, mode]);
 
   // After file content loads, restore scroll so the line that was at the
   // top of the diff is at the same screen Y in the file view.
   useEffect(() => {
-    if (view !== "file" || !content || content.kind !== "text") return;
+    if (!expanded || view !== "file" || !content || content.kind !== "text") return;
     const hint = scrollHintRef.current;
     if (!hint) return;
     scrollHintRef.current = null;
@@ -99,7 +96,7 @@ export function DiffPanel({
       window.scrollBy({ top: lineY - hint.screenY });
     }, 0);
     return () => window.clearTimeout(id);
-  }, [view, content]);
+  }, [expanded, view, content]);
 
   function captureScrollHintFromDiff() {
     if (!ref.current) return;
@@ -231,9 +228,7 @@ function FileContentCode({ path, text }: { path: string; text: string }) {
   const codeRef = useRef<HTMLElement>(null);
   const lineNumbers = useMemo(() => {
     const count = countLines(text);
-    let s = "";
-    for (let i = 1; i <= count; i++) s += i + "\n";
-    return s;
+    return Array.from({ length: count }, (_, i) => i + 1).join("\n");
   }, [text]);
   // Paint plain text first, then highlight on the next idle frame so the
   // user isn't blocked on hljs parsing for large files.
@@ -321,12 +316,13 @@ async function fetchFileContent(
   mode: ServerMode,
   filePath: string,
   side: FileSide,
+  signal: AbortSignal,
 ): Promise<FileContent> {
   const url = new URL("/api/file", window.location.origin);
   encodeMode(mode, url.searchParams);
   url.searchParams.set("file", filePath);
   url.searchParams.set("side", side);
-  const res = await fetch(url.pathname + url.search);
+  const res = await fetch(url.pathname + url.search, { signal });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return (await res.json()) as FileContent;
 }

@@ -33,18 +33,21 @@ function resolveSource(mode: DiffMode, side: FileSide): Source {
 }
 
 async function readDiskFile(absPath: string): Promise<FileContent> {
-  const file = Bun.file(absPath);
-  if (!(await file.exists())) return { kind: "missing" };
-  const bytes = await file.bytes();
-  if (looksBinary(bytes)) return { kind: "binary" };
-  return { kind: "text", content: new TextDecoder().decode(bytes) };
+  try {
+    return decodeBytes(await Bun.file(absPath).bytes());
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException)?.code === "ENOENT") return { kind: "missing" };
+    throw e;
+  }
 }
 
 async function readGitFile(cwd: string, ref: string, path: string): Promise<FileContent> {
-  const spec = `${ref}:${path}`;
-  const result = await $`git -C ${cwd} show ${spec}`.nothrow().quiet();
+  const result = await $`git -C ${cwd} show ${ref}:${path}`.nothrow().quiet();
   if (result.exitCode !== 0) return { kind: "missing" };
-  const bytes = result.stdout;
+  return decodeBytes(result.stdout);
+}
+
+function decodeBytes(bytes: Uint8Array): FileContent {
   if (looksBinary(bytes)) return { kind: "binary" };
   return { kind: "text", content: new TextDecoder().decode(bytes) };
 }
