@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { computeDiff } from "../../src/diff/engine";
+import { mkTempRepo } from "../support";
 
 test("path-vs-path: one modified file produces one FileDiff with status 'modified'", async () => {
   const root = mkdtempSync(join(tmpdir(), "prv-test-"));
@@ -87,11 +88,10 @@ test("path-vs-path: file present only in b is reported as added", async () => {
 });
 
 test("git HEAD vs worktree: untracked files are reported as added", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "prv-repo-"));
-  await $`git -C ${repo} init -q`.quiet();
+  const repo = await mkTempRepo("prv-repo-");
   writeFileSync(join(repo, "tracked.txt"), "first\n");
-  await $`git -C ${repo} -c user.email=t@t -c user.name=T add tracked.txt`.quiet();
-  await $`git -C ${repo} -c user.email=t@t -c user.name=T commit -q -m init`.quiet();
+  await $`git -C ${repo} add tracked.txt`.quiet();
+  await $`git -C ${repo} commit -q -m init`.quiet();
   writeFileSync(join(repo, "tracked.txt"), "first changed\n");
   writeFileSync(join(repo, "fresh.md"), "brand new\n");
 
@@ -108,11 +108,10 @@ test("git HEAD vs worktree: untracked files are reported as added", async () => 
 });
 
 test("git HEAD vs worktree: one modified tracked file produces one FileDiff", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "prv-repo-"));
-  await $`git -C ${repo} init -q`.quiet();
+  const repo = await mkTempRepo("prv-repo-");
   writeFileSync(join(repo, "hello.txt"), "hello\n");
-  await $`git -C ${repo} -c user.email=t@t -c user.name=T add hello.txt`.quiet();
-  await $`git -C ${repo} -c user.email=t@t -c user.name=T commit -q -m init`.quiet();
+  await $`git -C ${repo} add hello.txt`.quiet();
+  await $`git -C ${repo} commit -q -m init`.quiet();
   writeFileSync(join(repo, "hello.txt"), "hello world\n");
 
   const diffs = await computeDiff({
@@ -128,14 +127,57 @@ test("git HEAD vs worktree: one modified tracked file produces one FileDiff", as
   expect(diffs[0]?.hunks.length).toBeGreaterThan(0);
 });
 
+test("ref-vs-path: ref on left vs sibling folder reports modified file", async () => {
+  const repo = await mkTempRepo("prv-repo-");
+  writeFileSync(join(repo, "hello.txt"), "v1\n");
+  await $`git -C ${repo} add hello.txt`.quiet();
+  await $`git -C ${repo} commit -q -m v1`.quiet();
+
+  const folder = mkdtempSync(join(tmpdir(), "prv-folder-"));
+  writeFileSync(join(folder, "hello.txt"), "v2\n");
+
+  const diffs = await computeDiff({
+    kind: "ref-vs-path",
+    cwd: repo,
+    ref: "HEAD",
+    path: folder,
+    refOnLeft: true,
+  });
+
+  expect(diffs).toHaveLength(1);
+  expect(diffs[0]?.path).toBe("hello.txt");
+  expect(diffs[0]?.status).toBe("modified");
+  expect(diffs[0]?.hunks.length).toBeGreaterThan(0);
+});
+
+test("ref-vs-path: refOnLeft=false places path on left, so a file present only in the ref is added", async () => {
+  const repo = await mkTempRepo("prv-repo-");
+  writeFileSync(join(repo, "only-in-ref.txt"), "ref-only\n");
+  await $`git -C ${repo} add only-in-ref.txt`.quiet();
+  await $`git -C ${repo} commit -q -m init`.quiet();
+
+  const folder = mkdtempSync(join(tmpdir(), "prv-folder-"));
+
+  const diffs = await computeDiff({
+    kind: "ref-vs-path",
+    cwd: repo,
+    ref: "HEAD",
+    path: folder,
+    refOnLeft: false,
+  });
+
+  expect(diffs).toHaveLength(1);
+  expect(diffs[0]?.path).toBe("only-in-ref.txt");
+  expect(diffs[0]?.status).toBe("added");
+});
+
 test("git ref vs ref: diffs two commits", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "prv-repo-"));
-  await $`git -C ${repo} init -q`.quiet();
+  const repo = await mkTempRepo("prv-repo-");
   writeFileSync(join(repo, "f.txt"), "v1\n");
-  await $`git -C ${repo} -c user.email=t@t -c user.name=T add f.txt`.quiet();
-  await $`git -C ${repo} -c user.email=t@t -c user.name=T commit -q -m v1`.quiet();
+  await $`git -C ${repo} add f.txt`.quiet();
+  await $`git -C ${repo} commit -q -m v1`.quiet();
   writeFileSync(join(repo, "f.txt"), "v2\n");
-  await $`git -C ${repo} -c user.email=t@t -c user.name=T commit -aq -m v2`.quiet();
+  await $`git -C ${repo} commit -aq -m v2`.quiet();
 
   const diffs = await computeDiff({
     kind: "git",

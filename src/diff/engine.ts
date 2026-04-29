@@ -1,23 +1,40 @@
 import { $ } from "bun";
 import { realpathSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { DiffMode, FileDiff, Hunk, Status } from "./types";
 
 export type { DiffMode, FileDiff, GitRight, Hunk, Status } from "./types";
 
-async function computeRawDiff(mode: DiffMode): Promise<string> {
+type RawDiff = { raw: string; aRoot: string; bRoot: string };
+
+async function computeRawDiff(mode: DiffMode): Promise<RawDiff> {
   if (mode.kind === "path-vs-path") {
     const result = await $`git diff --no-color --no-index ${mode.a} ${mode.b}`.nothrow().quiet();
-    return result.stdout.toString();
+    return { raw: result.stdout.toString(), aRoot: mode.a, bRoot: mode.b };
+  }
+  if (mode.kind === "ref-vs-path") {
+    const tmp = await mkdtemp(join(tmpdir(), "prv-ref-"));
+    try {
+      await $`git -C ${mode.cwd} archive ${mode.ref} | tar -xC ${tmp}`.quiet();
+      const [a, b] = mode.refOnLeft ? [tmp, mode.path] : [mode.path, tmp];
+      const r = await $`git diff --no-color --no-index ${a} ${b}`.nothrow().quiet();
+      return { raw: r.stdout.toString(), aRoot: a, bRoot: b };
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
   }
   if (mode.right.kind === "ref") {
     const r = await $`git -C ${mode.cwd} diff --no-color ${mode.leftRef} ${mode.right.ref}`
       .nothrow()
       .quiet();
-    return r.stdout.toString();
+    return { raw: r.stdout.toString(), aRoot: mode.cwd, bRoot: mode.cwd };
   }
   const tracked = await $`git -C ${mode.cwd} diff --no-color ${mode.leftRef}`.nothrow().quiet();
   const untracked = await rawUntrackedDiffs(mode.cwd);
-  return [tracked.stdout.toString(), untracked].filter((s) => s.length > 0).join("");
+  const raw = [tracked.stdout.toString(), untracked].filter((s) => s.length > 0).join("");
+  return { raw, aRoot: mode.cwd, bRoot: mode.cwd };
 }
 
 async function rawUntrackedDiffs(cwd: string): Promise<string> {
@@ -37,8 +54,7 @@ async function rawUntrackedDiffs(cwd: string): Promise<string> {
 }
 
 export async function computeDiff(mode: DiffMode): Promise<FileDiff[]> {
-  const raw = await computeRawDiff(mode);
-  const [aRoot, bRoot] = mode.kind === "path-vs-path" ? [mode.a, mode.b] : [mode.cwd, mode.cwd];
+  const { raw, aRoot, bRoot } = await computeRawDiff(mode);
   return parseUnifiedDiff(raw, aRoot, bRoot);
 }
 

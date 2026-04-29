@@ -1,8 +1,13 @@
 import { test, expect } from "bun:test";
+import { $ } from "bun";
+import { mkdtempSync, mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { parseArgs } from "../../src/cli";
+import { mkTempRepo } from "../support";
 
-test("no args → git mode HEAD vs worktree at cwd, open=true, port=0", () => {
-  const opts = parseArgs([], "/work");
+test("no args → git mode HEAD vs worktree at cwd, open=true, port=0", async () => {
+  const opts = await parseArgs([], "/work");
   expect(opts.mode).toEqual({
     kind: "git",
     cwd: "/work",
@@ -13,17 +18,91 @@ test("no args → git mode HEAD vs worktree at cwd, open=true, port=0", () => {
   expect(opts.port).toBe(0);
 });
 
-test("diff <a> <b> → path-vs-path", () => {
-  const opts = parseArgs(["diff", "/x", "/y"], "/work");
-  expect(opts.mode).toEqual({ kind: "path-vs-path", a: "/x", b: "/y" });
-});
-
-test("--no-open turns off browser launch", () => {
-  const opts = parseArgs(["--no-open"], "/work");
+test("--no-open turns off browser launch", async () => {
+  const opts = await parseArgs(["--no-open"], "/work");
   expect(opts.open).toBe(false);
 });
 
-test("--port 8765 sets port", () => {
-  const opts = parseArgs(["--port", "8765"], "/work");
+test("--port 8765 sets port", async () => {
+  const opts = await parseArgs(["--port", "8765"], "/work");
   expect(opts.port).toBe(8765);
+});
+
+test("diff <ref> <path>: ref classified as ref, existing dir as path → ref-vs-path with refOnLeft=true", async () => {
+  const repo = await mkTempRepo("prv-cli-");
+  await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
+  const folder = mkdtempSync(join(tmpdir(), "prv-cli-folder-"));
+
+  const opts = await parseArgs(["diff", "HEAD", folder], repo);
+
+  expect(opts.mode).toEqual({
+    kind: "ref-vs-path",
+    cwd: repo,
+    ref: "HEAD",
+    path: folder,
+    refOnLeft: true,
+  });
+});
+
+test("diff <path> <ref>: refOnLeft=false when path comes first", async () => {
+  const repo = await mkTempRepo("prv-cli-");
+  await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
+  const folder = mkdtempSync(join(tmpdir(), "prv-cli-folder-"));
+
+  const opts = await parseArgs(["diff", folder, "HEAD"], repo);
+
+  expect(opts.mode).toEqual({
+    kind: "ref-vs-path",
+    cwd: repo,
+    ref: "HEAD",
+    path: folder,
+    refOnLeft: false,
+  });
+});
+
+test("diff <path> <path>: both existing dirs → path-vs-path", async () => {
+  const a = mkdtempSync(join(tmpdir(), "prv-cli-a-"));
+  const b = mkdtempSync(join(tmpdir(), "prv-cli-b-"));
+
+  const opts = await parseArgs(["diff", a, b], "/work");
+
+  expect(opts.mode).toEqual({ kind: "path-vs-path", a, b });
+});
+
+test("diff <ref> <ref>: both resolve as refs → git mode with both refs", async () => {
+  const repo = await mkTempRepo("prv-cli-");
+  await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
+  await $`git -C ${repo} branch feature`.quiet();
+
+  const opts = await parseArgs(["diff", "main", "feature"], repo);
+
+  expect(opts.mode).toEqual({
+    kind: "git",
+    cwd: repo,
+    leftRef: "main",
+    right: { kind: "ref", ref: "feature" },
+  });
+});
+
+test("diff <neither> <neither>: throws when args are neither paths nor refs", async () => {
+  const repo = await mkTempRepo("prv-cli-");
+  await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
+
+  await expect(parseArgs(["diff", "no-such-thing", "also-bogus"], repo)).rejects.toThrow();
+});
+
+test("diff: when an arg is both a valid ref and an existing dir, path interpretation wins", async () => {
+  const repo = await mkTempRepo("prv-cli-");
+  await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
+  const ambiguous = join(repo, "main");
+  mkdirSync(ambiguous);
+  const opts = await parseArgs(["diff", ambiguous, "HEAD"], repo);
+
+  expect(opts.mode).toEqual({
+    kind: "ref-vs-path",
+    cwd: repo,
+    ref: "HEAD",
+    path: ambiguous,
+    refOnLeft: false,
+  });
 });

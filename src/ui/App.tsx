@@ -4,6 +4,7 @@ import { DiffPanel } from "./components/DiffPanel";
 import { DiffStat } from "./components/DiffStat";
 import { ModePicker } from "./components/ModePicker";
 import { PathPicker } from "./components/PathPicker";
+import { RefPathPicker } from "./components/RefPathPicker";
 import { encodeMode } from "../shared/modeQuery";
 import { sumTotals } from "./totals";
 import type { FileDiff, ServerMode } from "./types";
@@ -45,15 +46,26 @@ export function App() {
     };
   }, []);
 
+  const cwdOf = (m: ServerMode | null): string => {
+    if (!m) return serverCwd;
+    if (m.kind === "path-vs-path") return m.a;
+    return m.cwd;
+  };
   const switchToGit = () => {
     if (mode?.kind === "git") return;
-    const cwd = mode?.kind === "path-vs-path" ? mode.a : serverCwd;
-    setMode({ kind: "git", cwd, leftRef: "HEAD", right: { kind: "worktree" } });
+    setMode({ kind: "git", cwd: cwdOf(mode), leftRef: "HEAD", right: { kind: "worktree" } });
   };
   const switchToPaths = () => {
     if (mode?.kind === "path-vs-path") return;
-    const a = mode?.kind === "git" ? mode.cwd : serverCwd;
+    const a = mode?.kind === "ref-vs-path" ? mode.path : (mode?.cwd ?? serverCwd);
     setMode({ kind: "path-vs-path", a, b: a });
+  };
+  const switchToRefPath = () => {
+    if (mode?.kind === "ref-vs-path") return;
+    const cwd = cwdOf(mode);
+    const ref = mode?.kind === "git" ? mode.leftRef : "HEAD";
+    const path = mode?.kind === "path-vs-path" ? mode.b : cwd;
+    setMode({ kind: "ref-vs-path", cwd, ref, path, refOnLeft: true });
   };
 
   useEffect(() => {
@@ -118,10 +130,20 @@ export function App() {
               >
                 Dirs
               </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode.kind === "ref-vs-path"}
+                className={mode.kind === "ref-vs-path" ? "is-active" : ""}
+                onClick={switchToRefPath}
+              >
+                Ref ↔ Dir
+              </button>
             </div>
           )}
           {mode?.kind === "git" && <ModePicker mode={mode} onChange={setMode} />}
           {mode?.kind === "path-vs-path" && <PathPicker mode={mode} onChange={setMode} />}
+          {mode?.kind === "ref-vs-path" && <RefPathPicker mode={mode} onChange={setMode} />}
         </div>
         <div className="topbar-meta">
           {files && (

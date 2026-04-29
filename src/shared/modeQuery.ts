@@ -7,6 +7,13 @@ export function encodeMode(mode: DiffMode, params: URLSearchParams): void {
     params.set("b", mode.b);
     return;
   }
+  if (mode.kind === "ref-vs-path") {
+    params.set("cwd", mode.cwd);
+    params.set("ref", mode.ref);
+    params.set("path", mode.path);
+    params.set("refOnLeft", String(mode.refOnLeft));
+    return;
+  }
   params.set("cwd", mode.cwd);
   params.set("leftRef", mode.leftRef);
   if (mode.right.kind === "ref") {
@@ -24,6 +31,14 @@ export function decodeMode(params: URLSearchParams): DiffMode | null {
     const b = params.get("b");
     if (!a || !b) return null;
     return { kind, a, b };
+  }
+  if (kind === "ref-vs-path") {
+    const cwd = params.get("cwd");
+    const ref = params.get("ref");
+    const path = params.get("path");
+    const refOnLeft = params.get("refOnLeft");
+    if (!cwd || !ref || !path || refOnLeft == null) return null;
+    return { kind, cwd, ref, path, refOnLeft: refOnLeft === "true" };
   }
   if (kind === "git") {
     const cwd = params.get("cwd");
