@@ -182,7 +182,7 @@ export function App() {
             <div className="placeholder">No changes to review.</div>
           )}
           {files?.map((file) => (
-            <DiffPanel key={file.path} file={file} anchorId={pathToAnchor(file.path)} />
+            <DiffPanel key={file.path} file={file} mode={mode} anchorId={pathToAnchor(file.path)} />
           ))}
         </main>
       </div>

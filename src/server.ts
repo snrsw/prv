@@ -3,6 +3,7 @@ import { readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { computeDiff } from "./diff/engine";
 import type { DiffMode } from "./diff/types";
+import { loadFile } from "./file/loader";
 import { decodeMode } from "./shared/modeQuery";
 import index from "./ui/index.html";
 
@@ -24,6 +25,20 @@ export function createServer(options: ServerOptions) {
           const mode = decodeMode(new URL(req.url).searchParams) ?? defaultMode;
           if (!mode) return Response.json({ error: "no mode" }, { status: 400 });
           return Response.json(await computeDiff(mode));
+        },
+      },
+      "/api/file": {
+        GET: async (req) => {
+          const params = new URL(req.url).searchParams;
+          const mode = decodeMode(params) ?? defaultMode;
+          if (!mode) return Response.json({ error: "no mode" }, { status: 400 });
+          const file = params.get("file");
+          if (!file) return Response.json({ error: "file required" }, { status: 400 });
+          const side = params.get("side");
+          if (side !== "new" && side !== "old") {
+            return Response.json({ error: "side must be 'new' or 'old'" }, { status: 400 });
+          }
+          return Response.json(await loadFile(mode, file, side));
         },
       },
       "/api/refs": {
