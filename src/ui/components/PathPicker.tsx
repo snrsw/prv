@@ -41,7 +41,7 @@ function abbreviatePath(path: string): string {
   return `…/${segments.slice(-2).join("/")}`;
 }
 
-function PathSide({
+export function PathSide({
   label,
   value,
   onChange,

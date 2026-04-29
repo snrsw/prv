@@ -21,4 +21,5 @@ export type GitRight = { kind: "ref"; ref: string } | { kind: "worktree" };
 
 export type DiffMode =
   | { kind: "path-vs-path"; a: string; b: string }
-  | { kind: "git"; cwd: string; leftRef: string; right: GitRight };
+  | { kind: "git"; cwd: string; leftRef: string; right: GitRight }
+  | { kind: "ref-vs-path"; cwd: string; ref: string; path: string; refOnLeft: boolean };

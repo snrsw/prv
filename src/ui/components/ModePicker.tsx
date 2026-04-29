@@ -59,7 +59,7 @@ function describeSide(side: GitRight): string {
   return side.kind === "worktree" ? "Working tree" : side.ref;
 }
 
-function SidePicker({
+export function SidePicker({
   label,
   branches,
   value,

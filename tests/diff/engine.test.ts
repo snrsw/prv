@@ -128,6 +128,52 @@ test("git HEAD vs worktree: one modified tracked file produces one FileDiff", as
   expect(diffs[0]?.hunks.length).toBeGreaterThan(0);
 });
 
+test("ref-vs-path: ref on left vs sibling folder reports modified file", async () => {
+  const repo = mkdtempSync(join(tmpdir(), "prv-repo-"));
+  await $`git -C ${repo} init -q`.quiet();
+  writeFileSync(join(repo, "hello.txt"), "v1\n");
+  await $`git -C ${repo} -c user.email=t@t -c user.name=T add hello.txt`.quiet();
+  await $`git -C ${repo} -c user.email=t@t -c user.name=T commit -q -m v1`.quiet();
+
+  const folder = mkdtempSync(join(tmpdir(), "prv-folder-"));
+  writeFileSync(join(folder, "hello.txt"), "v2\n");
+
+  const diffs = await computeDiff({
+    kind: "ref-vs-path",
+    cwd: repo,
+    ref: "HEAD",
+    path: folder,
+    refOnLeft: true,
+  });
+
+  expect(diffs).toHaveLength(1);
+  expect(diffs[0]?.path).toBe("hello.txt");
+  expect(diffs[0]?.status).toBe("modified");
+  expect(diffs[0]?.hunks.length).toBeGreaterThan(0);
+});
+
+test("ref-vs-path: refOnLeft=false places path on left, so a file present only in the ref is added", async () => {
+  const repo = mkdtempSync(join(tmpdir(), "prv-repo-"));
+  await $`git -C ${repo} init -q`.quiet();
+  writeFileSync(join(repo, "only-in-ref.txt"), "ref-only\n");
+  await $`git -C ${repo} -c user.email=t@t -c user.name=T add only-in-ref.txt`.quiet();
+  await $`git -C ${repo} -c user.email=t@t -c user.name=T commit -q -m init`.quiet();
+
+  const folder = mkdtempSync(join(tmpdir(), "prv-folder-"));
+
+  const diffs = await computeDiff({
+    kind: "ref-vs-path",
+    cwd: repo,
+    ref: "HEAD",
+    path: folder,
+    refOnLeft: false,
+  });
+
+  expect(diffs).toHaveLength(1);
+  expect(diffs[0]?.path).toBe("only-in-ref.txt");
+  expect(diffs[0]?.status).toBe("added");
+});
+
 test("git ref vs ref: diffs two commits", async () => {
   const repo = mkdtempSync(join(tmpdir(), "prv-repo-"));
   await $`git -C ${repo} init -q`.quiet();
