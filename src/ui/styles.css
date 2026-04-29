@@ -796,6 +796,84 @@ input:focus-visible {
   font-style: italic;
 }
 
+.file-card-view-tabs {
+  display: inline-flex;
+  background: var(--canvas-default);
+  border: 1px solid var(--border-muted);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+.file-card-view-tab {
+  background: transparent;
+  border: 0;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: var(--fs-ui-sm);
+  font-weight: 500;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+.file-card-view-tab:hover {
+  color: var(--fg-default);
+}
+.file-card-view-tab.is-active {
+  background: var(--canvas-subtle);
+  color: var(--fg-default);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.file-content-wrap {
+  display: flex;
+  align-items: stretch;
+  background: var(--canvas-default);
+}
+.file-content-gutter {
+  margin: 0;
+  padding: var(--sp-2) 6px;
+  flex: 0 0 auto;
+  width: 96px;
+  font-family: var(--ff-mono);
+  font-size: var(--fs-code);
+  line-height: var(--fs-code-lh);
+  color: var(--fg-subtle);
+  background: var(--canvas-subtle);
+  /* Inset shadow draws the divider without consuming layout width, so the
+     file code aligns horizontally with the diff (which border-collapses). */
+  box-shadow: inset -1px 0 0 var(--border-muted);
+  text-align: right;
+  user-select: none;
+  white-space: pre;
+  box-sizing: border-box;
+}
+.file-content-pre {
+  margin: 0;
+  padding: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  font-family: var(--ff-mono);
+  font-size: var(--fs-code);
+  line-height: var(--fs-code-lh);
+  background: var(--canvas-default);
+}
+.file-content-pre code.hljs {
+  display: block;
+  /* Align with diff: 1px d2h-cntx td padding + 8px line padding
+     + 1ch (+/− prefix slot) + 6px margin
+     + 1ch (whitespace between the two inline-block spans in d2h's markup). */
+  padding: var(--sp-2) 8px var(--sp-2) calc(9px + 2ch + 6px);
+  background: var(--canvas-default);
+}
+
+.file-content-notice {
+  padding: var(--sp-4);
+  color: var(--fg-muted);
+  font-size: var(--fs-ui-sm);
+  text-align: center;
+}
+
 /* ---- diff2html overrides toward GitHub (line-by-line / unified) ---- */
 
 .d2h-wrapper {
