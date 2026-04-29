@@ -76,3 +76,22 @@ test("GET /api/refs returns local branch names", async () => {
   const body = (await res.json()) as { branches: string[] };
   expect(body.branches.sort()).toEqual(["feature", "main"]);
 });
+
+test("GET /api/refs includes remote-tracking branches and excludes */HEAD", async () => {
+  const repo = mkdtempSync(join(tmpdir(), "prv-srv-refs-remote-"));
+  await $`git -C ${repo} init -q -b main`.quiet();
+  writeFileSync(join(repo, "f.txt"), "x\n");
+  await $`git -C ${repo} -c user.email=t@t -c user.name=T add f.txt`.quiet();
+  await $`git -C ${repo} -c user.email=t@t -c user.name=T commit -q -m init`.quiet();
+  await $`git -C ${repo} update-ref refs/remotes/origin/main HEAD`.quiet();
+  await $`git -C ${repo} update-ref refs/remotes/origin/topic HEAD`.quiet();
+  await $`git -C ${repo} symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main`.quiet();
+
+  const url = new URL("/api/refs", server.url);
+  url.searchParams.set("cwd", repo);
+
+  const res = await fetch(url);
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as { branches: string[] };
+  expect(body.branches.sort()).toEqual(["main", "origin/main", "origin/topic"]);
+});
