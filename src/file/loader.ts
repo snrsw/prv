@@ -15,9 +15,9 @@ export async function loadFile(mode: DiffMode, path: string, side: FileSide): Pr
   return readGitFile(source.cwd, source.ref, path);
 }
 
-type Source = { kind: "disk"; root: string } | { kind: "git"; cwd: string; ref: string };
+export type Source = { kind: "disk"; root: string } | { kind: "git"; cwd: string; ref: string };
 
-function resolveSource(mode: DiffMode, side: FileSide): Source {
+export function resolveSource(mode: DiffMode, side: FileSide): Source {
   if (mode.kind === "path-vs-path") {
     return { kind: "disk", root: side === "new" ? mode.b : mode.a };
   }
