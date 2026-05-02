@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { html as diff2html } from "diff2html";
 import hljs from "highlight.js";
 import type { FileContent, FileDiff, FileSide, ServerMode } from "../types";
-import { encodeMode } from "../../shared/modeQuery";
 import { fileTotals } from "../totals";
+import { offsetToPosition } from "../jumpToDef";
+import { encodeMode } from "../../shared/modeQuery";
 import { DiffStat } from "./DiffStat";
 import { CheckIcon, ChevronDown, ChevronRight } from "./icons";
 
@@ -17,10 +18,16 @@ export function DiffPanel({
   file,
   mode,
   anchorId,
+  pendingJump,
+  onJumpResolved,
+  onOpenReferences,
 }: {
   file: FileDiff;
   mode: ServerMode | null;
   anchorId: string;
+  pendingJump: { path: string; line: number } | null;
+  onJumpResolved: () => void;
+  onOpenReferences: (origin: { file: string; line: number; character: number }) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(true);
@@ -30,6 +37,9 @@ export function DiffPanel({
   const [content, setContent] = useState<FileContent | null>(null);
   const [contentLoading, setContentLoading] = useState(false);
   const [contentError, setContentError] = useState<string | null>(null);
+  const [scrollToLine, setScrollToLine] = useState<number | null>(null);
+  const [highlightLine, setHighlightLine] = useState<number | null>(null);
+  const [highlightTick, setHighlightTick] = useState(0);
   const totals = fileTotals(file);
   const lastFetchedKey = useRef<string | null>(null);
   const fileBodyRef = useRef<HTMLDivElement>(null);
@@ -118,6 +128,49 @@ export function DiffPanel({
     setView("file");
   };
 
+  useEffect(() => {
+    if (!pendingJump || pendingJump.path !== file.path) return;
+    setExpanded(true);
+    setView("file");
+    setScrollToLine(pendingJump.line);
+    onJumpResolved();
+  }, [pendingJump, file.path, onJumpResolved]);
+
+  function handleFileClick(e: React.MouseEvent<HTMLElement>) {
+    if (!mode || file.binary) return;
+    if (window.getSelection()?.toString()) return;
+    const codeEl = (e.currentTarget as HTMLElement).querySelector<HTMLElement>("code.hljs");
+    if (!codeEl) return;
+    const text = content && content.kind === "text" ? content.content : (codeEl.textContent ?? "");
+    const offset = caretOffsetWithin(codeEl, e.clientX, e.clientY);
+    if (offset == null) return;
+    const { line, character } = offsetToPosition(text, offset);
+    onOpenReferences({ file: file.path, line, character });
+  }
+
+  useEffect(() => {
+    if (scrollToLine == null) return;
+    if (!expanded || view !== "file" || !content || content.kind !== "text") return;
+    const target = scrollToLine;
+    const id = window.setTimeout(() => {
+      const code = fileBodyRef.current?.querySelector<HTMLElement>(".file-content-pre code.hljs");
+      if (!code) return;
+      const codeTop = code.getBoundingClientRect().top;
+      const lineY = codeTop + FILE_CODE_PADDING_TOP + target * FILE_LINE_HEIGHT;
+      window.scrollBy({ top: lineY - window.innerHeight / 3 });
+      setScrollToLine(null);
+      setHighlightLine(target);
+      setHighlightTick((t) => t + 1);
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [scrollToLine, expanded, view, content]);
+
+  useEffect(() => {
+    if (highlightLine == null) return;
+    const id = window.setTimeout(() => setHighlightLine(null), 1500);
+    return () => window.clearTimeout(id);
+  }, [highlightLine, highlightTick]);
+
   const onCopyPath = async () => {
     try {
       await navigator.clipboard.writeText(file.path);
@@ -187,12 +240,14 @@ export function DiffPanel({
       </header>
       {expanded && view === "diff" && <div className="file-card-body" ref={ref} />}
       {expanded && view === "file" && (
-        <div className="file-card-body" ref={fileBodyRef}>
+        <div className="file-card-body" ref={fileBodyRef} onClick={handleFileClick}>
           <FileContentView
             file={file}
             content={content}
             loading={contentLoading}
             error={contentError}
+            highlightLine={highlightLine}
+            highlightTick={highlightTick}
           />
         </div>
       )}
@@ -200,16 +255,42 @@ export function DiffPanel({
   );
 }
 
+type CaretFromPoint = (
+  x: number,
+  y: number,
+) => { offsetNode: Node; offset: number } | { startContainer: Node; startOffset: number } | null;
+
+function caretOffsetWithin(codeEl: HTMLElement, x: number, y: number): number | null {
+  const doc = document as Document & {
+    caretPositionFromPoint?: CaretFromPoint;
+    caretRangeFromPoint?: CaretFromPoint;
+  };
+  const fn = doc.caretPositionFromPoint ?? doc.caretRangeFromPoint;
+  const caret = fn ? fn.call(document, x, y) : null;
+  if (!caret) return null;
+  const node = "offsetNode" in caret ? caret.offsetNode : caret.startContainer;
+  const offset = "offset" in caret ? caret.offset : caret.startOffset;
+  if (!codeEl.contains(node)) return null;
+  const range = document.createRange();
+  range.setStart(codeEl, 0);
+  range.setEnd(node, offset);
+  return range.toString().length;
+}
+
 function FileContentView({
   file,
   content,
   loading,
   error,
+  highlightLine,
+  highlightTick,
 }: {
   file: FileDiff;
   content: FileContent | null;
   loading: boolean;
   error: string | null;
+  highlightLine: number | null;
+  highlightTick: number;
 }) {
   if (error) return <div className="file-content-notice">Error: {error}</div>;
   if (loading || content === null) return <div className="file-content-notice">loading…</div>;
@@ -221,10 +302,27 @@ function FileContentView({
   if (content.kind === "binary") {
     return <div className="binary-notice">Binary file</div>;
   }
-  return <FileContentCode path={file.path} text={content.content} />;
+  return (
+    <FileContentCode
+      path={file.path}
+      text={content.content}
+      highlightLine={highlightLine}
+      highlightTick={highlightTick}
+    />
+  );
 }
 
-function FileContentCode({ path, text }: { path: string; text: string }) {
+function FileContentCode({
+  path,
+  text,
+  highlightLine,
+  highlightTick,
+}: {
+  path: string;
+  text: string;
+  highlightLine: number | null;
+  highlightTick: number;
+}) {
   const codeRef = useRef<HTMLElement>(null);
   const lineNumbers = useMemo(() => {
     const count = countLines(text);
@@ -266,6 +364,17 @@ function FileContentCode({ path, text }: { path: string; text: string }) {
           {text}
         </code>
       </pre>
+      {highlightLine != null && (
+        <div
+          key={highlightTick}
+          className="file-content-line-flash"
+          style={{
+            top: FILE_CODE_PADDING_TOP + highlightLine * FILE_LINE_HEIGHT,
+            height: FILE_LINE_HEIGHT,
+          }}
+          aria-hidden="true"
+        />
+      )}
     </div>
   );
 }

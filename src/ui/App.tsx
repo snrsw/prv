@@ -1,15 +1,25 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileTree } from "./components/FileTree";
 import { DiffPanel } from "./components/DiffPanel";
 import { DiffStat } from "./components/DiffStat";
 import { ModePicker } from "./components/ModePicker";
 import { PathPicker } from "./components/PathPicker";
+import {
+  ReferencesPanel,
+  type ReferencesOrigin,
+  type ReferencesResponse,
+} from "./components/ReferencesPanel";
 import { RefPathPicker } from "./components/RefPathPicker";
 import { encodeMode } from "../shared/modeQuery";
 import { sumTotals } from "./totals";
 import type { FileDiff, ServerMode } from "./types";
 
 type ServerConfig = { mode: ServerMode | null; serverCwd: string };
+
+type RefsState =
+  | { kind: "closed" }
+  | { kind: "loading"; origin: ReferencesOrigin }
+  | { kind: "open"; origin: ReferencesOrigin; response: ReferencesResponse };
 
 function pathToAnchor(path: string): string {
   return "file-" + path;
@@ -31,6 +41,9 @@ export function App() {
   const [activePath, setActivePath] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [pendingJump, setPendingJump] = useState<{ path: string; line: number } | null>(null);
+  const [refsState, setRefsState] = useState<RefsState>({ kind: "closed" });
+  const refsAbort = useRef<AbortController | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,6 +107,52 @@ export function App() {
     setActivePath(path);
     document
       .getElementById(pathToAnchor(path))
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  const onJumpResolved = useCallback(() => setPendingJump(null), []);
+
+  const onOpenReferences = useCallback(
+    async (origin: ReferencesOrigin) => {
+      if (!mode) return;
+      refsAbort.current?.abort();
+      const controller = new AbortController();
+      refsAbort.current = controller;
+      setRefsState({ kind: "loading", origin });
+      try {
+        const url = new URL("/api/references", window.location.origin);
+        encodeMode(mode, url.searchParams);
+        url.searchParams.set("file", origin.file);
+        url.searchParams.set("side", "new");
+        url.searchParams.set("line", String(origin.line));
+        url.searchParams.set("character", String(origin.character));
+        const res = await fetch(url.pathname + url.search, { signal: controller.signal });
+        if (controller.signal.aborted) return;
+        const response = res.ok
+          ? ((await res.json()) as ReferencesResponse)
+          : ({ kind: "miss" } as ReferencesResponse);
+        if (controller.signal.aborted) return;
+        setRefsState({ kind: "open", origin, response });
+      } catch (e) {
+        if (controller.signal.aborted || (e as Error)?.name === "AbortError") return;
+        setRefsState({ kind: "open", origin, response: { kind: "miss" } });
+      }
+    },
+    [mode],
+  );
+
+  const onCloseReferences = useCallback(() => {
+    refsAbort.current?.abort();
+    setRefsState({ kind: "closed" });
+  }, []);
+
+  const onJumpFromPanel = useCallback((target: { path: string; line: number }) => {
+    refsAbort.current?.abort();
+    setActivePath(target.path);
+    setPendingJump(target);
+    setRefsState({ kind: "closed" });
+    document
+      .getElementById(pathToAnchor(target.path))
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
@@ -182,10 +241,25 @@ export function App() {
             <div className="placeholder">No changes to review.</div>
           )}
           {files?.map((file) => (
-            <DiffPanel key={file.path} file={file} mode={mode} anchorId={pathToAnchor(file.path)} />
+            <DiffPanel
+              key={file.path}
+              file={file}
+              mode={mode}
+              anchorId={pathToAnchor(file.path)}
+              pendingJump={pendingJump}
+              onJumpResolved={onJumpResolved}
+              onOpenReferences={onOpenReferences}
+            />
           ))}
         </main>
       </div>
+      <ReferencesPanel
+        origin={refsState.kind === "closed" ? null : refsState.origin}
+        response={refsState.kind === "open" ? refsState.response : null}
+        loading={refsState.kind === "loading"}
+        onClose={onCloseReferences}
+        onJump={onJumpFromPanel}
+      />
     </div>
   );
 }

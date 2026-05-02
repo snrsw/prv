@@ -1,22 +1,29 @@
 import { $ } from "bun";
 import { readdir } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import { computeDiff } from "./diff/engine";
 import type { DiffMode } from "./diff/types";
-import { loadFile } from "./file/loader";
+import { loadFile, resolveSource } from "./file/loader";
+import { detectLanguage } from "./lsp/language";
+import { groupReferences } from "./lsp/referencesGroup";
+import type { DefinitionResolver, ReferencesResolver } from "./lsp/resolver";
 import { decodeMode } from "./shared/modeQuery";
+import { isInside, uriToPath } from "./shared/uri";
 import index from "./ui/index.html";
 
 export type ServerOptions = {
   port: number;
   defaultMode?: DiffMode;
+  resolveDefinition?: DefinitionResolver;
+  resolveReferences?: ReferencesResolver;
 };
 
 export function createServer(options: ServerOptions) {
-  const { defaultMode } = options;
+  const { defaultMode, resolveDefinition, resolveReferences } = options;
 
   return Bun.serve({
     port: options.port,
+    development: { hmr: true },
     routes: {
       "/": index,
       "/api/config": () => Response.json({ mode: defaultMode ?? null, serverCwd: process.cwd() }),
@@ -39,6 +46,54 @@ export function createServer(options: ServerOptions) {
             return Response.json({ error: "side must be 'new' or 'old'" }, { status: 400 });
           }
           return Response.json(await loadFile(mode, file, side));
+        },
+      },
+      "/api/definition": {
+        GET: async (req) => {
+          const ctx = await prepareLspRequest(req, defaultMode);
+          if (ctx instanceof Response) return ctx;
+          if (!resolveDefinition) return Response.json({ kind: "unsupported-language" });
+          const resolution = await resolveDefinition(ctx.lspRequest);
+          if (resolution.kind === "missing-binary") return Response.json(resolution);
+          if (resolution.kind === "miss") return Response.json({ kind: "miss" });
+          return Response.json(formatHit(resolution, ctx.lspRequest.rootDir));
+        },
+      },
+      "/api/references": {
+        GET: async (req) => {
+          const ctx = await prepareLspRequest(req, defaultMode);
+          if (ctx instanceof Response) return ctx;
+          if (!resolveReferences) return Response.json({ kind: "unsupported-language" });
+          const resolution = await resolveReferences(ctx.lspRequest);
+          if (resolution.kind === "missing-binary") return Response.json(resolution);
+          if (resolution.kind === "miss") return Response.json({ kind: "miss" });
+          const grouped = groupReferences(resolution.locations, ctx.lspRequest.rootDir, ctx.file);
+          const localTexts = await Promise.all(
+            grouped.local.map((g) =>
+              Bun.file(join(ctx.lspRequest.rootDir, g.path))
+                .text()
+                .catch(() => ""),
+            ),
+          );
+          return Response.json({
+            kind: "ok",
+            groups: {
+              inFile: grouped.inFile.map((r) => ({
+                line: r.line,
+                character: r.character,
+                snippet: snippetFor(ctx.lspRequest.text, r.line),
+              })),
+              local: grouped.local.map((g, i) => ({
+                path: g.path,
+                refs: g.refs.map((r) => ({
+                  line: r.line,
+                  character: r.character,
+                  snippet: snippetFor(localTexts[i] ?? "", r.line),
+                })),
+              })),
+              external: grouped.external,
+            },
+          });
         },
       },
       "/api/refs": {
@@ -75,4 +130,78 @@ export function createServer(options: ServerOptions) {
       },
     },
   });
+}
+
+async function prepareLspRequest(
+  req: Request,
+  defaultMode: DiffMode | undefined,
+): Promise<
+  | Response
+  | {
+      file: string;
+      lspRequest: import("./lsp/resolver").DefinitionRequest;
+    }
+> {
+  const params = new URL(req.url).searchParams;
+  const mode = decodeMode(params) ?? defaultMode;
+  if (!mode) return Response.json({ error: "no mode" }, { status: 400 });
+  const file = params.get("file");
+  if (!file) return Response.json({ error: "file required" }, { status: 400 });
+  const side = params.get("side");
+  if (side !== "new" && side !== "old") {
+    return Response.json({ error: "side must be 'new' or 'old'" }, { status: 400 });
+  }
+  const line = Number(params.get("line"));
+  const character = Number(params.get("character"));
+  if (!Number.isInteger(line) || !Number.isInteger(character)) {
+    return Response.json({ error: "line/character required" }, { status: 400 });
+  }
+
+  const language = detectLanguage(file);
+  if (!language) return Response.json({ kind: "unsupported-language" });
+
+  const source = resolveSource(mode, side);
+  if (source.kind !== "disk") return Response.json({ kind: "unsupported-source" });
+
+  const content = await loadFile(mode, file, side);
+  if (content.kind !== "text") return Response.json({ kind: "miss" });
+
+  const absPath = join(source.root, file);
+  return {
+    file,
+    lspRequest: {
+      rootDir: source.root,
+      fileUri: `file://${absPath}`,
+      language,
+      text: content.content,
+      line,
+      character,
+    },
+  };
+}
+
+function snippetFor(text: string, line: number): string {
+  const lines = text.split("\n");
+  return (lines[line] ?? "").trim();
+}
+
+function formatHit(
+  resolution: { kind: "found"; uri: string; line: number; character: number },
+  rootDir: string,
+) {
+  const path = uriToPath(resolution.uri);
+  if (path && isInside(rootDir, path)) {
+    return {
+      kind: "hit",
+      path: relative(rootDir, path),
+      line: resolution.line,
+      character: resolution.character,
+    };
+  }
+  return {
+    kind: "hit-external",
+    uri: resolution.uri,
+    line: resolution.line,
+    character: resolution.character,
+  };
 }

@@ -2,6 +2,7 @@
 import { $ } from "bun";
 import { stat } from "node:fs/promises";
 import type { DiffMode } from "./diff/engine";
+import { createGatewayResolver } from "./lsp/createResolver";
 import { createServer } from "./server";
 
 export type CLIOptions = {
@@ -68,8 +69,17 @@ export async function parseArgs(argv: string[], cwd: string): Promise<CLIOptions
 
 async function main() {
   const opts = await parseArgs(Bun.argv.slice(2), process.cwd());
-  const server = createServer({ port: opts.port, defaultMode: opts.mode });
+  const lsp = createGatewayResolver();
+  const server = createServer({
+    port: opts.port,
+    defaultMode: opts.mode,
+    resolveDefinition: lsp.resolver,
+    resolveReferences: lsp.references,
+  });
   console.log(`prv listening at ${server.url}`);
+  process.on("SIGINT", () => {
+    void lsp.shutdown().finally(() => process.exit(0));
+  });
   if (opts.open) {
     await openBrowser(String(server.url));
   }
