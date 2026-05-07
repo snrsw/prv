@@ -47,8 +47,17 @@ export function DiffPanel({
       matching: "none",
       outputFormat: "line-by-line",
     });
-    ref.current.querySelectorAll("pre code").forEach((el) => {
-      hljs.highlightElement(el as HTMLElement);
+    ref.current.querySelectorAll<HTMLElement>(".d2h-file-wrapper").forEach((fileEl) => {
+      const ext = fileEl.getAttribute("data-lang") ?? "";
+      const lang = LANGUAGE_BY_EXT[ext] ?? ext;
+      const hljsLang = hljs.getLanguage(lang) ? lang : "plaintext";
+      fileEl.querySelectorAll<HTMLElement>(".d2h-code-line-ctn").forEach((line) => {
+        const text = line.textContent ?? "";
+        const result = hljs.highlight(text, { language: hljsLang, ignoreIllegals: true });
+        line.classList.add("hljs");
+        if (result.language) line.classList.add(result.language);
+        line.innerHTML = result.value;
+      });
     });
   }, [file.raw, file.binary, expanded, view]);
 
