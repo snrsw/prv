@@ -1060,3 +1060,44 @@ input:focus-visible {
 .d2h-tag {
   display: none !important;
 }
+
+/* ---- diff2html overrides toward GitHub (side-by-side / split) ---- */
+
+.d2h-files-diff {
+  display: flex !important;
+  width: 100% !important;
+}
+.d2h-file-side-diff {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  overflow-x: auto !important;
+}
+.d2h-file-side-diff + .d2h-file-side-diff {
+  border-left: 1px solid var(--border-muted);
+}
+.d2h-code-side-linenumber {
+  position: static !important;
+  display: table-cell !important;
+  width: 48px !important;
+  min-width: 48px !important;
+  padding: 0 6px !important;
+  border-right: 1px solid var(--border-muted) !important;
+  border-left: 0 !important;
+  text-align: right !important;
+  vertical-align: top !important;
+  line-height: var(--fs-code-lh) !important;
+  box-sizing: border-box !important;
+}
+.d2h-code-side-line {
+  padding: 0 8px !important;
+  width: auto !important;
+  display: block !important;
+}
+.d2h-emptyplaceholder {
+  background: var(--canvas-subtle) !important;
+  border-color: var(--border-muted) !important;
+}
+.d2h-code-side-line.d2h-emptyplaceholder,
+.d2h-code-side-linenumber.d2h-emptyplaceholder {
+  background: var(--canvas-subtle) !important;
+}

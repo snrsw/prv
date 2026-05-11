@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { html as diff2html } from "diff2html";
 import hljs from "highlight.js";
-import type { FileContent, FileDiff, FileSide, ServerMode } from "../types";
+import type { DiffOutputFormat, FileContent, FileDiff, FileSide, ServerMode } from "../types";
 import { encodeMode } from "../../shared/modeQuery";
 import { fileTotals } from "../totals";
 import { DiffStat } from "./DiffStat";
@@ -17,10 +17,12 @@ export function DiffPanel({
   file,
   mode,
   anchorId,
+  outputFormat,
 }: {
   file: FileDiff;
   mode: ServerMode | null;
   anchorId: string;
+  outputFormat: DiffOutputFormat;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(true);
@@ -45,12 +47,12 @@ export function DiffPanel({
     ref.current.innerHTML = diff2html(file.raw, {
       drawFileList: false,
       matching: "none",
-      outputFormat: "line-by-line",
+      outputFormat: outputFormat === "split" ? "side-by-side" : "line-by-line",
     });
     ref.current.querySelectorAll("pre code").forEach((el) => {
       hljs.highlightElement(el as HTMLElement);
     });
-  }, [file.raw, file.binary, expanded, view]);
+  }, [file.raw, file.binary, expanded, view, outputFormat]);
 
   useEffect(() => {
     if (!expanded || view !== "file" || file.binary || !mode) return;
