@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { html as diff2html } from "diff2html";
+import { Diff2HtmlUI } from "diff2html/lib/ui/js/diff2html-ui-base";
 import hljs from "highlight.js";
 import type { FileContent, FileDiff, FileSide, ServerMode } from "../types";
 import { encodeMode } from "../../shared/modeQuery";
@@ -47,18 +48,13 @@ export function DiffPanel({
       matching: "none",
       outputFormat: "line-by-line",
     });
-    ref.current.querySelectorAll<HTMLElement>(".d2h-file-wrapper").forEach((fileEl) => {
-      const ext = fileEl.getAttribute("data-lang") ?? "";
-      const lang = LANGUAGE_BY_EXT[ext] ?? ext;
-      const hljsLang = hljs.getLanguage(lang) ? lang : "plaintext";
-      fileEl.querySelectorAll<HTMLElement>(".d2h-code-line-ctn").forEach((line) => {
-        const text = line.textContent ?? "";
-        const result = hljs.highlight(text, { language: hljsLang, ignoreIllegals: true });
-        line.classList.add("hljs");
-        if (result.language) line.classList.add(result.language);
-        line.innerHTML = result.value;
-      });
-    });
+    const ui = new Diff2HtmlUI(
+      ref.current,
+      undefined,
+      { highlightLanguages: new Map(Object.entries(LANGUAGE_BY_EXT)) },
+      hljs,
+    );
+    ui.highlightCode();
   }, [file.raw, file.binary, expanded, view]);
 
   useEffect(() => {
