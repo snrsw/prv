@@ -7,7 +7,17 @@ import { PathPicker } from "./components/PathPicker";
 import { RefPathPicker } from "./components/RefPathPicker";
 import { encodeMode } from "../shared/modeQuery";
 import { sumTotals } from "./totals";
-import type { FileDiff, ServerMode } from "./types";
+import type { DiffOutputFormat, FileDiff, ServerMode } from "./types";
+
+const DIFF_OUTPUT_FORMAT_KEY = "prv:diffOutputFormat";
+
+function readStoredDiffOutputFormat(): DiffOutputFormat {
+  try {
+    return window.localStorage.getItem(DIFF_OUTPUT_FORMAT_KEY) === "split" ? "split" : "unified";
+  } catch {
+    return "unified";
+  }
+}
 
 type ServerConfig = { mode: ServerMode | null; serverCwd: string };
 
@@ -31,6 +41,17 @@ export function App() {
   const [activePath, setActivePath] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [diffOutputFormat, setDiffOutputFormat] = useState<DiffOutputFormat>(
+    readStoredDiffOutputFormat,
+  );
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DIFF_OUTPUT_FORMAT_KEY, diffOutputFormat);
+    } catch {
+      /* localStorage unavailable; ignore */
+    }
+  }, [diffOutputFormat]);
 
   useEffect(() => {
     let cancelled = false;
@@ -156,6 +177,26 @@ export function App() {
               <DiffStat totals={totals} />
             </>
           )}
+          <div className="mode-kind-toggle" role="tablist" aria-label="Diff layout">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={diffOutputFormat === "unified"}
+              className={diffOutputFormat === "unified" ? "is-active" : ""}
+              onClick={() => setDiffOutputFormat("unified")}
+            >
+              Unified
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={diffOutputFormat === "split"}
+              className={diffOutputFormat === "split" ? "is-active" : ""}
+              onClick={() => setDiffOutputFormat("split")}
+            >
+              Split
+            </button>
+          </div>
           <button type="button" className="refresh-btn" onClick={() => setReloadKey((k) => k + 1)}>
             Refresh
           </button>
@@ -182,7 +223,13 @@ export function App() {
             <div className="placeholder">No changes to review.</div>
           )}
           {files?.map((file) => (
-            <DiffPanel key={file.path} file={file} mode={mode} anchorId={pathToAnchor(file.path)} />
+            <DiffPanel
+              key={file.path}
+              file={file}
+              mode={mode}
+              anchorId={pathToAnchor(file.path)}
+              outputFormat={diffOutputFormat}
+            />
           ))}
         </main>
       </div>

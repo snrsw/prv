@@ -8,3 +8,5 @@ export type DirsResponse = { dirs: string[] };
 export type FileTotals = { adds: number; dels: number };
 
 export type { FileContent, FileSide } from "../file/loader";
+
+export type DiffOutputFormat = "unified" | "split";
