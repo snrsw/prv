@@ -1015,6 +1015,9 @@ input:focus-visible {
   text-decoration: none !important;
   color: inherit !important;
 }
+.d2h-code-line-ctn.hljs {
+  background: transparent !important;
+}
 .d2h-cntx,
 .d2h-cntx .d2h-code-line-ctn {
   background: var(--canvas-default) !important;
