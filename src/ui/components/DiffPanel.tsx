@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { html as diff2html } from "diff2html";
+import { Diff2HtmlUI } from "diff2html/lib/ui/js/diff2html-ui-base";
 import hljs from "highlight.js";
 import type { DiffOutputFormat, FileContent, FileDiff, FileSide, ServerMode } from "../types";
 import { encodeMode } from "../../shared/modeQuery";
@@ -49,9 +50,13 @@ export function DiffPanel({
       matching: "none",
       outputFormat: outputFormat === "split" ? "side-by-side" : "line-by-line",
     });
-    ref.current.querySelectorAll("pre code").forEach((el) => {
-      hljs.highlightElement(el as HTMLElement);
-    });
+    const ui = new Diff2HtmlUI(
+      ref.current,
+      undefined,
+      { highlightLanguages: new Map(Object.entries(LANGUAGE_BY_EXT)) },
+      hljs,
+    );
+    ui.highlightCode();
   }, [file.raw, file.binary, expanded, view, outputFormat]);
 
   useEffect(() => {
