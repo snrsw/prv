@@ -1096,11 +1096,12 @@ input:focus-visible {
   width: auto !important;
   display: block !important;
 }
-.d2h-emptyplaceholder {
-  background: var(--canvas-subtle) !important;
-  border-color: var(--border-muted) !important;
-}
+.d2h-emptyplaceholder,
+.d2h-code-side-emptyplaceholder,
+.d2h-code-side-line.d2h-code-side-emptyplaceholder,
+.d2h-code-side-linenumber.d2h-code-side-emptyplaceholder,
 .d2h-code-side-line.d2h-emptyplaceholder,
 .d2h-code-side-linenumber.d2h-emptyplaceholder {
-  background: var(--canvas-subtle) !important;
+  background: var(--canvas-default) !important;
+  border-color: transparent !important;
 }
