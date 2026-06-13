@@ -1,9 +1,11 @@
 import { $ } from "bun";
 import { readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
+import { buildPrompt, runTurn } from "./chat/agent";
 import { computeDiff } from "./diff/engine";
 import type { DiffMode } from "./diff/types";
 import { loadFile } from "./file/loader";
+import type { ChatAsk, ChatServerFrame, ChatWsData } from "./shared/chat";
 import { decodeMode } from "./shared/modeQuery";
 import index from "./ui/index.html";
 
@@ -12,13 +14,18 @@ export type ServerOptions = {
   defaultMode?: DiffMode;
 };
 
-export function createServer(options: ServerOptions) {
+export function createServer(options: ServerOptions): Bun.Server<ChatWsData> {
   const { defaultMode } = options;
 
   return Bun.serve({
     port: options.port,
     routes: {
       "/": index,
+      "/api/chat": (req, server) => {
+        const data: ChatWsData = { sessionId: null, busy: false };
+        if (server.upgrade(req, { data })) return undefined;
+        return new Response("expected websocket upgrade", { status: 426 });
+      },
       "/api/config": () => Response.json({ mode: defaultMode ?? null, serverCwd: process.cwd() }),
       "/api/diff": {
         GET: async (req) => {
@@ -72,6 +79,58 @@ export function createServer(options: ServerOptions) {
             return Response.json({ dirs: [] });
           }
         },
+      },
+    },
+    websocket: {
+      async message(ws, raw) {
+        const data = ws.data;
+        const send = (frame: ChatServerFrame): void => {
+          ws.send(JSON.stringify(frame));
+        };
+
+        let msg: ChatAsk;
+        try {
+          msg = JSON.parse(String(raw)) as ChatAsk;
+        } catch {
+          return;
+        }
+        if (msg.type !== "ask" || typeof msg.question !== "string") return;
+        if (data.busy) {
+          send({ type: "busy" });
+          return;
+        }
+
+        data.busy = true;
+        const isFirstTurn = !data.sessionId;
+        const prompt = buildPrompt({ diff: msg.diff ?? "", question: msg.question, isFirstTurn });
+        try {
+          for await (const event of runTurn({
+            cwd: process.cwd(),
+            prompt,
+            sessionId: data.sessionId ?? undefined,
+          })) {
+            switch (event.kind) {
+              case "session":
+                data.sessionId = event.sessionId;
+                send({ type: "session", sessionId: event.sessionId });
+                break;
+              case "text":
+                send({ type: "chunk", text: event.text });
+                break;
+              case "error":
+                send({ type: "error", message: event.message });
+                break;
+              case "done":
+                // `done` is emitted in the finally below, once the turn has
+                // fully completed and `busy` is cleared — so a client that
+                // fires its next question on `done` never races `busy`.
+                break;
+            }
+          }
+        } finally {
+          data.busy = false;
+          send({ type: "done" });
+        }
       },
     },
   });

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileTree } from "./components/FileTree";
+import { ChatPanel } from "./components/ChatPanel";
 import { DiffPanel } from "./components/DiffPanel";
 import { DiffStat } from "./components/DiffStat";
 import { ModePicker } from "./components/ModePicker";
@@ -41,6 +42,7 @@ export function App() {
   const [activePath, setActivePath] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(false);
   const [diffOutputFormat, setDiffOutputFormat] = useState<DiffOutputFormat>(
     readStoredDiffOutputFormat,
   );
@@ -200,6 +202,14 @@ export function App() {
           <button type="button" className="refresh-btn" onClick={() => setReloadKey((k) => k + 1)}>
             Refresh
           </button>
+          <button
+            type="button"
+            className={"refresh-btn" + (chatOpen ? " is-active" : "")}
+            aria-pressed={chatOpen}
+            onClick={() => setChatOpen((c) => !c)}
+          >
+            Chat
+          </button>
         </div>
       </header>
 
@@ -232,6 +242,8 @@ export function App() {
             />
           ))}
         </main>
+
+        <ChatPanel files={files} open={chatOpen} />
       </div>
     </div>
   );
