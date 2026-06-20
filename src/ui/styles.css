@@ -1233,3 +1233,166 @@ input:focus-visible {
   opacity: 0.5;
   cursor: default;
 }
+
+/* ---- Inline line-comment threads ---- */
+
+.prv-diff-wrap {
+  position: relative;
+}
+/* Suppress native text selection while drag-selecting a line range. */
+.prv-dragging,
+.prv-dragging * {
+  user-select: none;
+}
+/* Gutter cells covered by the in-progress range drag. */
+.prv-line-selected {
+  background: var(--accent-subtle) !important;
+}
+.d2h-files-diff {
+  position: relative; /* offset parent for split-view thread overlays */
+}
+
+/* Floating "comment on this line" affordance shown on hover */
+.prv-add-comment {
+  position: absolute;
+  left: 4px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-emphasis);
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 4;
+}
+.prv-add-comment:hover {
+  filter: brightness(0.95);
+}
+
+/* The thread card itself (used in both unified rows and split overlays) */
+.prv-thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: var(--sp-2);
+  padding: var(--sp-2);
+  background: var(--canvas-default);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(31, 35, 40, 0.08);
+  font-family: var(--ff-sans);
+}
+.prv-thread-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.prv-thread-loc {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-muted);
+}
+.prv-thread-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--fg-muted);
+  padding: 0 var(--sp-1);
+}
+.prv-thread-close:hover {
+  color: var(--fg-default);
+}
+.prv-thread-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.prv-thread-btn {
+  background: var(--canvas-default);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-muted);
+}
+.prv-thread-btn:hover:not(:disabled) {
+  background: var(--canvas-subtle);
+}
+.prv-thread-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.prv-thread-badge {
+  color: var(--success-fg);
+  font-weight: 600;
+}
+.prv-thread-resolved {
+  opacity: 0.75;
+}
+.prv-thread-banner {
+  font-size: var(--fs-ui-sm);
+  color: var(--attention-fg);
+  background: var(--attention-subtle);
+  border-radius: 6px;
+  padding: var(--sp-1) var(--sp-2);
+}
+.prv-thread-send-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.prv-thread-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-muted);
+}
+.prv-thread-confirm-actions {
+  display: flex;
+  gap: var(--sp-2);
+}
+.prv-orphaned {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+}
+.prv-thread-messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-height: 360px;
+  overflow-y: auto;
+}
+.prv-thread-input {
+  border-top: none;
+  padding: 0;
+}
+
+/* Unified: thread lives in a normal full-width row */
+.prv-thread-row > td {
+  padding: 0;
+  background: var(--canvas-subtle);
+}
+
+/* Split: spacer rows reserve height; the thread floats full-width over them */
+.prv-thread-spacer > td {
+  padding: 0;
+  background: var(--canvas-subtle);
+}
+.prv-thread-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 3;
+}

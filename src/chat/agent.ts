@@ -14,32 +14,43 @@ export type ChatEvent =
   | { kind: "done"; result: string }
   | { kind: "error"; message: string };
 
+export type TurnMode = "ask" | "apply";
+
 export type BuildPromptArgs = {
   diff: string;
   question: string;
   isFirstTurn: boolean;
+  mode?: TurnMode;
 };
 
 /**
  * Build the prompt text sent to `claude` for a single turn.
  *
- * On the first turn the whole diff is included as context. On later turns we
- * rely on `--resume` to carry the diff (already in the session history), so we
- * send only the new question.
+ * On the first turn the diff context is included; later turns rely on
+ * `--resume` so only the new message is sent. `mode: "apply"` asks the agent
+ * to edit the files rather than just explain.
  */
-export function buildPrompt({ diff, question, isFirstTurn }: BuildPromptArgs): string {
+export function buildPrompt({
+  diff,
+  question,
+  isFirstTurn,
+  mode = "ask",
+}: BuildPromptArgs): string {
   if (!isFirstTurn) return question;
-  return [
-    "You are helping review a git diff in a strictly read-only capacity.",
-    "Below is the full diff. Answer the user's questions about it clearly and",
-    "concisely. Do not modify any files or run any mutating commands.",
-    "",
-    "<diff>",
-    diff,
-    "</diff>",
-    "",
-    `Question: ${question}`,
-  ].join("\n");
+  const lead =
+    mode === "apply"
+      ? [
+          "You are addressing a code-review comment by editing the files directly.",
+          "Below is the relevant diff context. Make the requested change, then",
+          "briefly summarize what you edited. Keep the change minimal and focused.",
+        ]
+      : [
+          "You are helping review a git diff in a strictly read-only capacity.",
+          "Below is the relevant diff context. Answer the user's questions about it",
+          "clearly and concisely. Do not modify any files or run any mutating commands.",
+        ];
+  const label = mode === "apply" ? "Requested change" : "Question";
+  return [...lead, "", "<diff>", diff, "</diff>", "", `${label}: ${question}`].join("\n");
 }
 
 /** Extract the concatenated text of all `text` blocks in an assistant message. */
@@ -100,27 +111,39 @@ export type RunTurnArgs = {
   cwd: string;
   prompt: string;
   sessionId?: string;
+  mode?: TurnMode;
 };
 
-const READONLY_ARGS = [
-  "--print",
-  "--verbose",
-  "--output-format",
-  "stream-json",
-  "--permission-mode",
-  "plan",
-  "--disallowedTools",
-  "Edit,Write,Bash",
-];
+const BASE_ARGS = ["--print", "--verbose", "--output-format", "stream-json"];
+
+/**
+ * Permission profile per mode. `ask` is strictly read-only; `apply` lets the
+ * agent edit files (Read/Edit/Write/Grep/Glob) but never run Bash.
+ */
+const PROFILE_ARGS: Record<TurnMode, string[]> = {
+  ask: ["--permission-mode", "plan", "--disallowedTools", "Edit,Write,Bash"],
+  apply: ["--permission-mode", "acceptEdits", "--allowedTools", "Read,Edit,Write,Grep,Glob"],
+};
+
+/** Assemble the full `claude` argument list for a turn (exported for tests). */
+export function buildArgs(mode: TurnMode, sessionId?: string): string[] {
+  const args = [...BASE_ARGS, ...PROFILE_ARGS[mode]];
+  if (sessionId) args.push("--resume", sessionId);
+  return args;
+}
 
 /**
  * Spawn `claude` for a single turn and yield `ChatEvent`s as its stream-json
  * output arrives. The prompt is fed via stdin (diffs can be large). When
  * `sessionId` is given, `--resume` continues the prior conversation.
  */
-export async function* runTurn({ cwd, prompt, sessionId }: RunTurnArgs): AsyncGenerator<ChatEvent> {
-  const args = [...READONLY_ARGS];
-  if (sessionId) args.push("--resume", sessionId);
+export async function* runTurn({
+  cwd,
+  prompt,
+  sessionId,
+  mode = "ask",
+}: RunTurnArgs): AsyncGenerator<ChatEvent> {
+  const args = buildArgs(mode, sessionId);
 
   let proc: Bun.Subprocess;
   try {

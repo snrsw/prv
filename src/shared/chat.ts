@@ -5,6 +5,8 @@ export type ChatAsk = {
   type: "ask";
   question: string;
   diff: string;
+  /** "ask" = read-only Q&A (default); "apply" = let the agent edit files. */
+  mode?: "ask" | "apply";
 };
 
 /** Server → client frames. */

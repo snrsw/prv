@@ -1,5 +1,42 @@
 import { test, expect, describe } from "bun:test";
-import { buildPrompt, parseEvent } from "./agent";
+import { buildArgs, buildPrompt, parseEvent } from "./agent";
+
+describe("buildArgs", () => {
+  test("ask profile is read-only (plan + disallow Edit/Write/Bash)", () => {
+    const args = buildArgs("ask");
+    expect(args).toContain("plan");
+    expect(args.join(" ")).toContain("--disallowedTools Edit,Write,Bash");
+    expect(args).not.toContain("acceptEdits");
+  });
+
+  test("apply profile allows edits but not Bash", () => {
+    const args = buildArgs("apply");
+    expect(args).toContain("acceptEdits");
+    expect(args.join(" ")).toContain("--allowedTools Read,Edit,Write,Grep,Glob");
+    expect(args.join(" ")).not.toContain("Bash");
+  });
+
+  test("resume is appended when a session id is given", () => {
+    expect(buildArgs("ask", "sid-1").slice(-2)).toEqual(["--resume", "sid-1"]);
+    expect(buildArgs("ask")).not.toContain("--resume");
+  });
+});
+
+describe("buildPrompt apply mode", () => {
+  test("apply framing tells the agent to edit, ask framing forbids it", () => {
+    const apply = buildPrompt({
+      diff: "d",
+      question: "rename x",
+      isFirstTurn: true,
+      mode: "apply",
+    });
+    expect(apply).toContain("editing the files directly");
+    expect(apply).toContain("Requested change: rename x");
+    const ask = buildPrompt({ diff: "d", question: "why?", isFirstTurn: true, mode: "ask" });
+    expect(ask).toContain("read-only");
+    expect(ask).toContain("Question: why?");
+  });
+});
 
 describe("buildPrompt", () => {
   test("first turn embeds the diff and the question", () => {

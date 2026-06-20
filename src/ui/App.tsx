@@ -8,6 +8,7 @@ import { PathPicker } from "./components/PathPicker";
 import { RefPathPicker } from "./components/RefPathPicker";
 import { encodeMode } from "../shared/modeQuery";
 import { sumTotals } from "./totals";
+import { useComments } from "./useComments";
 import type { DiffOutputFormat, FileDiff, ServerMode } from "./types";
 
 const DIFF_OUTPUT_FORMAT_KEY = "prv:diffOutputFormat";
@@ -46,6 +47,8 @@ export function App() {
   const [diffOutputFormat, setDiffOutputFormat] = useState<DiffOutputFormat>(
     readStoredDiffOutputFormat,
   );
+  const { comments, addComment, updateComment, removeComment } = useComments(bootstrapped);
+  const refreshDiff = useCallback(() => setReloadKey((k) => k + 1), []);
 
   useEffect(() => {
     try {
@@ -239,6 +242,11 @@ export function App() {
               mode={mode}
               anchorId={pathToAnchor(file.path)}
               outputFormat={diffOutputFormat}
+              comments={comments.filter((c) => c.file === file.path)}
+              addComment={addComment}
+              updateComment={updateComment}
+              removeComment={removeComment}
+              onApplied={refreshDiff}
             />
           ))}
         </main>

@@ -2,6 +2,8 @@ import { $ } from "bun";
 import { readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { buildPrompt, runTurn } from "./chat/agent";
+import { readComments, writeComments } from "./comments/store";
+import type { Comment } from "./shared/comments";
 import { computeDiff } from "./diff/engine";
 import type { DiffMode } from "./diff/types";
 import { loadFile } from "./file/loader";
@@ -80,6 +82,17 @@ export function createServer(options: ServerOptions): Bun.Server<ChatWsData> {
           }
         },
       },
+      "/api/comments": {
+        GET: async () => Response.json(await readComments()),
+        PUT: async (req) => {
+          const comments = (await req.json()) as Comment[];
+          if (!Array.isArray(comments)) {
+            return Response.json({ error: "expected an array" }, { status: 400 });
+          }
+          await writeComments(comments);
+          return Response.json({ ok: true });
+        },
+      },
     },
     websocket: {
       async message(ws, raw) {
@@ -102,12 +115,19 @@ export function createServer(options: ServerOptions): Bun.Server<ChatWsData> {
 
         data.busy = true;
         const isFirstTurn = !data.sessionId;
-        const prompt = buildPrompt({ diff: msg.diff ?? "", question: msg.question, isFirstTurn });
+        const mode = msg.mode ?? "ask";
+        const prompt = buildPrompt({
+          diff: msg.diff ?? "",
+          question: msg.question,
+          isFirstTurn,
+          mode,
+        });
         try {
           for await (const event of runTurn({
             cwd: process.cwd(),
             prompt,
             sessionId: data.sessionId ?? undefined,
+            mode,
           })) {
             switch (event.kind) {
               case "session":
