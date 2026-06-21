@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileTree } from "./components/FileTree";
+import { ChatPanel } from "./components/ChatPanel";
 import { DiffPanel } from "./components/DiffPanel";
 import { DiffStat } from "./components/DiffStat";
 import { ModePicker } from "./components/ModePicker";
@@ -7,6 +8,7 @@ import { PathPicker } from "./components/PathPicker";
 import { RefPathPicker } from "./components/RefPathPicker";
 import { encodeMode } from "../shared/modeQuery";
 import { sumTotals } from "./totals";
+import { useComments } from "./useComments";
 import type { DiffOutputFormat, FileDiff, ServerMode } from "./types";
 
 const DIFF_OUTPUT_FORMAT_KEY = "prv:diffOutputFormat";
@@ -41,9 +43,12 @@ export function App() {
   const [activePath, setActivePath] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(false);
   const [diffOutputFormat, setDiffOutputFormat] = useState<DiffOutputFormat>(
     readStoredDiffOutputFormat,
   );
+  const { comments, addComment, updateComment, removeComment } = useComments(bootstrapped);
+  const refreshDiff = useCallback(() => setReloadKey((k) => k + 1), []);
 
   useEffect(() => {
     try {
@@ -200,6 +205,14 @@ export function App() {
           <button type="button" className="refresh-btn" onClick={() => setReloadKey((k) => k + 1)}>
             Refresh
           </button>
+          <button
+            type="button"
+            className={"refresh-btn" + (chatOpen ? " is-active" : "")}
+            aria-pressed={chatOpen}
+            onClick={() => setChatOpen((c) => !c)}
+          >
+            Chat
+          </button>
         </div>
       </header>
 
@@ -229,9 +242,16 @@ export function App() {
               mode={mode}
               anchorId={pathToAnchor(file.path)}
               outputFormat={diffOutputFormat}
+              comments={comments.filter((c) => c.file === file.path)}
+              addComment={addComment}
+              updateComment={updateComment}
+              removeComment={removeComment}
+              onApplied={refreshDiff}
             />
           ))}
         </main>
+
+        <ChatPanel files={files} open={chatOpen} />
       </div>
     </div>
   );

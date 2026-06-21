@@ -1105,3 +1105,312 @@ input:focus-visible {
   background: var(--canvas-default) !important;
   border-color: transparent !important;
 }
+
+/* ---- Chat panel ---- */
+
+.refresh-btn.is-active {
+  background: var(--accent-subtle);
+  border-color: var(--accent-emphasis);
+  color: var(--accent-fg);
+}
+
+.chat-panel {
+  flex: 0 0 380px;
+  background: var(--canvas-default);
+  border-left: 1px solid var(--border-default);
+  position: sticky;
+  top: var(--topbar-h);
+  align-self: flex-start;
+  height: calc(100vh - var(--topbar-h));
+  /* display toggled inline; flex layout when shown */
+  flex-direction: column;
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-3);
+  border-bottom: 1px solid var(--border-muted);
+}
+.chat-title {
+  font-weight: 600;
+  font-size: var(--fs-ui);
+}
+.chat-reset {
+  background: var(--canvas-default);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-muted);
+}
+.chat-reset:hover:not(:disabled) {
+  background: var(--canvas-subtle);
+}
+.chat-reset:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.chat-messages {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.chat-empty {
+  color: var(--fg-subtle);
+  font-size: var(--fs-ui-sm);
+  line-height: 1.5;
+}
+.chat-msg {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: var(--fs-ui);
+  line-height: 1.5;
+  border-radius: 8px;
+  padding: var(--sp-2) var(--sp-3);
+}
+.chat-msg-user {
+  align-self: flex-end;
+  max-width: 85%;
+  background: var(--accent-subtle);
+  color: var(--fg-default);
+}
+.chat-msg-assistant {
+  align-self: stretch;
+  background: var(--canvas-subtle);
+  border: 1px solid var(--border-muted);
+}
+.chat-thinking {
+  color: var(--fg-subtle);
+  font-style: italic;
+}
+
+.chat-input-row {
+  border-top: 1px solid var(--border-muted);
+  padding: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.chat-input {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+  font-size: var(--fs-ui);
+  padding: 7px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--canvas-subtle);
+  color: var(--fg-default);
+  outline: none;
+}
+.chat-input:focus {
+  border-color: var(--accent-emphasis);
+  background: var(--canvas-default);
+  box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
+}
+.chat-send {
+  align-self: flex-end;
+  background: var(--success-emphasis);
+  color: #ffffff;
+  border: 1px solid rgba(27, 31, 36, 0.15);
+  border-radius: 6px;
+  padding: 5px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+}
+.chat-send:hover:not(:disabled) {
+  filter: brightness(0.96);
+}
+.chat-send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- Inline line-comment threads ---- */
+
+.prv-diff-wrap {
+  position: relative;
+}
+/* Suppress native text selection while drag-selecting a line range. */
+.prv-dragging,
+.prv-dragging * {
+  user-select: none;
+}
+/* Lines covered by the in-progress range drag / by an open comment.
+ * The class lives on the <tr>; selectors are specific enough (and cover the
+ * inner content divs) to win over diff2html's add/delete background rules,
+ * which are !important and 2-class specific. */
+.prv-line-selected td,
+.prv-line-selected td.d2h-code-linenumber,
+.prv-line-selected td.d2h-code-side-linenumber,
+.prv-line-selected .d2h-code-line-ctn,
+.prv-line-selected .d2h-code-side-line {
+  background: var(--accent-subtle) !important;
+}
+.prv-line-commented td,
+.prv-line-commented td.d2h-code-linenumber,
+.prv-line-commented td.d2h-code-side-linenumber,
+.prv-line-commented .d2h-code-line-ctn,
+.prv-line-commented .d2h-code-side-line {
+  background: var(--attention-subtle) !important;
+}
+.prv-line-commented td.d2h-code-linenumber,
+.prv-line-commented td.d2h-code-side-linenumber {
+  box-shadow: inset 2px 0 0 var(--attention-emphasis);
+}
+.d2h-files-diff {
+  position: relative; /* offset parent for split-view thread overlays */
+}
+
+/* Floating "comment on this line" affordance shown on hover */
+.prv-add-comment {
+  position: absolute;
+  left: 4px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-emphasis);
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 4;
+}
+.prv-add-comment:hover {
+  filter: brightness(0.95);
+}
+
+/* The thread card itself (used in both unified rows and split overlays) */
+.prv-thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: var(--sp-2);
+  padding: var(--sp-2);
+  background: var(--canvas-default);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(31, 35, 40, 0.08);
+  font-family: var(--ff-sans);
+}
+.prv-thread-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.prv-thread-loc {
+  font-family: var(--ff-mono);
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-muted);
+}
+.prv-thread-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--fg-muted);
+  padding: 0 var(--sp-1);
+}
+.prv-thread-close:hover {
+  color: var(--fg-default);
+}
+.prv-thread-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.prv-thread-btn {
+  background: var(--canvas-default);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-muted);
+}
+.prv-thread-btn:hover:not(:disabled) {
+  background: var(--canvas-subtle);
+}
+.prv-thread-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.prv-thread-badge {
+  color: var(--success-fg);
+  font-weight: 600;
+}
+.prv-thread-resolved {
+  opacity: 0.75;
+}
+.prv-thread-banner {
+  font-size: var(--fs-ui-sm);
+  color: var(--attention-fg);
+  background: var(--attention-subtle);
+  border-radius: 6px;
+  padding: var(--sp-1) var(--sp-2);
+}
+.prv-thread-send-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.prv-thread-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-muted);
+}
+.prv-thread-confirm-actions {
+  display: flex;
+  gap: var(--sp-2);
+}
+.prv-orphaned {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+}
+.prv-thread-messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-height: 360px;
+  overflow-y: auto;
+}
+.prv-thread-input {
+  border-top: none;
+  padding: 0;
+}
+
+/* Unified: thread lives in a normal full-width row */
+.prv-thread-row > td {
+  padding: 0;
+  background: var(--canvas-subtle);
+}
+
+/* Split: spacer rows reserve height; the thread floats full-width over them */
+.prv-thread-spacer > td {
+  padding: 0;
+  background: var(--canvas-subtle);
+}
+.prv-thread-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 3;
+}
