@@ -1244,16 +1244,26 @@ input:focus-visible {
 .prv-dragging * {
   user-select: none;
 }
-/* Lines covered by the in-progress range drag. */
-.prv-line-selected {
+/* Lines covered by the in-progress range drag / by an open comment.
+ * The class lives on the <tr>; selectors are specific enough (and cover the
+ * inner content divs) to win over diff2html's add/delete background rules,
+ * which are !important and 2-class specific. */
+.prv-line-selected td,
+.prv-line-selected td.d2h-code-linenumber,
+.prv-line-selected td.d2h-code-side-linenumber,
+.prv-line-selected .d2h-code-line-ctn,
+.prv-line-selected .d2h-code-side-line {
   background: var(--accent-subtle) !important;
 }
-/* Lines covered by an open comment (GitHub-style persistent highlight). */
-.prv-line-commented {
+.prv-line-commented td,
+.prv-line-commented td.d2h-code-linenumber,
+.prv-line-commented td.d2h-code-side-linenumber,
+.prv-line-commented .d2h-code-line-ctn,
+.prv-line-commented .d2h-code-side-line {
   background: var(--attention-subtle) !important;
 }
-td.d2h-code-linenumber.prv-line-commented,
-td.d2h-code-side-linenumber.prv-line-commented {
+.prv-line-commented td.d2h-code-linenumber,
+.prv-line-commented td.d2h-code-side-linenumber {
   box-shadow: inset 2px 0 0 var(--attention-emphasis);
 }
 .d2h-files-diff {

@@ -5,8 +5,19 @@ import { Diff2HtmlUI } from "diff2html/lib/ui/js/diff2html-ui-base";
 import hljs from "highlight.js";
 import type { DiffOutputFormat, FileContent, FileDiff, FileSide, ServerMode } from "../types";
 import { encodeMode } from "../../shared/modeQuery";
-import type { Comment } from "../../shared/comments";
-import { collectRangeText, findHunkForLine, relocateComment, type LineSide } from "../lineContext";
+import type { Comment, LineKey } from "../../shared/comments";
+import {
+  anchorTextOf,
+  buildCommentContext,
+  commentId,
+  flattenDiff,
+  keyGi,
+  keyOfRow,
+  lineMaps,
+  rangeLabel,
+  relocateComment,
+  type LineSide,
+} from "../lineContext";
 import { fileTotals } from "../totals";
 import { CommentThread } from "./CommentThread";
 import { DiffStat } from "./DiffStat";
@@ -14,14 +25,14 @@ import { CheckIcon, ChevronDown, ChevronRight } from "./icons";
 
 type View = "diff" | "file";
 
-/** A comment placed at a concrete range in the currently rendered diff. */
-type Thread = { id: string; side: LineSide; startLine: number; endLine: number };
+/** A comment anchored under one diff line (its range's last line). */
+type Thread = { id: string; side: LineSide; endLine: number };
 
 /** Where the floating "comment" affordance is shown while hovering a line. */
-type HoverPlus = { side: LineSide; line: number; top: number };
+type HoverPlus = { gi: number; top: number };
 
-/** In-progress gutter drag selecting a line range (one side only). */
-type DragSel = { side: LineSide; anchor: number; end: number };
+/** In-progress gutter drag, as a span over the global diff-line index. */
+type DragSel = { startGi: number; endGi: number };
 
 // Must match .file-content-pre code.hljs vertical padding and var(--fs-code-lh) in styles.css.
 const FILE_CODE_PADDING_TOP = 8;
@@ -98,6 +109,11 @@ export function DiffPanel({
   const dragRef = useRef<DragSel | null>(null);
   const [dragViz, setDragViz] = useState<DragSel | null>(null);
 
+  // Flatten the diff into a single global-index (gi) line list, so a range can
+  // span deleted and added lines (and, in split, both columns).
+  const rows = useMemo(() => flattenDiff(file), [file]);
+  const maps = useMemo(() => lineMaps(rows), [rows]);
+
   const getContainer = (id: string): HTMLDivElement => {
     let c = containersRef.current.get(id);
     if (!c) {
@@ -108,30 +124,27 @@ export function DiffPanel({
   };
 
   const openThread = useCallback(
-    (side: LineSide, a: number, b: number) => {
-      const startLine = Math.min(a, b);
-      const endLine = Math.max(a, b);
-      const id = `${side}:${startLine}-${endLine}`;
-      const found = findHunkForLine(file, side, startLine);
-      const anchorText = found ? collectRangeText(found.hunk, side, startLine, endLine) : [];
+    (giA: number, giB: number) => {
+      const lo = Math.min(giA, giB);
+      const hi = Math.max(giA, giB);
+      const start = keyOfRow(rows[lo]!);
+      const end = keyOfRow(rows[hi]!);
       addComment({
-        id,
+        id: commentId(start, end),
         file: file.path,
-        side,
-        startLine,
-        endLine,
-        anchorText,
+        start,
+        end,
+        anchorText: anchorTextOf(rows.slice(lo, hi + 1)),
         status: "open",
         messages: [],
       });
       setHoverPlus(null);
     },
-    [file, addComment],
+    [file, addComment, rows],
   );
 
-  // Place each comment in the current diff: relocated → anchored under its
-  // last line; null → "orphaned" (its lines changed) and rendered below.
-  // Memoized so unrelated re-renders (hover, drag) don't rebuild anchors.
+  // Place each comment in the current diff: relocated → anchored under its last
+  // line; null → "orphaned" (its lines changed) and rendered below.
   const { anchored, orphaned } = useMemo(() => {
     const located = comments.map((c) => ({ comment: c, loc: relocateComment(file, c) }));
     return {
@@ -140,44 +153,69 @@ export function DiffPanel({
     };
   }, [comments, file]);
 
-  // Resolve which diff line sits at a viewport point, via the element under the
-  // cursor (works regardless of pointer capture and even over code, not gutter).
-  const lineAtPoint = (x: number, y: number): { side: LineSide; line: number } | null => {
+  // The line key of a gutter cell, then its global index.
+  const keyFromCell = useCallback((cell: HTMLElement): LineKey | null => {
     const root = ref.current;
     if (!root) return null;
+    if (cell.classList.contains("d2h-code-linenumber")) {
+      const o = cell.querySelector(".line-num1")?.textContent?.trim();
+      const n = cell.querySelector(".line-num2")?.textContent?.trim();
+      const old = o && /^\d+$/.test(o) ? parseInt(o, 10) : null;
+      const nw = n && /^\d+$/.test(n) ? parseInt(n, 10) : null;
+      return old == null && nw == null ? null : { old, new: nw };
+    }
+    if (cell.classList.contains("d2h-code-side-linenumber")) {
+      const s = cell.textContent?.trim();
+      if (!s || !/^\d+$/.test(s)) return null;
+      const num = parseInt(s, 10);
+      const sides = Array.from(root.querySelectorAll(".d2h-file-side-diff"));
+      const isNew = sides.indexOf(cell.closest(".d2h-file-side-diff")!) === 1;
+      return isNew ? { old: null, new: num } : { old: num, new: null };
+    }
+    return null;
+  }, []);
+  const giFromCell = useCallback(
+    (cell: HTMLElement): number | null => {
+      const key = keyFromCell(cell);
+      return key ? keyGi(maps, key) : null;
+    },
+    [keyFromCell, maps],
+  );
+  const cellFromTarget = (target: HTMLElement): HTMLElement | null =>
+    target
+      .closest<HTMLElement>("tr")
+      ?.querySelector(".d2h-code-linenumber, .d2h-code-side-linenumber") ?? null;
+  const giAtPoint = (x: number, y: number): number | null => {
     const el = document.elementFromPoint(x, y) as HTMLElement | null;
     const cell =
       el?.closest<HTMLElement>(".d2h-code-linenumber, .d2h-code-side-linenumber") ??
-      el
-        ?.closest<HTMLElement>("tr")
-        ?.querySelector<HTMLElement>(".d2h-code-linenumber, .d2h-code-side-linenumber") ??
-      null;
-    return cell ? resolveLineFromCell(cell, root) : null;
+      (el ? cellFromTarget(el) : null);
+    return cell ? giFromCell(cell) : null;
   };
 
   // Gutter drag uses Pointer Events + pointer capture so every move/up during
-  // the drag is delivered to the wrap, even outside it — far more reliable than
-  // mouse events for click-and-drag selection.
-  const beginDrag = (e: React.PointerEvent, side: LineSide, line: number) => {
+  // the drag is delivered to the wrap, even outside it.
+  const beginDrag = (e: React.PointerEvent, gi: number) => {
     e.preventDefault();
     wrapRef.current?.setPointerCapture(e.pointerId);
-    dragRef.current = { side, anchor: line, end: line };
+    dragRef.current = { startGi: gi, endGi: gi };
     setDragViz(dragRef.current);
     setHoverPlus(null);
   };
 
   const onDiffPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
-    const found = locFromEvent(e);
-    if (found) beginDrag(e, found.side, found.line);
+    const cell = cellFromTarget(e.target as HTMLElement);
+    const gi = cell ? giFromCell(cell) : null;
+    if (gi != null) beginDrag(e, gi);
   };
 
   const onDiffPointerMove = (e: React.PointerEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
-    const loc = lineAtPoint(e.clientX, e.clientY);
-    if (loc && loc.side === drag.side && loc.line !== drag.end) {
-      dragRef.current = { ...drag, end: loc.line };
+    const gi = giAtPoint(e.clientX, e.clientY);
+    if (gi != null && gi !== drag.endGi) {
+      dragRef.current = { ...drag, endGi: gi };
       setDragViz(dragRef.current);
     }
   };
@@ -187,26 +225,37 @@ export function DiffPanel({
     if (!drag) return;
     dragRef.current = null;
     setDragViz(null);
-    openThread(drag.side, drag.anchor, drag.end);
+    openThread(drag.startGi, drag.endGi);
   };
 
   // Tint the lines covered by (a) the in-progress drag and (b) every open
-  // comment's range — GitHub-style, so a selection/comment is visibly anchored.
+  // comment's range — by global index, so deleted (left) and added (right)
+  // lines of one region both highlight, in unified and split alike.
   useLayoutEffect(() => {
     const root = ref.current;
     if (!root || view !== "diff") return;
     root
       .querySelectorAll(".prv-line-selected, .prv-line-commented")
       .forEach((n) => n.classList.remove("prv-line-selected", "prv-line-commented"));
-    for (const { loc, comment } of anchored) {
-      if (comment.status === "open") {
-        highlightRange(root, loc.side, loc.startLine, loc.endLine, "prv-line-commented");
+    const mark = (lo: number, hi: number, cls: string) => {
+      for (const cell of root.querySelectorAll<HTMLElement>(
+        ".d2h-code-linenumber, .d2h-code-side-linenumber",
+      )) {
+        const gi = giFromCell(cell);
+        if (gi != null && gi >= lo && gi <= hi) cell.closest("tr")?.classList.add(cls);
       }
+    };
+    for (const { loc, comment } of anchored) {
+      if (comment.status === "open") mark(loc.lo, loc.hi, "prv-line-commented");
     }
     if (dragViz) {
-      highlightRange(root, dragViz.side, dragViz.anchor, dragViz.end, "prv-line-selected");
+      mark(
+        Math.min(dragViz.startGi, dragViz.endGi),
+        Math.max(dragViz.startGi, dragViz.endGi),
+        "prv-line-selected",
+      );
     }
-  }, [dragViz, anchored, renderTick, view]);
+  }, [dragViz, anchored, renderTick, view, giFromCell]);
 
   // Re-anchor threads into the diff DOM after every render / comment change.
   useLayoutEffect(() => {
@@ -229,40 +278,28 @@ export function DiffPanel({
     for (const { comment, loc } of anchored) {
       const container = containersRef.current.get(comment.id);
       if (!container) continue;
-      const thread: Thread = { id: comment.id, ...loc };
+      const thread: Thread = { id: comment.id, side: loc.last.side, endLine: loc.last.line };
       if (outputFormat === "split") anchorSplit(root, thread, container, observersRef.current);
       else anchorUnified(root, thread, container);
     }
     return () => observersRef.current.forEach((o) => o.disconnect());
   }, [renderTick, anchored, outputFormat, view]);
 
-  const locFromEvent = (
-    e: React.MouseEvent,
-  ): { side: LineSide; line: number; cell: HTMLElement } | null => {
-    const root = ref.current;
-    if (!root) return null;
-    const target = e.target as HTMLElement;
-    const row = target.closest<HTMLElement>("tr");
-    const cell = row?.querySelector<HTMLElement>(".d2h-code-linenumber, .d2h-code-side-linenumber");
-    if (!cell) return null;
-    const loc = resolveLineFromCell(cell, root);
-    return loc ? { ...loc, cell } : null;
-  };
-
   const onDiffMouseOver = (e: React.MouseEvent) => {
-    if (dragRef.current) return; // an active drag is handled by window listeners
+    if (dragRef.current) return; // an active drag is handled by the pointer handlers
     const wrap = wrapRef.current;
     if (!wrap) return;
     const target = e.target as HTMLElement;
     // Keep the affordance while the pointer is on it or inside an open thread.
     if (target.closest(".prv-add-comment, .prv-thread")) return;
-    const found = locFromEvent(e);
-    if (!found) {
+    const cell = cellFromTarget(target);
+    const gi = cell ? giFromCell(cell) : null;
+    if (!cell || gi == null) {
       setHoverPlus(null);
       return;
     }
-    const top = found.cell.getBoundingClientRect().top - wrap.getBoundingClientRect().top;
-    setHoverPlus({ side: found.side, line: found.line, top });
+    const top = cell.getBoundingClientRect().top - wrap.getBoundingClientRect().top;
+    setHoverPlus({ gi, top });
   };
 
   useEffect(() => {
@@ -415,17 +452,19 @@ export function DiffPanel({
               className="prv-add-comment"
               style={{ top: hoverPlus.top }}
               title="Comment on this line (or drag to select a range)"
-              onPointerDown={(e) => beginDrag(e, hoverPlus.side, hoverPlus.line)}
+              onPointerDown={(e) => beginDrag(e, hoverPlus.gi)}
             >
               +
             </button>
           )}
-          {anchored.map(({ comment }) =>
+          {anchored.map(({ comment, loc }) =>
             createPortal(
               <CommentThread
                 file={file}
                 comment={comment}
                 orphaned={false}
+                label={rangeLabel(loc.slice)}
+                context={buildCommentContext(file, loc.slice)}
                 onUpdate={(updater) => updateComment(comment.id, updater)}
                 onRemove={() => removeComment(comment.id)}
                 onApplied={onApplied}
@@ -441,6 +480,8 @@ export function DiffPanel({
                   file={file}
                   comment={comment}
                   orphaned
+                  label="lines changed"
+                  context={orphanContext(file.path, comment)}
                   onUpdate={(updater) => updateComment(comment.id, updater)}
                   onRemove={() => removeComment(comment.id)}
                   onApplied={onApplied}
@@ -486,27 +527,14 @@ function resolveLineFromCell(
   return null;
 }
 
-/** Tint every row in [lo, hi] on `side` by adding `className` to its cells. */
-function highlightRange(
-  root: HTMLElement,
-  side: LineSide,
-  start: number,
-  end: number,
-  className: string,
-): void {
-  const lo = Math.min(start, end);
-  const hi = Math.max(start, end);
-  for (const cell of root.querySelectorAll<HTMLElement>(
-    ".d2h-code-linenumber, .d2h-code-side-linenumber",
-  )) {
-    const loc = resolveLineFromCell(cell, root);
-    if (loc && loc.side === side && loc.line >= lo && loc.line <= hi) {
-      cell
-        .closest("tr")
-        ?.querySelectorAll("td")
-        .forEach((td) => td.classList.add(className));
-    }
-  }
+/** Fallback first-turn context for an orphaned comment (lines since changed). */
+function orphanContext(path: string, comment: Comment): string {
+  return [
+    `File: ${path}`,
+    "I'm commenting on these lines (their location in the diff has since changed):",
+    "",
+    ...(comment.anchorText ?? []),
+  ].join("\n");
 }
 
 /** Insert a full-width thread row directly under the matching unified row. */

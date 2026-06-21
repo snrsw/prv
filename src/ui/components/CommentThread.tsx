@@ -1,18 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { useDiffChat, type ChatMessage } from "../useDiffChat";
-import { buildRangeCommentContext } from "../lineContext";
 import type { Comment } from "../../shared/comments";
 import type { FileDiff } from "../types";
 
 /**
- * An inline GitHub-style comment thread anchored under a diff line/range,
- * backed by a persisted Comment. Read-only Q&A by default; "Apply with agent"
- * (after confirmation) lets the agent edit the files, then refreshes the diff.
+ * An inline GitHub-style comment thread for a (possibly multi-line, mixed +/-)
+ * diff range, backed by a persisted Comment. Read-only Q&A by default; "Apply
+ * with agent" (after confirmation) lets the agent edit files, then refreshes
+ * the diff. `label` and `context` are computed by the parent from the diff.
  */
 export function CommentThread({
   file,
   comment,
   orphaned,
+  label,
+  context,
   onUpdate,
   onRemove,
   onApplied,
@@ -20,6 +22,8 @@ export function CommentThread({
   file: FileDiff;
   comment: Comment;
   orphaned: boolean;
+  label: string;
+  context: string;
   onUpdate: (updater: (c: Comment) => Comment) => void;
   onRemove: () => void;
   onApplied: () => void;
@@ -32,16 +36,10 @@ export function CommentThread({
   const applyPendingRef = useRef(false);
 
   const resolved = comment.status === "resolved";
-  const locLabel =
-    comment.startLine === comment.endLine
-      ? `${comment.startLine}`
-      : `${comment.startLine}–${comment.endLine}`;
-  const context = () =>
-    buildRangeCommentContext(file, comment.side, comment.startLine, comment.endLine);
 
   const onSend = () => {
     if (input.trim() === "" || streaming) return;
-    send(input, context(), "ask");
+    send(input, context, "ask");
     setInput("");
   };
 
@@ -50,7 +48,7 @@ export function CommentThread({
     const lastUser = [...comment.messages, ...messages].filter((m) => m.role === "user").pop();
     const instruction = input.trim() || lastUser?.text || "Make the change discussed above.";
     applyPendingRef.current = true;
-    send(instruction, context(), "apply");
+    send(instruction, context, "apply");
     setInput("");
   };
 
@@ -74,7 +72,7 @@ export function CommentThread({
     <div className={`prv-thread ${resolved ? "prv-thread-resolved" : ""}`}>
       <div className="prv-thread-head">
         <span className="prv-thread-loc">
-          {file.path}:{locLabel}
+          {file.path}:{label}
           {resolved && <span className="prv-thread-badge"> resolved</span>}
         </span>
         <span className="prv-thread-actions">
@@ -143,13 +141,7 @@ export function CommentThread({
               <textarea
                 className="chat-input"
                 value={input}
-                placeholder={
-                  orphaned
-                    ? "Continue the discussion…"
-                    : messages.length === 0
-                      ? "Comment on this line…"
-                      : "Reply…"
-                }
+                placeholder={messages.length === 0 ? "Comment on these lines…" : "Reply…"}
                 rows={2}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -163,8 +155,7 @@ export function CommentThread({
                 <button
                   type="button"
                   className="prv-thread-btn"
-                  disabled={streaming || orphaned}
-                  title={orphaned ? "Re-anchor by re-commenting on the current lines" : undefined}
+                  disabled={streaming}
                   onClick={() => setConfirmingApply(true)}
                 >
                   Apply with agent

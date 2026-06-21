@@ -1,14 +1,24 @@
 import { test, expect, describe } from "bun:test";
 import {
-  findHunkForLine,
-  buildLineCommentContext,
-  buildRangeCommentContext,
-  collectRangeText,
-  hunkText,
+  flattenDiff,
+  lineMaps,
+  keyGi,
+  keyOfRow,
+  anchorTextOf,
+  commentId,
   relocateComment,
+  rangeLabel,
+  buildCommentContext,
 } from "./lineContext";
 import type { FileDiff } from "./types";
+import type { Comment } from "../shared/comments";
 
+// A hunk mixing context, a deletion, and additions:
+//   gi 0  " import x;"     old1 new1
+//   gi 1  "-const a = 1;"  old2
+//   gi 2  "+const a = 2;"  new2
+//   gi 3  "+const b = 3;"  new3
+//   gi 4  " export {};"    old3 new4
 const file: FileDiff = {
   path: "greet.ts",
   status: "modified",
@@ -19,121 +29,81 @@ const file: FileDiff = {
       oldStart: 1,
       oldLines: 3,
       newStart: 1,
-      newLines: 3,
+      newLines: 4,
       header: " greet",
-      lines: [
-        " import x;", // context → old 1, new 1
-        "-const a = 1;", // delete → old 2
-        "+const a = 2;", // insert → new 2
-        " export {};", // context → old 3, new 3
-      ],
+      lines: [" import x;", "-const a = 1;", "+const a = 2;", "+const b = 3;", " export {};"],
     },
   ],
 };
 
-describe("findHunkForLine", () => {
-  test("context line resolves on both sides", () => {
-    expect(findHunkForLine(file, "new", 1)?.lineText).toBe("import x;");
-    expect(findHunkForLine(file, "old", 1)?.lineText).toBe("import x;");
-    expect(findHunkForLine(file, "new", 3)?.lineText).toBe("export {};");
-  });
+const rows = flattenDiff(file);
 
-  test("deleted line resolves on the old side only", () => {
-    expect(findHunkForLine(file, "old", 2)?.lineText).toBe("const a = 1;");
-    // new line 2 is the inserted line, not the deleted one
-    expect(findHunkForLine(file, "new", 2)?.lineText).toBe("const a = 2;");
-  });
-
-  test("returns the containing hunk", () => {
-    expect(findHunkForLine(file, "new", 2)?.hunk).toBe(file.hunks[0]!);
-  });
-
-  test("missing line returns null", () => {
-    expect(findHunkForLine(file, "new", 99)).toBeNull();
-    expect(findHunkForLine(file, "old", 99)).toBeNull();
-  });
-});
-
-describe("hunkText", () => {
-  test("reconstructs the @@ header line plus body", () => {
-    expect(hunkText(file.hunks[0]!)).toBe(
-      ["@@ -1,3 +1,3 @@ greet", " import x;", "-const a = 1;", "+const a = 2;", " export {};"].join(
-        "\n",
-      ),
-    );
-  });
-});
-
-describe("buildLineCommentContext", () => {
-  test("includes path, the commented line, and the hunk", () => {
-    const ctx = buildLineCommentContext(file, "new", 2);
-    expect(ctx).toContain("File: greet.ts");
-    expect(ctx).toContain("new line 2");
-    expect(ctx).toContain("const a = 2;");
-    expect(ctx).toContain("@@ -1,3 +1,3 @@ greet");
-  });
-
-  test("degrades gracefully when the line is not found", () => {
-    const ctx = buildLineCommentContext(file, "new", 99);
-    expect(ctx).toContain("not found");
-  });
-});
-
-describe("collectRangeText", () => {
-  test("collects new-side lines within the range", () => {
-    expect(collectRangeText(file.hunks[0]!, "new", 1, 3)).toEqual([
-      "import x;",
-      "const a = 2;",
-      "export {};",
+describe("flattenDiff", () => {
+  test("assigns global indices and old/new numbers per marker", () => {
+    expect(rows.map((r) => [r.gi, r.marker, r.old, r.new])).toEqual([
+      [0, " ", 1, 1],
+      [1, "-", 2, null],
+      [2, "+", null, 2],
+      [3, "+", null, 3],
+      [4, " ", 3, 4],
     ]);
   });
-
-  test("collects only old-side lines for the old side", () => {
-    expect(collectRangeText(file.hunks[0]!, "old", 1, 2)).toEqual(["import x;", "const a = 1;"]);
-  });
 });
 
-describe("buildRangeCommentContext", () => {
-  test("labels a multi-line range and includes its lines", () => {
-    const ctx = buildRangeCommentContext(file, "new", 1, 3);
-    expect(ctx).toContain("new lines 1–3");
-    expect(ctx).toContain("import x;");
-    expect(ctx).toContain("export {};");
-    expect(ctx).toContain("@@ -1,3 +1,3 @@ greet");
-  });
-
-  test("normalizes reversed bounds and single-line uses singular label", () => {
-    expect(buildRangeCommentContext(file, "new", 3, 1)).toContain("new lines 1–3");
-    expect(buildRangeCommentContext(file, "new", 2, 2)).toContain("new line 2");
+describe("lineMaps + keyGi", () => {
+  const maps = lineMaps(rows);
+  test("new and old numbers resolve to the right global index", () => {
+    expect(keyGi(maps, { old: null, new: 2 })).toBe(2); // added line
+    expect(keyGi(maps, { old: 2, new: null })).toBe(1); // deleted line
+    expect(keyGi(maps, { old: 1, new: 1 })).toBe(0); // context, prefers new
+    expect(keyGi(maps, { old: 99, new: null })).toBeNull();
   });
 });
 
 describe("relocateComment", () => {
-  test("returns the range when the lines still match", () => {
-    expect(
-      relocateComment(file, {
-        side: "new",
-        startLine: 2,
-        endLine: 3,
-        anchorText: ["const a = 2;", "export {};"],
-      }),
-    ).toEqual({ side: "new", startLine: 2, endLine: 3 });
+  const mixed: Comment = {
+    id: "x",
+    file: "greet.ts",
+    start: keyOfRow(rows[1]!), // deleted line
+    end: keyOfRow(rows[3]!), // second added line
+    anchorText: anchorTextOf(rows.slice(1, 4)),
+    status: "open",
+    messages: [],
+  };
+
+  test("locates a range spanning deleted and added lines", () => {
+    const loc = relocateComment(file, mixed);
+    expect(loc).not.toBeNull();
+    expect([loc!.lo, loc!.hi]).toEqual([1, 3]);
+    expect(loc!.last).toEqual({ side: "new", line: 3 });
+    expect(loc!.slice.map((r) => r.marker)).toEqual(["-", "+", "+"]);
   });
 
-  test("returns null (orphaned) when the line text changed", () => {
-    expect(
-      relocateComment(file, {
-        side: "new",
-        startLine: 2,
-        endLine: 3,
-        anchorText: ["const a = 999;", "export {};"],
-      }),
-    ).toBeNull();
+  test("orphans when the line text changed", () => {
+    expect(relocateComment(file, { ...mixed, anchorText: ["-const a = 9;"] })).toBeNull();
   });
 
-  test("returns null when the line no longer exists", () => {
-    expect(
-      relocateComment(file, { side: "new", startLine: 99, endLine: 99, anchorText: ["x"] }),
-    ).toBeNull();
+  test("orphans when an endpoint no longer exists", () => {
+    expect(relocateComment(file, { ...mixed, end: { old: null, new: 999 } })).toBeNull();
+  });
+});
+
+describe("rangeLabel + context + id", () => {
+  test("label uses new-side numbers when present", () => {
+    expect(rangeLabel(rows.slice(1, 4))).toBe("2–3"); // added lines new 2..3
+    expect(rangeLabel([rows[1]!])).toBe("old 2"); // deletion-only → old label
+  });
+
+  test("context lists the selected diff lines with markers", () => {
+    const ctx = buildCommentContext(file, rows.slice(1, 4));
+    expect(ctx).toContain("File: greet.ts");
+    expect(ctx).toContain("-const a = 1;");
+    expect(ctx).toContain("+const b = 3;");
+  });
+
+  test("id is stable for the same endpoints", () => {
+    expect(commentId(keyOfRow(rows[1]!), keyOfRow(rows[3]!))).toBe(
+      commentId({ old: 2, new: null }, { old: null, new: 3 }),
+    );
   });
 });

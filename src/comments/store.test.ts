@@ -16,12 +16,11 @@ afterEach(() => {
 });
 
 const sample: Comment = {
-  id: "new:2-3",
+  id: "c:2_:_3",
   file: "greet.ts",
-  side: "new",
-  startLine: 2,
-  endLine: 3,
-  anchorText: ["const a = 2;", "export {};"],
+  start: { old: 2, new: null },
+  end: { old: null, new: 3 },
+  anchorText: ["-const a = 1;", "+const a = 2;", "+const b = 3;"],
   status: "open",
   messages: [{ role: "user", text: "why?" }],
 };

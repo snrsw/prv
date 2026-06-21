@@ -1,121 +1,130 @@
-import type { FileDiff, Hunk } from "./types";
+import type { FileDiff } from "./types";
+import type { Comment, LineKey } from "../shared/comments";
 
 export type LineSide = "old" | "new";
 
-export type LineLocation = { hunk: Hunk; lineText: string };
-
 /**
- * Locate the diff line addressed by `(side, line)` and return the hunk it
- * belongs to plus the line's text (without the leading +/-/space). Walks each
- * hunk's raw lines tracking old/new line numbers: a context line (' ')
- * advances both sides, '+' advances new only, '-' advances old only. Returns
- * null if no such line exists (e.g. the number isn't part of any hunk).
+ * A single diff line, flattened across all hunks of a file and given a global
+ * index `gi` in file order. `old`/`new` are its line numbers on each side (a
+ * context line has both, an added line only `new`, a deleted line only `old`).
+ * This single `gi` axis lets a selection span deleted and added lines, and —
+ * in split view — span the two columns, since both map back to the same lines.
  */
-export function findHunkForLine(file: FileDiff, side: LineSide, line: number): LineLocation | null {
+export type DiffRow = {
+  gi: number;
+  old: number | null;
+  new: number | null;
+  marker: " " | "+" | "-";
+  text: string;
+};
+
+export function flattenDiff(file: FileDiff): DiffRow[] {
+  const rows: DiffRow[] = [];
+  let gi = 0;
   for (const hunk of file.hunks) {
-    let oldNo = hunk.oldStart;
-    let newNo = hunk.newStart;
+    let o = hunk.oldStart;
+    let n = hunk.newStart;
     for (const raw of hunk.lines) {
-      const marker = raw[0];
+      const marker = (raw[0] ?? " ") as " " | "+" | "-";
       const text = raw.slice(1);
-      if (marker === "+") {
-        if (side === "new" && newNo === line) return { hunk, lineText: text };
-        newNo++;
-      } else if (marker === "-") {
-        if (side === "old" && oldNo === line) return { hunk, lineText: text };
-        oldNo++;
-      } else {
-        if (side === "new" && newNo === line) return { hunk, lineText: text };
-        if (side === "old" && oldNo === line) return { hunk, lineText: text };
-        oldNo++;
-        newNo++;
-      }
+      if (marker === "+") rows.push({ gi, old: null, new: n++, marker, text });
+      else if (marker === "-") rows.push({ gi, old: o++, new: null, marker, text });
+      else rows.push({ gi, old: o++, new: n++, marker, text });
+      gi++;
     }
+  }
+  return rows;
+}
+
+export type LineMaps = { oldMap: Map<number, number>; newMap: Map<number, number> };
+
+export function lineMaps(rows: DiffRow[]): LineMaps {
+  const oldMap = new Map<number, number>();
+  const newMap = new Map<number, number>();
+  for (const r of rows) {
+    if (r.old != null) oldMap.set(r.old, r.gi);
+    if (r.new != null) newMap.set(r.new, r.gi);
+  }
+  return { oldMap, newMap };
+}
+
+/** Resolve a line key to its global index, preferring the new-side number. */
+export function keyGi(maps: LineMaps, key: LineKey | null | undefined): number | null {
+  if (!key) return null;
+  if (key.new != null) {
+    const gi = maps.newMap.get(key.new);
+    if (gi != null) return gi;
+  }
+  if (key.old != null) {
+    const gi = maps.oldMap.get(key.old);
+    if (gi != null) return gi;
   }
   return null;
 }
 
-/** Reconstruct the textual hunk (the `@@ … @@` header line plus its body). */
-export function hunkText(hunk: Hunk): string {
-  const header = `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@${hunk.header}`;
-  return [header, ...hunk.lines].join("\n");
+export function keyOfRow(row: DiffRow): LineKey {
+  return { old: row.old, new: row.new };
 }
 
-/** Text of the lines on `side` whose number falls within [start, end]. */
-export function collectRangeText(hunk: Hunk, side: LineSide, start: number, end: number): string[] {
-  const out: string[] = [];
-  let oldNo = hunk.oldStart;
-  let newNo = hunk.newStart;
-  for (const raw of hunk.lines) {
-    const marker = raw[0];
-    const text = raw.slice(1);
-    if (marker === "+") {
-      if (side === "new" && newNo >= start && newNo <= end) out.push(text);
-      newNo++;
-    } else if (marker === "-") {
-      if (side === "old" && oldNo >= start && oldNo <= end) out.push(text);
-      oldNo++;
-    } else {
-      if (side === "new" && newNo >= start && newNo <= end) out.push(text);
-      else if (side === "old" && oldNo >= start && oldNo <= end) out.push(text);
-      oldNo++;
-      newNo++;
-    }
-  }
-  return out;
+export function anchorTextOf(slice: DiffRow[]): string[] {
+  return slice.map((r) => r.marker + r.text);
 }
 
-/**
- * Build the first-turn context string sent to the agent for a line or range
- * comment: the file path, which line(s) were commented on, and the surrounding
- * hunk. `startLine`/`endLine` may be given in any order.
- */
-export function buildRangeCommentContext(
-  file: FileDiff,
-  side: LineSide,
-  startLine: number,
-  endLine: number,
-): string {
-  const start = Math.min(startLine, endLine);
-  const end = Math.max(startLine, endLine);
-  const label = start === end ? `${side} line ${start}` : `${side} lines ${start}–${end}`;
-  const lead = `File: ${file.path}\nI'm commenting on ${label}:`;
-  const found = findHunkForLine(file, side, start);
-  if (!found) return `${lead}\n(lines not found in the diff)`;
-  return [
-    lead,
-    collectRangeText(found.hunk, side, start, end).join("\n"),
-    "",
-    "Here is the surrounding diff hunk it belongs to:",
-    hunkText(found.hunk),
-  ].join("\n");
+/** Stable id derived from a comment's range endpoints. */
+export function commentId(start: LineKey, end: LineKey): string {
+  const k = (key: LineKey) => `${key.old ?? ""}_${key.new ?? ""}`;
+  return `c:${k(start)}:${k(end)}`;
 }
 
-/** Convenience: context for a single commented line. */
-export function buildLineCommentContext(file: FileDiff, side: LineSide, line: number): string {
-  return buildRangeCommentContext(file, side, line, line);
-}
-
-export type CommentAnchor = {
-  side: LineSide;
-  startLine: number;
-  endLine: number;
-  anchorText: string[];
+export type Located = {
+  lo: number;
+  hi: number;
+  last: { side: LineSide; line: number };
+  slice: DiffRow[];
 };
 
 /**
- * Find where a stored comment's range sits in the current diff. Returns its
- * range if the same lines still carry the same text, else null ("orphaned")
- * so the UI can flag it rather than anchor to the wrong place. MVP: exact
- * match only — fuzzy text relocation is a deliberate follow-up.
+ * Locate a comment's range in the current diff, verifying the line text still
+ * matches. Returns the global-index span, the slice, and the last line (for
+ * thread placement), or null if the lines changed ("orphaned").
  */
-export function relocateComment(
-  file: FileDiff,
-  comment: CommentAnchor,
-): { side: LineSide; startLine: number; endLine: number } | null {
-  const found = findHunkForLine(file, comment.side, comment.startLine);
-  if (!found) return null;
-  const current = collectRangeText(found.hunk, comment.side, comment.startLine, comment.endLine);
-  if (current.join("\n") !== comment.anchorText.join("\n")) return null;
-  return { side: comment.side, startLine: comment.startLine, endLine: comment.endLine };
+export function relocateComment(file: FileDiff, comment: Comment): Located | null {
+  if (!comment.start || !comment.end || !Array.isArray(comment.anchorText)) return null;
+  const rows = flattenDiff(file);
+  const maps = lineMaps(rows);
+  const a = keyGi(maps, comment.start);
+  const b = keyGi(maps, comment.end);
+  if (a == null || b == null) return null;
+  const lo = Math.min(a, b);
+  const hi = Math.max(a, b);
+  const slice = rows.slice(lo, hi + 1);
+  if (anchorTextOf(slice).join("\n") !== comment.anchorText.join("\n")) return null;
+  const lastRow = rows[hi]!;
+  const last =
+    lastRow.new != null
+      ? { side: "new" as const, line: lastRow.new }
+      : { side: "old" as const, line: lastRow.old! };
+  return { lo, hi, last, slice };
+}
+
+/** Human label for a comment's range (new-side numbers when available). */
+export function rangeLabel(slice: DiffRow[]): string {
+  const news = slice.map((r) => r.new).filter((v): v is number => v != null);
+  const olds = slice.map((r) => r.old).filter((v): v is number => v != null);
+  const nums = news.length ? news : olds;
+  if (nums.length === 0) return "";
+  const lo = Math.min(...nums);
+  const hi = Math.max(...nums);
+  const prefix = news.length ? "" : "old ";
+  return lo === hi ? `${prefix}${lo}` : `${prefix}${lo}–${hi}`;
+}
+
+/** First-turn context for the agent: the file and the selected diff lines. */
+export function buildCommentContext(file: FileDiff, slice: DiffRow[]): string {
+  return [
+    `File: ${file.path}`,
+    "I'm commenting on these diff lines:",
+    "",
+    ...anchorTextOf(slice),
+  ].join("\n");
 }
