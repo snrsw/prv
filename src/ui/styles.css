@@ -1244,9 +1244,17 @@ input:focus-visible {
 .prv-dragging * {
   user-select: none;
 }
-/* Gutter cells covered by the in-progress range drag. */
+/* Lines covered by the in-progress range drag. */
 .prv-line-selected {
   background: var(--accent-subtle) !important;
+}
+/* Lines covered by an open comment (GitHub-style persistent highlight). */
+.prv-line-commented {
+  background: var(--attention-subtle) !important;
+}
+td.d2h-code-linenumber.prv-line-commented,
+td.d2h-code-side-linenumber.prv-line-commented {
+  box-shadow: inset 2px 0 0 var(--attention-emphasis);
 }
 .d2h-files-diff {
   position: relative; /* offset parent for split-view thread overlays */

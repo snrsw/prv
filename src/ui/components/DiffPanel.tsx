@@ -140,71 +140,73 @@ export function DiffPanel({
     };
   }, [comments, file]);
 
-  const startDrag = (side: LineSide, line: number) => {
+  // Resolve which diff line sits at a viewport point, via the element under the
+  // cursor (works regardless of pointer capture and even over code, not gutter).
+  const lineAtPoint = (x: number, y: number): { side: LineSide; line: number } | null => {
+    const root = ref.current;
+    if (!root) return null;
+    const el = document.elementFromPoint(x, y) as HTMLElement | null;
+    const cell =
+      el?.closest<HTMLElement>(".d2h-code-linenumber, .d2h-code-side-linenumber") ??
+      el
+        ?.closest<HTMLElement>("tr")
+        ?.querySelector<HTMLElement>(".d2h-code-linenumber, .d2h-code-side-linenumber") ??
+      null;
+    return cell ? resolveLineFromCell(cell, root) : null;
+  };
+
+  // Gutter drag uses Pointer Events + pointer capture so every move/up during
+  // the drag is delivered to the wrap, even outside it — far more reliable than
+  // mouse events for click-and-drag selection.
+  const beginDrag = (e: React.PointerEvent, side: LineSide, line: number) => {
+    e.preventDefault();
+    wrapRef.current?.setPointerCapture(e.pointerId);
     dragRef.current = { side, anchor: line, end: line };
     setDragViz(dragRef.current);
     setHoverPlus(null);
   };
 
-  // Track an in-progress gutter drag via window listeners (robust against the
-  // pointer leaving a cell or passing over the "+"). elementFromPoint resolves
-  // whichever line sits under the cursor as the drag moves.
-  useEffect(() => {
-    const lineAtPoint = (x: number, y: number) => {
-      const root = ref.current;
-      if (!root) return null;
-      const el = document.elementFromPoint(x, y) as HTMLElement | null;
-      const cell =
-        el?.closest<HTMLElement>(".d2h-code-linenumber, .d2h-code-side-linenumber") ??
-        el
-          ?.closest<HTMLElement>("tr")
-          ?.querySelector<HTMLElement>(".d2h-code-linenumber, .d2h-code-side-linenumber") ??
-        null;
-      return cell ? resolveLineFromCell(cell, root) : null;
-    };
-    const onMove = (e: MouseEvent) => {
-      const drag = dragRef.current;
-      if (!drag) return;
-      const loc = lineAtPoint(e.clientX, e.clientY);
-      if (loc && loc.side === drag.side && loc.line !== drag.end) {
-        dragRef.current = { ...drag, end: loc.line };
-        setDragViz(dragRef.current);
-      }
-    };
-    const onUp = () => {
-      const drag = dragRef.current;
-      if (!drag) return;
-      dragRef.current = null;
-      setDragViz(null);
-      openThread(drag.side, drag.anchor, drag.end);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-  }, [openThread]);
+  const onDiffPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    const found = locFromEvent(e);
+    if (found) beginDrag(e, found.side, found.line);
+  };
 
-  // Highlight the gutter cells covered by the in-progress drag.
+  const onDiffPointerMove = (e: React.PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const loc = lineAtPoint(e.clientX, e.clientY);
+    if (loc && loc.side === drag.side && loc.line !== drag.end) {
+      dragRef.current = { ...drag, end: loc.line };
+      setDragViz(dragRef.current);
+    }
+  };
+
+  const onDiffPointerUp = () => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    dragRef.current = null;
+    setDragViz(null);
+    openThread(drag.side, drag.anchor, drag.end);
+  };
+
+  // Tint the lines covered by (a) the in-progress drag and (b) every open
+  // comment's range — GitHub-style, so a selection/comment is visibly anchored.
   useLayoutEffect(() => {
     const root = ref.current;
-    if (!root) return;
+    if (!root || view !== "diff") return;
     root
-      .querySelectorAll(".prv-line-selected")
-      .forEach((n) => n.classList.remove("prv-line-selected"));
-    if (!dragViz) return;
-    const lo = Math.min(dragViz.anchor, dragViz.end);
-    const hi = Math.max(dragViz.anchor, dragViz.end);
-    for (const cell of root.querySelectorAll<HTMLElement>(
-      ".d2h-code-linenumber, .d2h-code-side-linenumber",
-    )) {
-      const loc = resolveLineFromCell(cell, root);
-      if (loc && loc.side === dragViz.side && loc.line >= lo && loc.line <= hi) {
-        cell.classList.add("prv-line-selected");
+      .querySelectorAll(".prv-line-selected, .prv-line-commented")
+      .forEach((n) => n.classList.remove("prv-line-selected", "prv-line-commented"));
+    for (const { loc, comment } of anchored) {
+      if (comment.status === "open") {
+        highlightRange(root, loc.side, loc.startLine, loc.endLine, "prv-line-commented");
       }
     }
-  }, [dragViz, renderTick]);
+    if (dragViz) {
+      highlightRange(root, dragViz.side, dragViz.anchor, dragViz.end, "prv-line-selected");
+    }
+  }, [dragViz, anchored, renderTick, view]);
 
   // Re-anchor threads into the diff DOM after every render / comment change.
   useLayoutEffect(() => {
@@ -245,14 +247,6 @@ export function DiffPanel({
     if (!cell) return null;
     const loc = resolveLineFromCell(cell, root);
     return loc ? { ...loc, cell } : null;
-  };
-
-  const onDiffMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    const found = locFromEvent(e);
-    if (!found) return;
-    e.preventDefault(); // suppress native text selection while dragging
-    startDrag(found.side, found.line);
   };
 
   const onDiffMouseOver = (e: React.MouseEvent) => {
@@ -408,7 +402,9 @@ export function DiffPanel({
         <div
           className={`prv-diff-wrap ${dragViz ? "prv-dragging" : ""}`}
           ref={wrapRef}
-          onMouseDown={onDiffMouseDown}
+          onPointerDown={onDiffPointerDown}
+          onPointerMove={onDiffPointerMove}
+          onPointerUp={onDiffPointerUp}
           onMouseOver={onDiffMouseOver}
           onMouseLeave={() => setHoverPlus(null)}
         >
@@ -419,10 +415,7 @@ export function DiffPanel({
               className="prv-add-comment"
               style={{ top: hoverPlus.top }}
               title="Comment on this line (or drag to select a range)"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                startDrag(hoverPlus.side, hoverPlus.line);
-              }}
+              onPointerDown={(e) => beginDrag(e, hoverPlus.side, hoverPlus.line)}
             >
               +
             </button>
@@ -491,6 +484,29 @@ function resolveLineFromCell(
     return { side, line: parseInt(num, 10) };
   }
   return null;
+}
+
+/** Tint every row in [lo, hi] on `side` by adding `className` to its cells. */
+function highlightRange(
+  root: HTMLElement,
+  side: LineSide,
+  start: number,
+  end: number,
+  className: string,
+): void {
+  const lo = Math.min(start, end);
+  const hi = Math.max(start, end);
+  for (const cell of root.querySelectorAll<HTMLElement>(
+    ".d2h-code-linenumber, .d2h-code-side-linenumber",
+  )) {
+    const loc = resolveLineFromCell(cell, root);
+    if (loc && loc.side === side && loc.line >= lo && loc.line <= hi) {
+      cell
+        .closest("tr")
+        ?.querySelectorAll("td")
+        .forEach((td) => td.classList.add(className));
+    }
+  }
 }
 
 /** Insert a full-width thread row directly under the matching unified row. */
