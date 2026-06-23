@@ -5,6 +5,42 @@ Local GitHub-style diff viewer. Designed for two workflows:
 - **Review AI-agent changes before committing** — `prv` opens a browser at a PR-style view of `HEAD` vs working tree.
 - **Compare arbitrary directories** — `prv diff <a> <b>` works on any two paths, refs, or a mix, so you can diff `tmp/feature1/approach1` vs `tmp/feature1/approach2`, `HEAD` vs `./build`, or `main` vs `feature`.
 
+## Install
+
+Install with Nix (flakes enabled):
+
+```sh
+nix run github:snrsw/prv                 # run without installing
+nix run github:snrsw/prv -- diff a b     # pass args after --
+nix profile install github:snrsw/prv     # install to your profile
+nix profile upgrade prv                  # later: upgrade
+nix profile remove prv                   # later: remove
+```
+
+Pin to a released tag for reproducibility:
+
+```sh
+nix run github:snrsw/prv/v0.1.0
+```
+
+Add to a home-manager config (`prv.url = "github:snrsw/prv";` in your flake inputs):
+
+```nix
+home.packages = [ inputs.prv.packages.${pkgs.system}.default ];
+```
+
+Or NixOS:
+
+```nix
+environment.systemPackages = [ inputs.prv.packages.${pkgs.system}.default ];
+```
+
+**Notes**
+
+- macOS opens your browser with `open`; Linux uses `xdg-open`. On a headless/SSH box no browser opens — use the printed URL (or pass `--no-open`).
+- The Nix package targets Linux and macOS only (not Windows).
+- The "chat about the diff" / AI-review feature needs Claude Code (the `claude` CLI) installed separately; core diff viewing works without it.
+
 ## Usage
 
 ```sh
