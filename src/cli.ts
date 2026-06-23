@@ -8,6 +8,8 @@ export type CLIOptions = {
   mode: DiffMode;
   port: number;
   open: boolean;
+  help: boolean;
+  version: boolean;
 };
 
 async function pathExists(p: string): Promise<boolean> {
@@ -44,6 +46,8 @@ export async function parseArgs(argv: string[], cwd: string): Promise<CLIOptions
   let mode: DiffMode = { kind: "git", cwd, leftRef: "HEAD", right: { kind: "worktree" } };
   let port = 0;
   let open = true;
+  let help = false;
+  let version = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
@@ -55,15 +59,23 @@ export async function parseArgs(argv: string[], cwd: string): Promise<CLIOptions
       i += 2;
     } else if (arg === "--no-open") {
       open = false;
+    } else if (arg === "--help" || arg === "-h") {
+      help = true;
+    } else if (arg === "--version" || arg === "-v") {
+      version = true;
     } else if (arg === "--port") {
       const next = argv[i + 1];
       if (!next) throw new Error("`--port` requires a number");
       port = parseInt(next, 10);
       i += 1;
+    } else if (arg.startsWith("-")) {
+      throw new Error(`unknown flag: ${arg}`);
+    } else {
+      throw new Error(`unexpected argument: ${arg}`);
     }
   }
 
-  return { mode, port, open };
+  return { mode, port, open, help, version };
 }
 
 async function main() {
