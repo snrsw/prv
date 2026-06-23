@@ -42,7 +42,10 @@
       };
 
       # Bun 1.3.13 fixed the sandbox compile bug; fail eval if older.
-      assertBun = pkgs: assert inputs.nixpkgs.lib.versionAtLeast pkgs.bun.version "1.3.13"; pkgs.bun;
+      assertBun =
+        pkgs:
+        assert inputs.nixpkgs.lib.versionAtLeast pkgs.bun.version "1.3.13";
+        pkgs.bun;
 
       # NOTE: extraction trigger — if this derivation grows past ~40-50 lines or a
       # second package appears, move it to ./package.nix and callPackage it.
@@ -55,7 +58,10 @@
 
           depsSrc = pkgs.lib.fileset.toSource {
             root = ./.;
-            fileset = pkgs.lib.fileset.unions [ ./package.json ./bun.lock ];
+            fileset = pkgs.lib.fileset.unions [
+              ./package.json
+              ./bun.lock
+            ];
           };
 
           deps = pkgs.stdenvNoCC.mkDerivation {
@@ -84,7 +90,11 @@
           prv = pkgs.stdenvNoCC.mkDerivation {
             inherit pname version;
             src = ./.;
-            nativeBuildInputs = [ bun pkgs.makeBinaryWrapper pkgs.git ];
+            nativeBuildInputs = [
+              bun
+              pkgs.makeBinaryWrapper
+              pkgs.git
+            ];
             dontConfigure = true;
             buildPhase = ''
               export HOME=$TMPDIR
@@ -100,9 +110,9 @@
             installPhase = ''
               install -Dm755 dist/prv $out/bin/.prv-wrapped
               makeBinaryWrapper $out/bin/.prv-wrapped $out/bin/prv \
-                --prefix PATH : ${pkgs.lib.makeBinPath (
-                  [ pkgs.git ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.xdg-utils ]
-                )}
+                --prefix PATH : ${
+                  pkgs.lib.makeBinPath ([ pkgs.git ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.xdg-utils ])
+                }
             '';
             dontFixup = true;
             meta = {
@@ -126,7 +136,10 @@
           tests = pkgs.stdenvNoCC.mkDerivation {
             name = "${pname}-tests";
             src = ./.;
-            nativeBuildInputs = [ pkgs.bun pkgs.git ];
+            nativeBuildInputs = [
+              (assertBun pkgs)
+              pkgs.git
+            ];
             dontConfigure = true;
             buildPhase = ''
               export HOME=$TMPDIR
