@@ -87,6 +87,18 @@ async function main() {
   }
 }
 
+export function shouldAutoOpen(
+  open: boolean,
+  platform: NodeJS.Platform,
+  env: Record<string, string | undefined>,
+): boolean {
+  if (!open) return false;
+  // macOS/Windows have a system opener that works without an X/Wayland session.
+  if (platform !== "linux") return true;
+  // On Linux a GUI needs a display server; otherwise xdg-open is pointless.
+  return Boolean(env.DISPLAY || env.WAYLAND_DISPLAY);
+}
+
 async function openBrowser(url: string) {
   const cmd =
     process.platform === "darwin"
