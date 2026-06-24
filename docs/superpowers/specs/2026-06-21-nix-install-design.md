@@ -6,6 +6,7 @@
 ## Scope
 
 In scope:
+
 - A flake **package output** so users can `nix run` / `nix profile install` prv and reference it from other flakes.
 - Building the existing `bun build --compile` standalone binary inside a Nix derivation (sandboxed, no network in the main build).
 - Runtime dependency wrapping so the binary "just works" after install.
@@ -13,8 +14,9 @@ In scope:
 - Install documentation in the README.
 
 Out of scope (tracked as separate follow-ups, see end):
+
 - Submitting to nixpkgs.
-- A dedicated home-manager *module* (the package output is already home-manager-consumable).
+- A dedicated home-manager _module_ (the package output is already home-manager-consumable).
 - An overlay output (no consumer yet — YAGNI).
 
 ## Architecture & flake outputs
@@ -51,7 +53,7 @@ Bun apps can't fetch deps in the sandboxed main build, so deps come from a **fix
 - **Hashes are per-system.** `bun install` resolves platform-specific optional/native dependencies (the devDeps `oxlint`/`oxfmt` are native; transitive optional deps may be too), so a single shared hash will fail on at least one target. Store an `outputHash` per system in an attrset keyed by system.
 - Document the regen command in a `flake.nix` comment: set the hash to `lib.fakeHash`, run `nix build .#packages.<system>.deps`, copy the `got:` hash from the error.
 
-**Simplification to try first (verify, don't assume):** install only runtime deps with `bun install --production`. Note this excludes **both** `devDependencies` **and** `optionalDependencies` — the real guarantee is "no dev and no optional deps," not just "no devtools." prv's runtime deps (react, react-dom, diff2html, highlight.js) are pure JS and the lockfile's ~38 `os`/`cpu`-constrained entries all belong to the `oxlint`/`oxfmt` devtools, so the prod tree is platform-independent and a single shared hash is safe *for this repo today*. The spec keeps the per-system map as the correct default; collapse to a single hash only after confirming the prod tree has no per-platform entries, and revisit if a future runtime dep ships an optional native binding (which `--production` would silently drop from the compiled binary).
+**Simplification to try first (verify, don't assume):** install only runtime deps with `bun install --production`. Note this excludes **both** `devDependencies` **and** `optionalDependencies` — the real guarantee is "no dev and no optional deps," not just "no devtools." prv's runtime deps (react, react-dom, diff2html, highlight.js) are pure JS and the lockfile's ~38 `os`/`cpu`-constrained entries all belong to the `oxlint`/`oxfmt` devtools, so the prod tree is platform-independent and a single shared hash is safe _for this repo today_. The spec keeps the per-system map as the correct default; collapse to a single hash only after confirming the prod tree has no per-platform entries, and revisit if a future runtime dep ships an optional native binding (which `--production` would silently drop from the compiled binary).
 
 **Alternative (documented, not adopted now):** `bun2nix` (nix-community) generates `bun.nix` from `bun.lock` and manages per-arch hashes via a regen command instead of by hand. Adopt it if the hand-maintained hashes become a chore. Default stays hand-rolled to avoid a new codegen dependency and because we control how it feeds `--compile`.
 
@@ -66,7 +68,7 @@ Main derivation (no network):
 4. **Smoke test in the build phase:** `test -s dist/prv` (non-empty), then actually **execute** the binary headlessly (`dist/prv --version`, and a `--no-open` diff of two temp dirs). Running it — not just size-checking — is what catches both the 0-byte failure and a binary that builds but won't start. The execute check must run on Linux too (see ELF note below), so it belongs in the derivation/CI, not only on this Mac.
 5. `install -Dm755 dist/prv $out/bin/prv` (into the wrapper input; see next section).
 
-**Linux ELF interpreter:** on a Nix host, `bun build --compile` writes the Nix-store path of the dynamic linker (`ld-linux`) into the produced ELF's interpreter field. For a *Nix-installed* package this is correct — the store `glibc` is a real runtime dependency — but it means the binary is **not relocatable outside the Nix store** (don't `scp` it to a non-Nix box and expect it to run). `makeBinaryWrapper` does not change the interpreter; it only sets env/PATH. The `>= 1.3.13` pin also covers the interpreter-rewrite behavior being predictable. The Linux smoke test must confirm the binary actually executes, since a wrong interpreter passes `test -s` but fails to run.
+**Linux ELF interpreter:** on a Nix host, `bun build --compile` writes the Nix-store path of the dynamic linker (`ld-linux`) into the produced ELF's interpreter field. For a _Nix-installed_ package this is correct — the store `glibc` is a real runtime dependency — but it means the binary is **not relocatable outside the Nix store** (don't `scp` it to a non-Nix box and expect it to run). `makeBinaryWrapper` does not change the interpreter; it only sets env/PATH. The `>= 1.3.13` pin also covers the interpreter-rewrite behavior being predictable. The Linux smoke test must confirm the binary actually executes, since a wrong interpreter passes `test -s` but fails to run.
 
 **Cross-build:** each system compiles its own binary with `--target=bun`; darwin↔linux cannot cross-build through this flake. This is documented as a per-system native-build requirement (CI matrix per OS/arch, or `nix build .#packages.<sys>` only on a matching machine). We do not promise universal `nix build` from one host. Note: nixpkgs marks x86_64-darwin bun as hanging under Rosetta and excludes it from Hydra — treat x86_64-darwin as best-effort.
 
@@ -91,6 +93,7 @@ These are small but required for a real install experience:
 ## Documentation
 
 Add an **Install** section to the README:
+
 - `nix run github:snrsw/prv` and `nix profile install github:snrsw/prv`.
 - Upgrade / remove a profile install: `nix profile upgrade prv` / `nix profile remove prv`.
 - Pinning to a tag/rev (`github:snrsw/prv/v0.1.0`).

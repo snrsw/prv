@@ -11,6 +11,7 @@
 **Spec:** `docs/superpowers/specs/2026-06-21-nix-install-design.md`
 
 **Conventions for every task:**
+
 - Run all `bun`/`git` test commands inside the dev shell. If `bun` is not on PATH, prefix with `nix develop -c` (e.g. `nix develop -c bun test`). The plan writes `bun …`; use the prefix if needed.
 - Existing tests in `tests/cli/args.test.ts` assert individual fields (`opts.mode`, `opts.open`, `opts.port`), never whole-object equality — so **adding** optional fields to `CLIOptions` is safe.
 
@@ -21,6 +22,7 @@
 ### Task 1: Version module with build-time injection
 
 **Files:**
+
 - Create: `src/version.ts`
 - Test: `tests/cli/version.test.ts`
 
@@ -80,6 +82,7 @@ git commit -m "✨ Add build-time-injectable version module"
 ### Task 2: `--version`, `--help`, `-v`, `-h`, and unknown-flag handling in parseArgs
 
 **Files:**
+
 - Modify: `src/cli.ts:7-11` (extend `CLIOptions`), `src/cli.ts:43-67` (extend `parseArgs`)
 - Test: `tests/cli/args.test.ts` (append)
 
@@ -191,6 +194,7 @@ git commit -m "✨ Parse --version/--help and reject unknown flags"
 ### Task 3: Headless detection helper
 
 **Files:**
+
 - Modify: `src/cli.ts` (add `shouldAutoOpen` helper near `openBrowser`)
 - Test: `tests/cli/open.test.ts`
 
@@ -260,6 +264,7 @@ git commit -m "✨ Add headless-aware shouldAutoOpen helper"
 ### Task 4: Wire help/version/errors/robust-open into `main`
 
 **Files:**
+
 - Modify: `src/cli.ts:69-90` (the `main`, `openBrowser`, and entrypoint section), add `import { version } from "./version"`
 
 This task has no unit test (it starts a server / exits the process). It is verified manually in Step 4 and by the Nix smoke test in Task 6.
@@ -380,6 +385,7 @@ git commit -m "✨ Add --help/--version output, clean errors, headless-safe open
 ### Task 5: node_modules fixed-output derivation
 
 **Files:**
+
 - Modify: `flake.nix` (add `let`-bindings + a `deps` derivation; full file rewrite below in Task 7 — this task introduces the pieces incrementally, but you may write the whole file once and tick Tasks 5–7 together).
 
 > **FOD hash flow (not a placeholder):** fixed-output derivation hashes are computed by building once. You will set the hash to `lib.fakeHash`, build, and paste the real hash Nix reports. This is the standard, expected flow.
@@ -449,7 +455,7 @@ Then inside `forEachSupportedSystem` (see full file in Task 7), define `deps`:
 - [ ] **Step 2: (deferred)** The build to obtain the real hash happens in Task 8, once the full flake exists. For now just confirm the expression evaluates.
 
 Run: `nix flake check --no-build 2>&1 | head -20` (or `nix eval .#packages.aarch64-darwin.deps.drvPath`)
-Expected: evaluates without a syntax/attribute error (it will not *build* yet — fakeHash).
+Expected: evaluates without a syntax/attribute error (it will not _build_ yet — fakeHash).
 
 - [ ] **Step 3: Commit (WIP)** — commit together with Tasks 6–7 (single coherent flake).
 
@@ -458,6 +464,7 @@ Expected: evaluates without a syntax/attribute error (it will not *build* yet �
 ### Task 6: Package derivation (compile + smoke test + wrapper)
 
 **Files:**
+
 - Modify: `flake.nix` (add `prv` derivation; full file in Task 7)
 
 - [ ] **Step 1: Add the bun-version floor assertion** to the `let` block:
@@ -523,6 +530,7 @@ Expected: evaluates without a syntax/attribute error (it will not *build* yet �
 ### Task 7: Full flake.nix (packages + checks + formatter), assembled
 
 **Files:**
+
 - Modify: `flake.nix` (replace whole file)
 
 - [ ] **Step 1: Replace `flake.nix` entirely** with:
@@ -703,12 +711,14 @@ git commit -m "✨ Add Nix package, checks, and formatter outputs (hashes pendin
 ### Task 8: Build, fill per-system hash, verify on this machine
 
 **Files:**
+
 - Modify: `flake.nix` (`depsHashes.aarch64-darwin`)
 
 - [ ] **Step 1: Build deps to get the real hash**
 
 Run: `nix build .#packages.aarch64-darwin.deps -L`
 Expected: FAILS with a hash mismatch:
+
 ```
 error: hash mismatch in fixed-output derivation '...':
          specified: sha256-AAAA...0000=
@@ -730,21 +740,25 @@ Expected: SUCCESS; build log shows the in-build `./dist/prv --version` printing 
 - [ ] **Step 5: Run the built binary**
 
 Run:
+
 ```bash
 ./result/bin/prv --version    # prints the injected version
 ./result/bin/prv --help       # prints help
 ```
+
 Expected: both succeed.
 
 - [ ] **Step 6: End-to-end run via the flake**
 
 Run:
+
 ```bash
 mkdir -p /tmp/prv-a /tmp/prv-b
 echo one > /tmp/prv-a/f.txt
 echo two > /tmp/prv-b/f.txt
 nix run . -- diff /tmp/prv-a /tmp/prv-b --no-open
 ```
+
 Expected: prints `prv listening at http://localhost:<port>` (no crash). Stop with Ctrl-C.
 
 - [ ] **Step 7: Run flake check**
@@ -768,11 +782,12 @@ git commit -m "✨ Pin aarch64-darwin node_modules FOD hash"
 ### Task 9: README install section + chat prerequisite + headless note
 
 **Files:**
+
 - Modify: `README.md` (add an Install section before "## Usage"; tweak Development note)
 
 - [ ] **Step 1: Insert an Install section** after the intro bullets and before `## Usage`:
 
-```markdown
+````markdown
 ## Install
 
 Install with Nix (flakes enabled):
@@ -784,6 +799,7 @@ nix profile install github:snrsw/prv     # install to your profile
 nix profile upgrade prv                  # later: upgrade
 nix profile remove prv                   # later: remove
 ```
+````
 
 Pin to a released tag for reproducibility:
 
@@ -805,12 +821,14 @@ environment.systemPackages = [ inputs.prv.packages.${pkgs.system}.default ];
 ```
 
 **Notes**
+
 - macOS opens your browser with `open`; Linux uses `xdg-open`. On a headless/SSH
   box no browser opens — use the printed URL (or pass `--no-open`).
 - The Nix package targets Linux and macOS only (not Windows).
 - The "chat about the diff" / AI-review feature needs Claude Code (the `claude`
   CLI) installed separately; core diff viewing works without it.
-```
+
+````
 
 - [ ] **Step 2: Verify the README renders** (visual check of the markdown; no command).
 
@@ -819,7 +837,7 @@ environment.systemPackages = [ inputs.prv.packages.${pkgs.system}.default ];
 ```bash
 git add README.md
 git commit -m "📝 Document Nix install, headless behavior, and claude prerequisite"
-```
+````
 
 ---
 
@@ -828,6 +846,7 @@ git commit -m "📝 Document Nix install, headless behavior, and claude prerequi
 - [ ] **Step 1: Full local gate**
 
 Run:
+
 ```bash
 bun test
 bunx tsc --noEmit
@@ -835,6 +854,7 @@ nix build .#packages.aarch64-darwin.default -L
 ./result/bin/prv --version
 nix flake check -L
 ```
+
 Expected: all green; `prv --version` prints the injected version.
 
 - [ ] **Step 2: Confirm the spec's "Verification" section items** are all satisfied for the darwin path, and that the Linux items remain explicitly listed as follow-ups (do not claim Linux works).
@@ -844,6 +864,7 @@ Expected: all green; `prv --version` prints the injected version.
 ---
 
 ## Out-of-scope follow-ups (tracked, not in this plan)
+
 - CI matrix to build/cache and fill the three non-darwin `depsHashes` and run Linux smoke tests.
-- nixpkgs submission; home-manager *module*; overlay output.
+- nixpkgs submission; home-manager _module_; overlay output.
 - Adding `oxlint`/`oxfmt`/`typescript` to the devShell for reproducible lint/format/typecheck.
