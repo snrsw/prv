@@ -106,3 +106,33 @@ test("diff: when an arg is both a valid ref and an existing dir, path interpreta
     refOnLeft: false,
   });
 });
+
+test("--version sets the version flag", async () => {
+  const opts = await parseArgs(["--version"], "/work");
+  expect(opts.version).toBe(true);
+});
+
+test("-v sets the version flag", async () => {
+  const opts = await parseArgs(["-v"], "/work");
+  expect(opts.version).toBe(true);
+});
+
+test("--help sets the help flag", async () => {
+  const opts = await parseArgs(["--help"], "/work");
+  expect(opts.help).toBe(true);
+});
+
+test("-h sets the help flag", async () => {
+  const opts = await parseArgs(["-h"], "/work");
+  expect(opts.help).toBe(true);
+});
+
+test("default opts have help=false and version=false", async () => {
+  const opts = await parseArgs([], "/work");
+  expect(opts.help).toBe(false);
+  expect(opts.version).toBe(false);
+});
+
+test("unknown flag throws", async () => {
+  await expect(parseArgs(["--nope"], "/work")).rejects.toThrow("unknown flag: --nope");
+});

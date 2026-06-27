@@ -3,11 +3,14 @@ import { $ } from "bun";
 import { stat } from "node:fs/promises";
 import type { DiffMode } from "./diff/engine";
 import { createServer } from "./server";
+import { version } from "./version";
 
 export type CLIOptions = {
   mode: DiffMode;
   port: number;
   open: boolean;
+  help: boolean;
+  version: boolean;
 };
 
 async function pathExists(p: string): Promise<boolean> {
@@ -44,6 +47,8 @@ export async function parseArgs(argv: string[], cwd: string): Promise<CLIOptions
   let mode: DiffMode = { kind: "git", cwd, leftRef: "HEAD", right: { kind: "worktree" } };
   let port = 0;
   let open = true;
+  let help = false;
+  let version = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
@@ -55,24 +60,87 @@ export async function parseArgs(argv: string[], cwd: string): Promise<CLIOptions
       i += 2;
     } else if (arg === "--no-open") {
       open = false;
+    } else if (arg === "--help" || arg === "-h") {
+      help = true;
+    } else if (arg === "--version" || arg === "-v") {
+      version = true;
     } else if (arg === "--port") {
       const next = argv[i + 1];
       if (!next) throw new Error("`--port` requires a number");
       port = parseInt(next, 10);
       i += 1;
+    } else if (arg.startsWith("-")) {
+      throw new Error(`unknown flag: ${arg}`);
+    } else {
+      throw new Error(`unexpected argument: ${arg}`);
     }
   }
 
-  return { mode, port, open };
+  return { mode, port, open, help, version };
 }
+
+const HELP = `prv — Pull-Request like View. Local GitHub-style diff viewer.
+
+Usage:
+  prv                          Diff HEAD vs the working tree (default)
+  prv diff <a> <b>             Diff two args; each is auto-classified:
+                                 path vs path, ref vs ref, or ref + path.
+                                 If an arg is both a ref name and an existing
+                                 path, the path wins. Force ref with HEAD/a SHA/
+                                 origin/<branch>; force path with ./name.
+  prv --port <n>               Pin the server port (default: a free port)
+  prv --no-open                Do not open a browser
+  prv --version, -v            Print version and exit
+  prv --help, -h               Print this help and exit
+
+Notes:
+  The "chat about the diff" feature requires Claude Code (the \`claude\` CLI)
+  installed separately.`;
 
 async function main() {
   const opts = await parseArgs(Bun.argv.slice(2), process.cwd());
-  const server = createServer({ port: opts.port, defaultMode: opts.mode });
-  console.log(`prv listening at ${server.url}`);
-  if (opts.open) {
-    await openBrowser(String(server.url));
+
+  if (opts.help) {
+    console.log(HELP);
+    return;
   }
+  if (opts.version) {
+    console.log(version);
+    return;
+  }
+
+  let server: ReturnType<typeof createServer>;
+  try {
+    server = createServer({ port: opts.port, defaultMode: opts.mode });
+  } catch (err) {
+    if (err instanceof Error && /EADDRINUSE|in use|address already/i.test(err.message)) {
+      throw new Error(
+        `port ${opts.port} in use — pick another with --port, or omit --port to let prv choose a free one.`,
+      );
+    }
+    throw err;
+  }
+
+  const url = String(server.url);
+  console.log(`prv listening at ${url}`);
+
+  if (shouldAutoOpen(opts.open, process.platform, process.env)) {
+    await openBrowser(url);
+  } else if (opts.open) {
+    console.log(`(no display detected — open ${url} in a browser manually)`);
+  }
+}
+
+export function shouldAutoOpen(
+  open: boolean,
+  platform: NodeJS.Platform,
+  env: Record<string, string | undefined>,
+): boolean {
+  if (!open) return false;
+  // macOS/Windows have a system opener that works without an X/Wayland session.
+  if (platform !== "linux") return true;
+  // On Linux a GUI needs a display server; otherwise xdg-open is pointless.
+  return Boolean(env.DISPLAY || env.WAYLAND_DISPLAY);
 }
 
 async function openBrowser(url: string) {
@@ -82,9 +150,24 @@ async function openBrowser(url: string) {
       : process.platform === "win32"
         ? ["cmd", "/c", "start", url]
         : ["xdg-open", url];
-  await Bun.spawn(cmd, { stdout: "ignore", stderr: "ignore" }).exited;
+  const code = await Bun.spawn(cmd, { stdout: "ignore", stderr: "ignore" }).exited;
+  if (code !== 0) {
+    console.log(`(couldn't open a browser — open ${url} manually)`);
+  }
 }
 
 if (import.meta.main) {
-  await main();
+  try {
+    await main();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/not a git repository/i.test(message)) {
+      console.error(
+        "prv: not a git repository. cd into a repo, or compare folders with `prv diff <a> <b>`.",
+      );
+    } else {
+      console.error(`prv: ${message}`);
+    }
+    process.exit(1);
+  }
 }
