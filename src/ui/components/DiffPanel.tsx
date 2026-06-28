@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { html as diff2html } from "diff2html";
 import { Diff2HtmlUI } from "diff2html/lib/ui/js/diff2html-ui-base";
 import hljs from "highlight.js";
+import DOMPurify from "dompurify";
+import { isMarkdownPath, markdownToHtml } from "../markdown";
 import type { DiffOutputFormat, FileContent, FileDiff, FileSide, ServerMode } from "../types";
 import { encodeMode } from "../../shared/modeQuery";
 import type { Comment, LineKey } from "../../shared/comments";
@@ -631,7 +633,60 @@ function FileContentView({
   if (content.kind === "binary") {
     return <div className="binary-notice">Binary file</div>;
   }
+  if (isMarkdownPath(file.path)) {
+    return <MarkdownFileView path={file.path} text={content.content} />;
+  }
   return <FileContentCode path={file.path} text={content.content} />;
+}
+
+/**
+ * Markdown files get a Rendered/Source sub-toggle in the File view. Rendered is the
+ * default since the main use case is reviewing agent-written plans; Source falls back
+ * to the syntax-highlighted code view.
+ */
+function MarkdownFileView({ path, text }: { path: string; text: string }) {
+  const [md, setMd] = useState<"rendered" | "source">("rendered");
+  return (
+    <div className="markdown-file">
+      <div className="md-view-toggle" role="tablist" aria-label="Markdown view mode">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={md === "rendered"}
+          className={`md-view-tab ${md === "rendered" ? "is-active" : ""}`}
+          onClick={() => setMd("rendered")}
+        >
+          Rendered
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={md === "source"}
+          className={`md-view-tab ${md === "source" ? "is-active" : ""}`}
+          onClick={() => setMd("source")}
+        >
+          Source
+        </button>
+      </div>
+      {md === "rendered" ? (
+        <MarkdownView text={text} />
+      ) : (
+        <FileContentCode path={path} text={text} />
+      )}
+    </div>
+  );
+}
+
+/** Render Markdown to sanitized HTML. Sanitization guards against scripts/handlers in file content. */
+function MarkdownView({ text }: { text: string }) {
+  const html = useMemo(() => DOMPurify.sanitize(markdownToHtml(text)), [text]);
+  return (
+    <div
+      className="markdown-body"
+      // Sanitized via DOMPurify on the line above before injection.
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
 }
 
 function FileContentCode({ path, text }: { path: string; text: string }) {
