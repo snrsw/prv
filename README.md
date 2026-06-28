@@ -45,6 +45,7 @@ environment.systemPackages = [ inputs.prv.packages.${pkgs.system}.default ];
 
 ```sh
 prv                                # HEAD vs working tree
+prv <file>                         # HEAD vs working tree, scoped to one file
 prv diff <pathA> <pathB>           # folder vs folder (works outside a git repo)
 prv diff <ref> <path>              # git ref vs an arbitrary folder (or path vs ref)
 prv diff <refA> <refB>             # ref vs ref in the current repo
