@@ -1365,7 +1365,7 @@ input:focus-visible {
 }
 .prv-thread-send-row {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: var(--sp-2);
 }
 .prv-thread-confirm {
@@ -1377,6 +1377,7 @@ input:focus-visible {
 }
 .prv-thread-confirm-actions {
   display: flex;
+  justify-content: flex-end;
   gap: var(--sp-2);
 }
 .prv-orphaned {
