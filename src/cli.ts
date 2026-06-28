@@ -49,6 +49,8 @@ export async function parseArgs(argv: string[], cwd: string): Promise<CLIOptions
   let open = true;
   let help = false;
   let version = false;
+  let usedDiff = false;
+  let singlePath: string | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
@@ -57,6 +59,7 @@ export async function parseArgs(argv: string[], cwd: string): Promise<CLIOptions
       const b = argv[i + 2];
       if (!a || !b) throw new Error("`diff` requires two args: prv diff <a> <b>");
       mode = await classifyDiffArgs(cwd, a, b);
+      usedDiff = true;
       i += 2;
     } else if (arg === "--no-open") {
       open = false;
@@ -71,9 +74,19 @@ export async function parseArgs(argv: string[], cwd: string): Promise<CLIOptions
       i += 1;
     } else if (arg.startsWith("-")) {
       throw new Error(`unknown flag: ${arg}`);
+    } else if (singlePath !== undefined) {
+      throw new Error("prv: only one path is supported. To compare two, use `prv diff <a> <b>`.");
     } else {
-      throw new Error(`unexpected argument: ${arg}`);
+      // A bare positional is the single file to view (`prv <file>`).
+      singlePath = arg;
     }
+  }
+
+  // `prv <file>`: HEAD vs working tree, scoped to a single path.
+  if (singlePath !== undefined) {
+    if (usedDiff) throw new Error("prv: cannot combine a path argument with `diff`.");
+    if (!(await pathExists(singlePath))) throw new Error(`prv: '${singlePath}' does not exist.`);
+    mode = { kind: "git", cwd, leftRef: "HEAD", right: { kind: "worktree" }, paths: [singlePath] };
   }
 
   return { mode, port, open, help, version };

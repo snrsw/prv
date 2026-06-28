@@ -136,3 +136,55 @@ test("default opts have help=false and version=false", async () => {
 test("unknown flag throws", async () => {
   await expect(parseArgs(["--nope"], "/work")).rejects.toThrow("unknown flag: --nope");
 });
+
+test("single file: prv <file> → git HEAD vs worktree scoped to that path", async () => {
+  const repo = await mkTempRepo("prv-cli-");
+  await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
+  const file = join(repo, "a.txt");
+  await Bun.write(file, "hi\n");
+
+  const opts = await parseArgs([file], repo);
+
+  expect(opts.mode).toEqual({
+    kind: "git",
+    cwd: repo,
+    leftRef: "HEAD",
+    right: { kind: "worktree" },
+    paths: [file],
+  });
+  expect(opts.open).toBe(true);
+});
+
+test("single file: flags compose with a path argument", async () => {
+  const repo = await mkTempRepo("prv-cli-");
+  await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
+  const file = join(repo, "a.txt");
+  await Bun.write(file, "hi\n");
+
+  const opts = await parseArgs(["--no-open", file], repo);
+
+  expect(opts.mode).toEqual({
+    kind: "git",
+    cwd: repo,
+    leftRef: "HEAD",
+    right: { kind: "worktree" },
+    paths: [file],
+  });
+  expect(opts.open).toBe(false);
+});
+
+test("single file: a non-existent path throws a clear error", async () => {
+  await expect(parseArgs([join(tmpdir(), "prv-does-not-exist-xyz")], "/work")).rejects.toThrow(
+    /does not exist/,
+  );
+});
+
+test("two bare paths without `diff` throws (use `diff` to compare two)", async () => {
+  const repo = await mkTempRepo("prv-cli-");
+  const a = join(repo, "a.txt");
+  const b = join(repo, "b.txt");
+  await Bun.write(a, "a\n");
+  await Bun.write(b, "b\n");
+
+  await expect(parseArgs([a, b], repo)).rejects.toThrow();
+});

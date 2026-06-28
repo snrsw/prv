@@ -25,21 +25,28 @@ async function computeRawDiff(mode: DiffMode): Promise<RawDiff> {
       await rm(tmp, { recursive: true, force: true });
     }
   }
+  // `paths`, when set, is a git pathspec that scopes the diff (e.g. `prv <file>`).
+  const paths = mode.paths ?? [];
   if (mode.right.kind === "ref") {
-    const r = await $`git -C ${mode.cwd} diff --no-color ${mode.leftRef} ${mode.right.ref}`
-      .nothrow()
-      .quiet();
+    const r =
+      await $`git -C ${mode.cwd} diff --no-color ${mode.leftRef} ${mode.right.ref} -- ${paths}`
+        .nothrow()
+        .quiet();
     return { raw: r.stdout.toString(), aRoot: mode.cwd, bRoot: mode.cwd };
   }
-  const tracked = await $`git -C ${mode.cwd} diff --no-color ${mode.leftRef}`.nothrow().quiet();
-  const untracked = await rawUntrackedDiffs(mode.cwd);
+  const tracked = await $`git -C ${mode.cwd} diff --no-color ${mode.leftRef} -- ${paths}`
+    .nothrow()
+    .quiet();
+  const untracked = await rawUntrackedDiffs(mode.cwd, paths);
   const raw = [tracked.stdout.toString(), untracked].filter((s) => s.length > 0).join("");
   return { raw, aRoot: mode.cwd, bRoot: mode.cwd };
 }
 
-async function rawUntrackedDiffs(cwd: string): Promise<string> {
+async function rawUntrackedDiffs(cwd: string, paths: string[]): Promise<string> {
   const realCwd = realpathSync(cwd);
-  const list = await $`git -C ${cwd} ls-files --others --exclude-standard`.nothrow().quiet();
+  const list = await $`git -C ${cwd} ls-files --others --exclude-standard -- ${paths}`
+    .nothrow()
+    .quiet();
   const files = list.stdout.toString().split("\n").filter(Boolean);
   const diffs = await Promise.all(
     files.map(async (file) => {
