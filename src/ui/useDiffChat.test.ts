@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { appendChunk, stripToolMessages, type ChatMessage } from "./useDiffChat";
+import { appendChunk, appendTool, stripToolMessages, type ChatMessage } from "./useDiffChat";
 
 describe("appendChunk", () => {
   test("starts a new assistant message when there is none", () => {
@@ -24,6 +24,44 @@ describe("appendChunk", () => {
     expect(appendChunk(before, "x")).toEqual([
       { role: "tool", name: "Edit" },
       { role: "assistant", text: "x" },
+    ]);
+  });
+});
+
+describe("appendTool", () => {
+  test("splices before the trailing empty assistant placeholder", () => {
+    const before: ChatMessage[] = [
+      { role: "user", text: "q" },
+      { role: "assistant", text: "" },
+    ];
+    expect(appendTool(before, { name: "Read", target: "a.ts" })).toEqual([
+      { role: "user", text: "q" },
+      { role: "tool", name: "Read", target: "a.ts" },
+      { role: "assistant", text: "" },
+    ]);
+  });
+
+  test("appends after an assistant message that already has text", () => {
+    const before: ChatMessage[] = [{ role: "assistant", text: "hi" }];
+    expect(appendTool(before, { name: "Edit", target: "a.ts" })).toEqual([
+      { role: "assistant", text: "hi" },
+      { role: "tool", name: "Edit", target: "a.ts" },
+    ]);
+  });
+
+  test("a tool-first turn leaves no stray empty assistant bubble", () => {
+    // The sequence send() + a leading tool + streamed text produces a clean
+    // transcript: user, tool, assistant(text) — no empty bubble stranded above.
+    let msgs: ChatMessage[] = [
+      { role: "user", text: "q" },
+      { role: "assistant", text: "" },
+    ];
+    msgs = appendTool(msgs, { name: "Read", target: "a.ts" });
+    msgs = appendChunk(msgs, "Done");
+    expect(msgs).toEqual([
+      { role: "user", text: "q" },
+      { role: "tool", name: "Read", target: "a.ts" },
+      { role: "assistant", text: "Done" },
     ]);
   });
 });

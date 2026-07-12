@@ -25,6 +25,26 @@ export function appendChunk(messages: ChatMessage[], text: string): ChatMessage[
   return [...messages, { role: "assistant", text }];
 }
 
+/**
+ * Insert a live-activity tool line. `send` seeds an empty assistant placeholder
+ * that renders as "thinking…"; when a tool line arrives before any text (the
+ * norm on turns where the agent reads/edits before speaking), splice it in just
+ * *before* that placeholder so the placeholder stays trailing — the next text
+ * chunk then fills it via `appendChunk` instead of stranding an empty bubble
+ * above the activity. Pure and exported for unit testing.
+ */
+export function appendTool(
+  messages: ChatMessage[],
+  tool: { name: string; target?: string },
+): ChatMessage[] {
+  const line: ChatMessage = { role: "tool", name: tool.name, target: tool.target };
+  const last = messages[messages.length - 1];
+  if (last && last.role === "assistant" && last.text === "") {
+    return [...messages.slice(0, -1), line, last];
+  }
+  return [...messages, line];
+}
+
 /** Drop live-activity tool lines so the persisted transcript stays clean. */
 export function stripToolMessages(messages: ChatMessage[]): StoredMessage[] {
   return messages.filter((m): m is StoredMessage => m.role !== "tool");
@@ -90,9 +110,7 @@ export function useDiffChat(
           appendToAssistant(frame.text);
           break;
         case "tool":
-          setMessages((m) =>
-            commit([...m, { role: "tool", name: frame.name, target: frame.target }]),
-          );
+          setMessages((m) => commit(appendTool(m, { name: frame.name, target: frame.target })));
           break;
         case "error":
           appendToAssistant(`⚠ ${frame.message}`);
