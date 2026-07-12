@@ -7,6 +7,7 @@ import {
   relocateComment,
   rangeLabel,
   buildCommentContext,
+  buildThreadContext,
 } from "./lineContext";
 import type { FileDiff } from "./types";
 import type { Comment } from "../shared/comments";
@@ -82,5 +83,23 @@ describe("rangeLabel + context + id", () => {
     expect(commentId(keyOfRow(rows[1]!), keyOfRow(rows[3]!))).toBe(
       commentId({ old: 2, new: null }, { old: null, new: 3 }),
     );
+  });
+});
+
+describe("buildThreadContext", () => {
+  const context = "File: greet.ts\nI'm commenting on these diff lines:";
+
+  test("an empty transcript returns the context unchanged", () => {
+    expect(buildThreadContext(context, [])).toBe(context);
+  });
+
+  test("appends the transcript with role labels, in order", () => {
+    const ctx = buildThreadContext(context, [
+      { role: "assistant", text: "**Finding**\n\nDetails." },
+      { role: "user", text: "Is this real?" },
+    ]);
+    expect(ctx.startsWith(context)).toBe(true);
+    expect(ctx).toContain("Prior conversation on this comment:");
+    expect(ctx.indexOf("Assistant: **Finding**")).toBeLessThan(ctx.indexOf("User: Is this real?"));
   });
 });
