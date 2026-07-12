@@ -12,10 +12,17 @@ export type StoredMessage = { role: "user" | "assistant"; text: string };
  */
 export type LineKey = { old: number | null; new: number | null };
 
+/** Severity a review lens assigned to a finding. */
+export type ReviewSeverity = "info" | "minor" | "major" | "critical";
+
 /**
  * A durable comment thread anchored to a contiguous range of diff lines
  * (between `start` and `end`, inclusive). The range may mix deleted and added
  * lines — the endpoints are line numbers, not a single side.
+ *
+ * The optional `source`/`severity`/`title`/`lens`/`runId` fields are present
+ * only on comments created by the agent review panel; hand-made comments omit
+ * them. All additive, so `schema_version` stays "1.0".
  */
 export type Comment = {
   id: string;
@@ -26,6 +33,13 @@ export type Comment = {
   anchorText: string[];
   status: CommentStatus;
   messages: StoredMessage[];
+  source?: "review";
+  severity?: ReviewSeverity;
+  title?: string;
+  /** Review lens that produced this comment (e.g. "correctness"). */
+  lens?: string;
+  /** Groups the comments of one review run; also namespaces their ids. */
+  runId?: string;
 };
 
 /** On-disk wrapper so the file is self-describing and forward-compatible. */
