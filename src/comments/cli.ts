@@ -130,6 +130,8 @@ async function addComment(flags: Flags, cwd: string): Promise<CliResult> {
   const parsed = parseTarget(target);
   if (!parsed) return fail(`invalid target '${target}' — expected <file>:<line> (line >= 1)`);
   const file = parsed.file.replace(/^\.\//, "");
+  // Defense-in-depth: never let a `-`-leading path reach a git option slot.
+  if (file.startsWith("-")) return fail(`prv comment: '${file}' — path must not start with '-'`);
   if (!(await pathExists(`${cwd}/${file}`))) return fail(`prv comment: '${file}' does not exist`);
   if (!(await isGitRepo(cwd))) {
     return fail("prv comment: not a git repository — comments anchor to the HEAD-vs-worktree diff");

@@ -50,7 +50,8 @@ async function rawUntrackedDiffs(cwd: string, paths: string[]): Promise<string> 
   const files = list.stdout.toString().split("\n").filter(Boolean);
   const diffs = await Promise.all(
     files.map(async (file) => {
-      const r = await $`git diff --no-color --no-index /dev/null ${file}`
+      // `--` stops git parsing a filename like `--output=x` as an option.
+      const r = await $`git diff --no-color --no-index -- /dev/null ${file}`
         .cwd(realCwd)
         .nothrow()
         .quiet();

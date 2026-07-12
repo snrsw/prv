@@ -186,6 +186,36 @@ describe("comment", () => {
     expect(res.err).toContain("prv reply");
     expect(await readComments(repo)).toHaveLength(1);
   });
+
+  test("./-prefixed path stores the same file/id as the bare form", async () => {
+    const repo = await repoWithEdit();
+    const res = await runCommentsCli(["comment", "./a.ts:11", "note"], repo);
+    expect(res.code).toBe(0);
+    const c = (await readComments(repo))[0]!;
+    expect(c.file).toBe("a.ts");
+    expect(c.id).toBe("c:_11:_11");
+  });
+
+  test("tracked-but-unchanged file: exit 1, not part of the diff", async () => {
+    const repo = await repoWithEdit();
+    writeFileSync(join(repo, "b.ts"), "stable\n");
+    await $`git -C ${repo} add b.ts`.quiet();
+    await $`git -C ${repo} commit -qm add-b`.quiet();
+    const res = await runCommentsCli(["comment", "b.ts:1", "note"], repo);
+    expect(res.code).toBe(1);
+    expect(res.err).toContain("not part of the HEAD-vs-worktree diff");
+  });
+
+  test("a '-'-leading path is rejected, not passed to git as an option", async () => {
+    // Regression: `git diff --no-index <file>` without `--` let a filename
+    // like `--output=X` truncate a sibling file. Guard + `--` fix it.
+    const repo = await repoWithEdit();
+    writeFileSync(join(repo, "important.txt"), "important data\n");
+    writeFileSync(join(repo, "--output=important.txt"), "x\n");
+    const res = await runCommentsCli(["comment", "./--output=important.txt:1", "x"], repo);
+    expect(res.code).toBe(1);
+    expect(readFileSync(join(repo, "important.txt"), "utf8")).toBe("important data\n");
+  });
 });
 
 describe("reply", () => {
@@ -239,6 +269,7 @@ describe("bad inputs exit 1 with a pointed error", () => {
     [["reply", "c:2_2:2_2", "msg", "--role", "banana"], "--role"],
     [["resolve", "c:2_2:2_2", "--bogus"], "unknown flag"],
     [["reply", "c:2_2:2_2", "msg", "--file"], "--file"],
+    [["reply", "c:2_2:2_2", "msg", "--role"], "--role"],
     [["reply", "c:2_2:2_2"], "usage"],
     [["resolve"], "usage"],
     [["unresolve"], "usage"],
@@ -327,6 +358,43 @@ describe("more list output", () => {
     );
     const res = await runCommentsCli(["comments", "list"], repo);
     expect(res.out).toContain("a.ts:old 5");
+  });
+
+  test("multi-line anchor labels as a range and pluralizes messages", async () => {
+    const repo = await tmpRepo();
+    await writeComments(
+      [
+        seeded({
+          start: { old: 2, new: 2 },
+          end: { old: 4, new: 4 },
+          anchorText: [" two", " three", " four"],
+          messages: [
+            { role: "user", text: "first" },
+            { role: "assistant", text: "second" },
+          ],
+        }),
+      ],
+      repo,
+    );
+    const res = await runCommentsCli(["comments", "list"], repo);
+    expect(res.out).toContain("a.ts:2-4");
+    expect(res.out).toContain("2 messages");
+  });
+
+  test("list with extra args errors", async () => {
+    const repo = await tmpRepo();
+    const res = await runCommentsCli(["comments", "list", "extra"], repo);
+    expect(res.code).toBe(1);
+    expect(res.err).toContain("usage");
+  });
+
+  test("resolve on a corrupt store reports the corruption", async () => {
+    const repo = await tmpRepo();
+    mkdirSync(join(repo, ".prv"), { recursive: true });
+    writeFileSync(join(repo, ".prv/comments.json"), '{"comments": [ TRUNC');
+    const res = await runCommentsCli(["resolve", "c:2_2:2_2"], repo);
+    expect(res.code).toBe(1);
+    expect(res.err).toContain("comments.json");
   });
 });
 
