@@ -33,6 +33,36 @@ describe("appendChunk", () => {
       { role: "assistant", text: "x" },
     ]);
   });
+
+  test("a new answer bubble demotes the prior answer to progress narration", () => {
+    const before: ChatMessage[] = [
+      { role: "assistant", text: "I'll read it" },
+      { role: "tool", name: "Read", target: "a.ts" },
+    ];
+    expect(appendChunk(before, "the answer")).toEqual([
+      { role: "progress", text: "I'll read it" },
+      { role: "tool", name: "Read", target: "a.ts" },
+      { role: "assistant", text: "the answer" },
+    ]);
+  });
+
+  test("standalone-preamble turn ends with one answer bubble, preamble muted", () => {
+    // Pattern the agent actually produces: a text-only preamble message, THEN
+    // the tool, THEN the answer — the preamble must not stay a second answer.
+    let msgs: ChatMessage[] = [
+      { role: "user", text: "q" },
+      { role: "assistant", text: "" },
+    ];
+    msgs = appendChunk(msgs, "I'll read it"); // fills the placeholder
+    msgs = appendTool(msgs, { name: "Read", target: "a.ts" });
+    msgs = appendChunk(msgs, "the answer"); // new bubble → demotes preamble
+    expect(msgs).toEqual([
+      { role: "user", text: "q" },
+      { role: "progress", text: "I'll read it" },
+      { role: "tool", name: "Read", target: "a.ts" },
+      { role: "assistant", text: "the answer" },
+    ]);
+  });
 });
 
 describe("appendTool", () => {

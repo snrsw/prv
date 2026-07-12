@@ -13,17 +13,37 @@ export type ChatMessage =
   | { role: "progress"; text: string };
 
 /**
+ * Demote the most recent non-empty assistant message to `progress` narration.
+ * Called when a new answer bubble starts after activity: the agent often emits
+ * its "I'll read X" preamble as a standalone text message before the tool call,
+ * so once a *later* answer arrives the earlier text is revealed as narration —
+ * only the latest assistant text should read as the answer. Pure.
+ */
+function demotePriorAnswer(messages: ChatMessage[]): ChatMessage[] {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (!m || m.role !== "assistant") continue;
+    if (m.text === "") return messages;
+    const next = messages.slice();
+    next[i] = { role: "progress", text: m.text };
+    return next;
+  }
+  return messages;
+}
+
+/**
  * Fold a streaming text chunk into the transcript: extend the trailing
  * assistant message, or start a new one if the last entry is not an assistant
- * message (e.g. a user turn or an interleaved tool line). Pure and exported for
- * unit testing.
+ * message (e.g. a user turn or an interleaved tool line). When it starts a new
+ * bubble after activity, any earlier answer bubble is demoted to narration so
+ * only the latest text reads as the answer. Pure and exported for unit testing.
  */
 export function appendChunk(messages: ChatMessage[], text: string): ChatMessage[] {
   const last = messages[messages.length - 1];
   if (last && last.role === "assistant") {
     return [...messages.slice(0, -1), { ...last, text: last.text + text }];
   }
-  return [...messages, { role: "assistant", text }];
+  return [...demotePriorAnswer(messages), { role: "assistant", text }];
 }
 
 /**
