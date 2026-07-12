@@ -1,7 +1,7 @@
 import { $ } from "bun";
 import { readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { buildPrompt, runTurn } from "./chat/agent";
+import { buildPrompt, relativizeTarget, runTurn } from "./chat/agent";
 import { readComments, writeComments } from "./comments/store";
 import type { Comment } from "./shared/comments";
 import { computeDiff } from "./diff/engine";
@@ -14,6 +14,8 @@ import index from "./ui/index.html";
 export type ServerOptions = {
   port: number;
   defaultMode?: DiffMode;
+  /** Enable frontend HMR + console forwarding. Dev only; off for the shipped binary. */
+  development?: boolean;
 };
 
 export function createServer(options: ServerOptions): Bun.Server<ChatWsData> {
@@ -21,6 +23,7 @@ export function createServer(options: ServerOptions): Bun.Server<ChatWsData> {
 
   return Bun.serve({
     port: options.port,
+    development: options.development ? { hmr: true, console: true } : false,
     routes: {
       "/": index,
       "/api/chat": (req, server) => {
@@ -141,7 +144,11 @@ export function createServer(options: ServerOptions): Bun.Server<ChatWsData> {
                 send({ type: "progress", text: event.text });
                 break;
               case "tool":
-                send({ type: "tool", name: event.name, target: event.target });
+                send({
+                  type: "tool",
+                  name: event.name,
+                  target: relativizeTarget(event.target, process.cwd()),
+                });
                 break;
               case "error":
                 send({ type: "error", message: event.message });

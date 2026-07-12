@@ -20,8 +20,8 @@ export function ChatMessageList({
           return (
             <div key={i} className="chat-activity" title={m.target}>
               <span className="chat-activity-icon">{toolIcon(m.name)}</span>
-              {m.name}
-              {m.target ? ` ${m.target}` : ""}
+              <span className="chat-activity-name">{m.name}</span>
+              {m.target && <span className="chat-activity-target">{m.target}</span>}
             </div>
           );
         }

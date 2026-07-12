@@ -1308,13 +1308,23 @@ input:focus-visible {
   font-size: var(--fs-code);
   line-height: 1.6;
   padding: 2px var(--sp-2);
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 .chat-activity-icon {
   flex: none;
   opacity: 0.75;
+}
+.chat-activity-name {
+  flex: none;
+}
+/* The target is the only shrinkable item, so a long path/command truncates
+   with a real ellipsis while the icon and tool name stay put. */
+.chat-activity-target {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .chat-progress {
   display: flex;

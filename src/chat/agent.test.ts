@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { buildArgs, buildPrompt, parseEvent } from "./agent";
+import { buildArgs, buildPrompt, parseEvent, relativizeTarget } from "./agent";
 
 describe("buildArgs", () => {
   test("ask profile is read-only (plan + disallow Edit/Write/Bash)", () => {
@@ -205,5 +205,28 @@ describe("parseEvent", () => {
       },
     });
     expect(parseEvent(line)).toEqual([]);
+  });
+});
+
+describe("relativizeTarget", () => {
+  test("strips the cwd prefix from a path under cwd", () => {
+    expect(relativizeTarget("/repo/src/ui/App.tsx", "/repo")).toBe("src/ui/App.tsx");
+  });
+
+  test("handles a cwd that already ends with a slash", () => {
+    expect(relativizeTarget("/repo/a.ts", "/repo/")).toBe("a.ts");
+  });
+
+  test("leaves a path outside cwd unchanged", () => {
+    expect(relativizeTarget("/etc/hosts", "/repo")).toBe("/etc/hosts");
+  });
+
+  test("leaves a non-path target (Bash command, Grep pattern) unchanged", () => {
+    expect(relativizeTarget("ls -la", "/repo")).toBe("ls -la");
+    expect(relativizeTarget("TODO", "/repo")).toBe("TODO");
+  });
+
+  test("passes undefined through", () => {
+    expect(relativizeTarget(undefined, "/repo")).toBeUndefined();
   });
 });

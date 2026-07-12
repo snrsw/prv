@@ -124,7 +124,11 @@ async function main() {
 
   let server: ReturnType<typeof createServer>;
   try {
-    server = createServer({ port: opts.port, defaultMode: opts.mode });
+    server = createServer({
+      port: opts.port,
+      defaultMode: opts.mode,
+      development: process.env.PRV_DEV === "1",
+    });
   } catch (err) {
     if (err instanceof Error && /EADDRINUSE|in use|address already/i.test(err.message)) {
       throw new Error(
