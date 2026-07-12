@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useDiffChat, type ChatMessage } from "../useDiffChat";
-import type { Comment } from "../../shared/comments";
+import { useDiffChat, toolIcon } from "../useDiffChat";
+import type { Comment, StoredMessage } from "../../shared/comments";
 import type { FileDiff } from "../types";
 
 /**
@@ -28,7 +28,7 @@ export function CommentThread({
   onRemove: () => void;
   onApplied: () => void;
 }) {
-  const persist = (messages: ChatMessage[]) => onUpdate((c) => ({ ...c, messages }));
+  const persist = (messages: StoredMessage[]) => onUpdate((c) => ({ ...c, messages }));
   const { messages, streaming, send } = useDiffChat(comment.messages, persist);
   const [input, setInput] = useState("");
   const [confirmingApply, setConfirmingApply] = useState(false);
@@ -45,7 +45,9 @@ export function CommentThread({
 
   const runApply = () => {
     setConfirmingApply(false);
-    const lastUser = [...comment.messages, ...messages].filter((m) => m.role === "user").pop();
+    const lastUser = [...comment.messages, ...messages]
+      .filter((m): m is StoredMessage => m.role === "user")
+      .pop();
     const instruction = input.trim() || lastUser?.text || "Make the change discussed above.";
     applyPendingRef.current = true;
     send(instruction, context, "apply");
@@ -104,15 +106,23 @@ export function CommentThread({
         <>
           {messages.length > 0 && (
             <div className="prv-thread-messages">
-              {messages.map((m, i) => (
-                <div key={i} className={`chat-msg chat-msg-${m.role}`}>
-                  {m.text === "" && streaming ? (
-                    <span className="chat-thinking">thinking…</span>
-                  ) : (
-                    m.text
-                  )}
-                </div>
-              ))}
+              {messages.map((m, i) =>
+                m.role === "tool" ? (
+                  <div key={i} className="chat-activity" title={m.target}>
+                    <span className="chat-activity-icon">{toolIcon(m.name)}</span>
+                    {m.name}
+                    {m.target ? ` ${m.target}` : ""}
+                  </div>
+                ) : (
+                  <div key={i} className={`chat-msg chat-msg-${m.role}`}>
+                    {m.text === "" && streaming ? (
+                      <span className="chat-thinking">thinking…</span>
+                    ) : (
+                      m.text
+                    )}
+                  </div>
+                ),
+              )}
               <div ref={endRef} />
             </div>
           )}

@@ -1,7 +1,49 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatAsk, ChatServerFrame } from "../shared/chat";
+import type { StoredMessage } from "../shared/comments";
 
-export type ChatMessage = { role: "user" | "assistant"; text: string };
+/**
+ * A message shown in the live transcript. `user`/`assistant` carry text and are
+ * persisted; `tool` lines surface live agent activity and are rendered but
+ * never saved (stripped at the persist boundary â see `stripToolMessages`).
+ */
+export type ChatMessage =
+  | { role: "user" | "assistant"; text: string }
+  | { role: "tool"; name: string; target?: string };
+
+/**
+ * Fold a streaming text chunk into the transcript: extend the trailing
+ * assistant message, or start a new one if the last entry is not an assistant
+ * message (e.g. a user turn or an interleaved tool line). Pure and exported for
+ * unit testing.
+ */
+export function appendChunk(messages: ChatMessage[], text: string): ChatMessage[] {
+  const last = messages[messages.length - 1];
+  if (last && last.role === "assistant") {
+    return [...messages.slice(0, -1), { ...last, text: last.text + text }];
+  }
+  return [...messages, { role: "assistant", text }];
+}
+
+/** Drop live-activity tool lines so the persisted transcript stays clean. */
+export function stripToolMessages(messages: ChatMessage[]): StoredMessage[] {
+  return messages.filter((m): m is StoredMessage => m.role !== "tool");
+}
+
+/** A compact, muted glyph shown next to a live-activity line for a tool name. */
+export function toolIcon(name: string): string {
+  const icons: Record<string, string> = {
+    Read: "▸",
+    Edit: "✎",
+    Write: "✎",
+    Bash: "$",
+    Grep: "⌕",
+    Glob: "⌕",
+    TodoWrite: "☑",
+    ExitPlanMode: "✓",
+  };
+  return icons[name] ?? "•";
+}
 
 /**
  * One read-only-or-apply chat conversation with the agent over the `/api/chat`
@@ -9,13 +51,14 @@ export type ChatMessage = { role: "user" | "assistant"; text: string };
  * maps to a single Claude session.
  *
  * Messages are seeded from `initial` (e.g. a persisted transcript) and every
- * change is reported through `onChange` so the caller can persist it. The hook
- * starts a fresh session per mount, so the first `send` after a reload re-sends
- * `firstTurnContext`; later turns rely on `--resume`.
+ * change is reported through `onChange` so the caller can persist it. Tool
+ * lines are stripped before `onChange` so only user/assistant text is saved.
+ * The hook starts a fresh session per mount, so the first `send` after a reload
+ * re-sends `firstTurnContext`; later turns rely on `--resume`.
  */
 export function useDiffChat(
   initial: ChatMessage[] = [],
-  onChange?: (messages: ChatMessage[]) => void,
+  onChange?: (messages: StoredMessage[]) => void,
 ) {
   const [messages, setMessages] = useState<ChatMessage[]>(initial);
   const [streaming, setStreaming] = useState(false);
@@ -26,17 +69,13 @@ export function useDiffChat(
   onChangeRef.current = onChange;
 
   const commit = useCallback((next: ChatMessage[]) => {
-    onChangeRef.current?.(next);
+    onChangeRef.current?.(stripToolMessages(next));
     return next;
   }, []);
 
   const appendToAssistant = useCallback(
     (text: string) => {
-      setMessages((msgs) => {
-        const last = msgs[msgs.length - 1];
-        if (!last || last.role !== "assistant") return msgs;
-        return commit([...msgs.slice(0, -1), { ...last, text: last.text + text }]);
-      });
+      setMessages((msgs) => commit(appendChunk(msgs, text)));
     },
     [commit],
   );
@@ -50,6 +89,11 @@ export function useDiffChat(
         case "chunk":
           appendToAssistant(frame.text);
           break;
+        case "tool":
+          setMessages((m) =>
+            commit([...m, { role: "tool", name: frame.name, target: frame.target }]),
+          );
+          break;
         case "error":
           appendToAssistant(`⚠ ${frame.message}`);
           setStreaming(false);
@@ -61,7 +105,7 @@ export function useDiffChat(
           break;
       }
     },
-    [appendToAssistant],
+    [appendToAssistant, commit],
   );
 
   const ensureSocket = useCallback((): WebSocket => {

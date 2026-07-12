@@ -11,6 +11,7 @@
 export type ChatEvent =
   | { kind: "session"; sessionId: string }
   | { kind: "text"; text: string }
+  | { kind: "tool"; name: string; target?: string }
   | { kind: "done"; result: string }
   | { kind: "error"; message: string };
 
@@ -71,39 +72,86 @@ function assistantText(message: unknown): string {
 }
 
 /**
- * Parse one line of `claude --output-format stream-json` output into a
- * `ChatEvent`. Returns `null` for blank lines, unparseable JSON, and event
- * types we don't surface (hooks, rate-limit notices, tool calls, etc.). The
- * parser is deliberately tolerant so CLI version drift degrades gracefully.
+ * Derive a short human label for a tool call from its input object. We probe a
+ * small ordered set of well-known keys and return the first string value found
+ * (e.g. `file_path` for Read/Edit/Write, `command` for Bash, `pattern` for
+ * Grep). Returns `undefined` when nothing obvious is present.
  */
-export function parseEvent(line: string): ChatEvent | null {
+function toolTarget(input: unknown): string | undefined {
+  if (typeof input !== "object" || input === null) return undefined;
+  const record = input as Record<string, unknown>;
+  const keys = ["file_path", "notebook_path", "command", "pattern", "url", "query", "description"];
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string") return value;
+  }
+  return undefined;
+}
+
+/** Extract the `tool_use` blocks of an assistant message as name/target pairs. */
+function toolUses(message: unknown): { name: string; target?: string }[] {
+  if (typeof message !== "object" || message === null) return [];
+  const content = (message as { content?: unknown }).content;
+  if (!Array.isArray(content)) return [];
+  return content
+    .filter(
+      (block): block is { type: "tool_use"; name: string; input?: unknown } =>
+        typeof block === "object" &&
+        block !== null &&
+        (block as { type?: unknown }).type === "tool_use" &&
+        typeof (block as { name?: unknown }).name === "string",
+    )
+    .map((block) => {
+      const target = toolTarget(block.input);
+      return target === undefined ? { name: block.name } : { name: block.name, target };
+    });
+}
+
+/**
+ * Parse one line of `claude --output-format stream-json` output into zero or
+ * more `ChatEvent`s. Returns `[]` for blank lines, unparseable JSON, and event
+ * types we don't surface (hooks, rate-limit notices, etc.). A single assistant
+ * line can carry both a text block and one or more tool calls, so the return
+ * type is an array. The parser is deliberately tolerant so CLI version drift
+ * degrades gracefully.
+ */
+export function parseEvent(line: string): ChatEvent[] {
   const trimmed = line.trim();
-  if (!trimmed) return null;
+  if (!trimmed) return [];
 
   let obj: Record<string, unknown>;
   try {
     obj = JSON.parse(trimmed) as Record<string, unknown>;
   } catch {
-    return null;
+    return [];
   }
 
   switch (obj.type) {
     case "system": {
       if (obj.subtype === "init" && typeof obj.session_id === "string") {
-        return { kind: "session", sessionId: obj.session_id };
+        return [{ kind: "session", sessionId: obj.session_id }];
       }
-      return null;
+      return [];
     }
     case "assistant": {
+      const events: ChatEvent[] = [];
       const text = assistantText(obj.message);
-      return text ? { kind: "text", text } : null;
+      if (text) events.push({ kind: "text", text });
+      for (const use of toolUses(obj.message)) {
+        events.push(
+          use.target === undefined
+            ? { kind: "tool", name: use.name }
+            : { kind: "tool", name: use.name, target: use.target },
+        );
+      }
+      return events;
     }
     case "result": {
       const result = typeof obj.result === "string" ? obj.result : "";
-      return { kind: "done", result };
+      return [{ kind: "done", result }];
     }
     default:
-      return null;
+      return [];
   }
 }
 
@@ -174,16 +222,15 @@ export async function* runTurn({
     while ((nl = buf.indexOf("\n")) >= 0) {
       const line = buf.slice(0, nl);
       buf = buf.slice(nl + 1);
-      const event = parseEvent(line);
-      if (!event) continue;
-      if (event.kind === "done") sawResult = true;
-      yield event;
+      for (const event of parseEvent(line)) {
+        if (event.kind === "done") sawResult = true;
+        yield event;
+      }
     }
   }
-  const lastEvent = parseEvent(buf);
-  if (lastEvent) {
-    if (lastEvent.kind === "done") sawResult = true;
-    yield lastEvent;
+  for (const event of parseEvent(buf)) {
+    if (event.kind === "done") sawResult = true;
+    yield event;
   }
 
   const exitCode = await proc.exited;
