@@ -1,0 +1,11 @@
+{
+  "name": "prv",
+  "owner": { "name": "snrsw" },
+  "plugins": [
+    {
+      "name": "prv",
+      "source": "./",
+      "description": "Local GitHub-style diff review with inline comments — /prv opens the review UI, and the prv-review skill lets agents read and act on review comments headlessly."
+    }
+  ]
+}
