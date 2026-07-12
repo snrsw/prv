@@ -4,12 +4,13 @@ import type { StoredMessage } from "../shared/comments";
 
 /**
  * A message shown in the live transcript. `user`/`assistant` carry text and are
- * persisted; `tool` lines surface live agent activity and are rendered but
- * never saved (stripped at the persist boundary â see `stripToolMessages`).
+ * persisted; `tool` and `progress` lines surface live agent activity and are rendered but
+ * never saved (stripped at the persist boundary — see `stripEphemeral`).
  */
 export type ChatMessage =
   | { role: "user" | "assistant"; text: string }
-  | { role: "tool"; name: string; target?: string };
+  | { role: "tool"; name: string; target?: string }
+  | { role: "progress"; text: string };
 
 /**
  * Fold a streaming text chunk into the transcript: extend the trailing
@@ -26,18 +27,15 @@ export function appendChunk(messages: ChatMessage[], text: string): ChatMessage[
 }
 
 /**
- * Insert a live-activity tool line. `send` seeds an empty assistant placeholder
- * that renders as "thinking…"; when a tool line arrives before any text (the
- * norm on turns where the agent reads/edits before speaking), splice it in just
- * *before* that placeholder so the placeholder stays trailing — the next text
- * chunk then fills it via `appendChunk` instead of stranding an empty bubble
- * above the activity. Pure and exported for unit testing.
+ * Insert a non-answer activity line (a `tool` call or `progress` narration).
+ * `send` seeds an empty assistant placeholder that renders as "thinking…"; when
+ * activity arrives before the answer (the norm on turns where the agent
+ * reads/edits/narrates before speaking), splice it in just *before* that
+ * placeholder so the placeholder stays trailing — the next answer chunk then
+ * fills it via `appendChunk` instead of stranding an empty bubble above the
+ * activity.
  */
-export function appendTool(
-  messages: ChatMessage[],
-  tool: { name: string; target?: string },
-): ChatMessage[] {
-  const line: ChatMessage = { role: "tool", name: tool.name, target: tool.target };
+function insertActivity(messages: ChatMessage[], line: ChatMessage): ChatMessage[] {
   const last = messages[messages.length - 1];
   if (last && last.role === "assistant" && last.text === "") {
     return [...messages.slice(0, -1), line, last];
@@ -45,9 +43,40 @@ export function appendTool(
   return [...messages, line];
 }
 
-/** Drop live-activity tool lines so the persisted transcript stays clean. */
-export function stripToolMessages(messages: ChatMessage[]): StoredMessage[] {
-  return messages.filter((m): m is StoredMessage => m.role !== "tool");
+/** Insert a live-activity tool line. Pure and exported for unit testing. */
+export function appendTool(
+  messages: ChatMessage[],
+  tool: { name: string; target?: string },
+): ChatMessage[] {
+  return insertActivity(messages, { role: "tool", name: tool.name, target: tool.target });
+}
+
+/**
+ * Insert a progress-narration line — assistant text the agent emits alongside a
+ * tool call ("I'll read X"), shown muted so it doesn't compete with the answer.
+ * Pure and exported for unit testing.
+ */
+export function appendProgress(messages: ChatMessage[], text: string): ChatMessage[] {
+  return insertActivity(messages, { role: "progress", text });
+}
+
+/**
+ * Drop the ephemeral activity lines (`tool` calls and `progress` narration) so
+ * the persisted transcript keeps only the user's questions and the answers.
+ */
+export function stripEphemeral(messages: ChatMessage[]): StoredMessage[] {
+  return messages.filter((m): m is StoredMessage => m.role !== "tool" && m.role !== "progress");
+}
+
+/**
+ * Remove a trailing empty assistant placeholder. Called on turn end so a turn
+ * that produced only activity (no text answer) leaves no stray empty bubble.
+ * Pure and exported for unit testing.
+ */
+export function dropEmptyPlaceholder(messages: ChatMessage[]): ChatMessage[] {
+  const last = messages[messages.length - 1];
+  if (last && last.role === "assistant" && last.text === "") return messages.slice(0, -1);
+  return messages;
 }
 
 /** A compact, muted glyph shown next to a live-activity line for a tool name. */
@@ -71,8 +100,9 @@ export function toolIcon(name: string): string {
  * maps to a single Claude session.
  *
  * Messages are seeded from `initial` (e.g. a persisted transcript) and every
- * change is reported through `onChange` so the caller can persist it. Tool
- * lines are stripped before `onChange` so only user/assistant text is saved.
+ * change is reported through `onChange` so the caller can persist it. Ephemeral
+ * activity (tool + progress lines) is stripped before `onChange` so only
+ * user/assistant text is saved.
  * The hook starts a fresh session per mount, so the first `send` after a reload
  * re-sends `firstTurnContext`; later turns rely on `--resume`.
  */
@@ -89,7 +119,7 @@ export function useDiffChat(
   onChangeRef.current = onChange;
 
   const commit = useCallback((next: ChatMessage[]) => {
-    onChangeRef.current?.(stripToolMessages(next));
+    onChangeRef.current?.(stripEphemeral(next));
     return next;
   }, []);
 
@@ -112,11 +142,15 @@ export function useDiffChat(
         case "tool":
           setMessages((m) => commit(appendTool(m, { name: frame.name, target: frame.target })));
           break;
+        case "progress":
+          setMessages((m) => commit(appendProgress(m, frame.text)));
+          break;
         case "error":
           appendToAssistant(`⚠ ${frame.message}`);
           setStreaming(false);
           break;
         case "done":
+          setMessages((m) => commit(dropEmptyPlaceholder(m)));
           setStreaming(false);
           break;
         case "busy":

@@ -167,7 +167,7 @@ describe("parseEvent", () => {
     expect(parseEvent(line)).toEqual([{ kind: "tool", name: "Read" }]);
   });
 
-  test("mixed text and tool_use blocks yield text then tool, in order", () => {
+  test("text sharing a message with a tool_use is narration (progress), then the tool", () => {
     const line = JSON.stringify({
       type: "assistant",
       message: {
@@ -179,9 +179,17 @@ describe("parseEvent", () => {
       },
     });
     expect(parseEvent(line)).toEqual([
-      { kind: "text", text: "Editing now" },
+      { kind: "progress", text: "Editing now" },
       { kind: "tool", name: "Write", target: "a.ts" },
     ]);
+  });
+
+  test("text-only assistant message is the answer (kind: text)", () => {
+    const line = JSON.stringify({
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "text", text: "The answer" }] },
+    });
+    expect(parseEvent(line)).toEqual([{ kind: "text", text: "The answer" }]);
   });
 
   test("tool_use with a non-string name is skipped; unknown block types contribute nothing", () => {

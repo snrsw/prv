@@ -11,6 +11,7 @@
 export type ChatEvent =
   | { kind: "session"; sessionId: string }
   | { kind: "text"; text: string }
+  | { kind: "progress"; text: string }
   | { kind: "tool"; name: string; target?: string }
   | { kind: "done"; result: string }
   | { kind: "error"; message: string };
@@ -136,8 +137,11 @@ export function parseEvent(line: string): ChatEvent[] {
     case "assistant": {
       const events: ChatEvent[] = [];
       const text = assistantText(obj.message);
-      if (text) events.push({ kind: "text", text });
-      for (const use of toolUses(obj.message)) {
+      const tools = toolUses(obj.message);
+      // Text that shares a message with a tool call is the agent narrating what
+      // it is about to do ("I'll read X"); a text-only message is the answer.
+      if (text) events.push(tools.length > 0 ? { kind: "progress", text } : { kind: "text", text });
+      for (const use of tools) {
         events.push(
           use.target === undefined
             ? { kind: "tool", name: use.name }

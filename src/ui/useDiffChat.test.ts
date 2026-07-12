@@ -1,5 +1,12 @@
 import { test, expect, describe } from "bun:test";
-import { appendChunk, appendTool, stripToolMessages, type ChatMessage } from "./useDiffChat";
+import {
+  appendChunk,
+  appendTool,
+  appendProgress,
+  stripEphemeral,
+  dropEmptyPlaceholder,
+  type ChatMessage,
+} from "./useDiffChat";
 
 describe("appendChunk", () => {
   test("starts a new assistant message when there is none", () => {
@@ -66,26 +73,81 @@ describe("appendTool", () => {
   });
 });
 
-describe("stripToolMessages", () => {
-  test("removes tool entries and preserves user/assistant order", () => {
+describe("appendProgress", () => {
+  test("splices before the trailing empty assistant placeholder", () => {
+    const before: ChatMessage[] = [
+      { role: "user", text: "q" },
+      { role: "assistant", text: "" },
+    ];
+    expect(appendProgress(before, "I'll read the file")).toEqual([
+      { role: "user", text: "q" },
+      { role: "progress", text: "I'll read the file" },
+      { role: "assistant", text: "" },
+    ]);
+  });
+
+  test("a full turn keeps narration + tool out of the answer bubble", () => {
+    // send seeds [user, assistant("")]; the agent narrates, reads, then answers.
+    let msgs: ChatMessage[] = [
+      { role: "user", text: "q" },
+      { role: "assistant", text: "" },
+    ];
+    msgs = appendProgress(msgs, "I'll read the file");
+    msgs = appendTool(msgs, { name: "Read", target: "a.ts" });
+    msgs = appendChunk(msgs, "The answer");
+    expect(msgs).toEqual([
+      { role: "user", text: "q" },
+      { role: "progress", text: "I'll read the file" },
+      { role: "tool", name: "Read", target: "a.ts" },
+      { role: "assistant", text: "The answer" },
+    ]);
+  });
+});
+
+describe("dropEmptyPlaceholder", () => {
+  test("removes a trailing empty assistant", () => {
+    expect(
+      dropEmptyPlaceholder([
+        { role: "user", text: "q" },
+        { role: "progress", text: "working" },
+        { role: "assistant", text: "" },
+      ]),
+    ).toEqual([
+      { role: "user", text: "q" },
+      { role: "progress", text: "working" },
+    ]);
+  });
+
+  test("is a no-op when the last assistant has text", () => {
+    const msgs: ChatMessage[] = [
+      { role: "user", text: "q" },
+      { role: "assistant", text: "done" },
+    ];
+    expect(dropEmptyPlaceholder(msgs)).toEqual(msgs);
+  });
+});
+
+describe("stripEphemeral", () => {
+  test("removes tool AND progress entries, preserving user/assistant order", () => {
     const messages: ChatMessage[] = [
       { role: "user", text: "q" },
+      { role: "progress", text: "I'll read the file" },
       { role: "tool", name: "Read", target: "a.ts" },
       { role: "assistant", text: "done" },
       { role: "tool", name: "Edit", target: "a.ts" },
     ];
-    expect(stripToolMessages(messages)).toEqual([
+    expect(stripEphemeral(messages)).toEqual([
       { role: "user", text: "q" },
       { role: "assistant", text: "done" },
     ]);
   });
 
-  test("is a no-op when there are no tool entries", () => {
+  test("is a no-op when there are no ephemeral entries", () => {
     const messages: ChatMessage[] = [
       { role: "user", text: "q" },
       { role: "assistant", text: "a" },
     ];
-    expect(stripToolMessages(messages)).toEqual([
+    expect(stripEphemeral(messages)).toEqual([
       { role: "user", text: "q" },
       { role: "assistant", text: "a" },
     ]);

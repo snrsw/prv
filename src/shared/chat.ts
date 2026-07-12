@@ -13,6 +13,7 @@ export type ChatAsk = {
 export type ChatServerFrame =
   | { type: "session"; sessionId: string }
   | { type: "chunk"; text: string }
+  | { type: "progress"; text: string }
   | { type: "tool"; name: string; target?: string }
   | { type: "done" }
   | { type: "error"; message: string }
