@@ -1,8 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import {
   flattenDiff,
-  lineMaps,
-  keyGi,
   keyOfRow,
   anchorTextOf,
   commentId,
@@ -36,29 +34,8 @@ const file: FileDiff = {
   ],
 };
 
+// flattenDiff/lineMaps/keyGi behavior is covered in src/shared/diffLines.test.ts.
 const rows = flattenDiff(file);
-
-describe("flattenDiff", () => {
-  test("assigns global indices and old/new numbers per marker", () => {
-    expect(rows.map((r) => [r.gi, r.marker, r.old, r.new])).toEqual([
-      [0, " ", 1, 1],
-      [1, "-", 2, null],
-      [2, "+", null, 2],
-      [3, "+", null, 3],
-      [4, " ", 3, 4],
-    ]);
-  });
-});
-
-describe("lineMaps + keyGi", () => {
-  const maps = lineMaps(rows);
-  test("new and old numbers resolve to the right global index", () => {
-    expect(keyGi(maps, { old: null, new: 2 })).toBe(2); // added line
-    expect(keyGi(maps, { old: 2, new: null })).toBe(1); // deleted line
-    expect(keyGi(maps, { old: 1, new: 1 })).toBe(0); // context, prefers new
-    expect(keyGi(maps, { old: 99, new: null })).toBeNull();
-  });
-});
 
 describe("relocateComment", () => {
   const mixed: Comment = {
