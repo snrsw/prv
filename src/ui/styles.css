@@ -1299,6 +1299,37 @@ input:focus-visible {
   color: var(--fg-subtle);
   font-style: italic;
 }
+.chat-activity {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--fg-subtle);
+  font-family: var(--ff-mono);
+  font-size: var(--fs-code);
+  line-height: 1.6;
+  padding: 2px var(--sp-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-activity-icon {
+  flex: none;
+  opacity: 0.75;
+}
+.chat-progress {
+  display: flex;
+  gap: var(--sp-2);
+  color: var(--fg-subtle);
+  font-size: var(--fs-code);
+  font-style: italic;
+  line-height: 1.5;
+  padding: 2px var(--sp-2);
+}
+.chat-progress-icon {
+  flex: none;
+  opacity: 0.75;
+  font-style: normal;
+}
 
 .chat-input-row {
   border-top: 1px solid var(--border-muted);

@@ -137,6 +137,12 @@ export function createServer(options: ServerOptions): Bun.Server<ChatWsData> {
               case "text":
                 send({ type: "chunk", text: event.text });
                 break;
+              case "progress":
+                send({ type: "progress", text: event.text });
+                break;
+              case "tool":
+                send({ type: "tool", name: event.name, target: event.target });
+                break;
               case "error":
                 send({ type: "error", message: event.message });
                 break;

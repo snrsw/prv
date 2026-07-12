@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useDiffChat } from "../useDiffChat";
+import { ChatMessageList } from "./ChatMessageList";
 import type { FileDiff } from "../types";
 
 function assembleDiff(files: FileDiff[] | null): string {
@@ -41,11 +42,7 @@ export function ChatPanel({ files, open }: { files: FileDiff[] | null; open: boo
             Ask questions about the changes — answers come from your local Claude Code, read-only.
           </div>
         )}
-        {messages.map((m, i) => (
-          <div key={i} className={`chat-msg chat-msg-${m.role}`}>
-            {m.text === "" && streaming ? <span className="chat-thinking">thinking…</span> : m.text}
-          </div>
-        ))}
+        <ChatMessageList messages={messages} streaming={streaming} />
         <div ref={endRef} />
       </div>
 

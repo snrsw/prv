@@ -63,9 +63,9 @@ describe("buildPrompt", () => {
 
 describe("parseEvent", () => {
   test("blank lines and garbage are ignored", () => {
-    expect(parseEvent("")).toBeNull();
-    expect(parseEvent("   ")).toBeNull();
-    expect(parseEvent("not json")).toBeNull();
+    expect(parseEvent("")).toEqual([]);
+    expect(parseEvent("   ")).toEqual([]);
+    expect(parseEvent("not json")).toEqual([]);
   });
 
   test("system init yields the session id", () => {
@@ -75,10 +75,12 @@ describe("parseEvent", () => {
       cwd: "/repo",
       session_id: "488111f6-3e62-4a5d-85d7-b62f136833f9",
     });
-    expect(parseEvent(line)).toEqual({
-      kind: "session",
-      sessionId: "488111f6-3e62-4a5d-85d7-b62f136833f9",
-    });
+    expect(parseEvent(line)).toEqual([
+      {
+        kind: "session",
+        sessionId: "488111f6-3e62-4a5d-85d7-b62f136833f9",
+      },
+    ]);
   });
 
   test("other system subtypes (hooks) are ignored", () => {
@@ -87,7 +89,7 @@ describe("parseEvent", () => {
       subtype: "hook_started",
       session_id: "x",
     });
-    expect(parseEvent(hook)).toBeNull();
+    expect(parseEvent(hook)).toEqual([]);
   });
 
   test("assistant message yields the joined text blocks", () => {
@@ -102,15 +104,7 @@ describe("parseEvent", () => {
       },
       session_id: "x",
     });
-    expect(parseEvent(line)).toEqual({ kind: "text", text: "Hello world" });
-  });
-
-  test("assistant message with only tool_use blocks is ignored", () => {
-    const line = JSON.stringify({
-      type: "assistant",
-      message: { role: "assistant", content: [{ type: "tool_use", name: "Read", input: {} }] },
-    });
-    expect(parseEvent(line)).toBeNull();
+    expect(parseEvent(line)).toEqual([{ kind: "text", text: "Hello world" }]);
   });
 
   test("result event yields done with the final text", () => {
@@ -121,11 +115,95 @@ describe("parseEvent", () => {
       result: "OK",
       session_id: "x",
     });
-    expect(parseEvent(line)).toEqual({ kind: "done", result: "OK" });
+    expect(parseEvent(line)).toEqual([{ kind: "done", result: "OK" }]);
   });
 
   test("rate_limit_event and unknown types are ignored", () => {
-    expect(parseEvent(JSON.stringify({ type: "rate_limit_event" }))).toBeNull();
-    expect(parseEvent(JSON.stringify({ type: "something_new" }))).toBeNull();
+    expect(parseEvent(JSON.stringify({ type: "rate_limit_event" }))).toEqual([]);
+    expect(parseEvent(JSON.stringify({ type: "something_new" }))).toEqual([]);
+  });
+
+  test("tool_use with a file_path yields a tool event with the file as target", () => {
+    const line = JSON.stringify({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [{ type: "tool_use", name: "Edit", input: { file_path: "src/foo.ts" } }],
+      },
+    });
+    expect(parseEvent(line)).toEqual([{ kind: "tool", name: "Edit", target: "src/foo.ts" }]);
+  });
+
+  test("Bash tool_use uses the command as target", () => {
+    const line = JSON.stringify({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [{ type: "tool_use", name: "Bash", input: { command: "ls -la" } }],
+      },
+    });
+    expect(parseEvent(line)).toEqual([{ kind: "tool", name: "Bash", target: "ls -la" }]);
+  });
+
+  test("Grep tool_use uses the pattern as target", () => {
+    const line = JSON.stringify({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [{ type: "tool_use", name: "Grep", input: { pattern: "TODO" } }],
+      },
+    });
+    expect(parseEvent(line)).toEqual([{ kind: "tool", name: "Grep", target: "TODO" }]);
+  });
+
+  test("tool_use with no recognizable input key has no target", () => {
+    const line = JSON.stringify({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [{ type: "tool_use", name: "Read", input: {} }],
+      },
+    });
+    expect(parseEvent(line)).toEqual([{ kind: "tool", name: "Read" }]);
+  });
+
+  test("text sharing a message with a tool_use is narration (progress), then the tool", () => {
+    const line = JSON.stringify({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "text", text: "Editing now" },
+          { type: "tool_use", name: "Write", input: { file_path: "a.ts" } },
+        ],
+      },
+    });
+    expect(parseEvent(line)).toEqual([
+      { kind: "progress", text: "Editing now" },
+      { kind: "tool", name: "Write", target: "a.ts" },
+    ]);
+  });
+
+  test("text-only assistant message is the answer (kind: text)", () => {
+    const line = JSON.stringify({
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "text", text: "The answer" }] },
+    });
+    expect(parseEvent(line)).toEqual([{ kind: "text", text: "The answer" }]);
+  });
+
+  test("tool_use with a non-string name is skipped; unknown block types contribute nothing", () => {
+    const line = JSON.stringify({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "tool_use", name: 42, input: { file_path: "a.ts" } },
+          { type: "thinking", thinking: "hmm" },
+          { type: "image", source: {} },
+        ],
+      },
+    });
+    expect(parseEvent(line)).toEqual([]);
   });
 });

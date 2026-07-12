@@ -1,7 +1,118 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatAsk, ChatServerFrame } from "../shared/chat";
+import type { StoredMessage } from "../shared/comments";
 
-export type ChatMessage = { role: "user" | "assistant"; text: string };
+/**
+ * A message shown in the live transcript. `user`/`assistant` carry text and are
+ * persisted; `tool` and `progress` lines surface live agent activity and are rendered but
+ * never saved (stripped at the persist boundary — see `stripEphemeral`).
+ */
+export type ChatMessage =
+  | { role: "user" | "assistant"; text: string }
+  | { role: "tool"; name: string; target?: string }
+  | { role: "progress"; text: string };
+
+/**
+ * Demote the most recent non-empty assistant message to `progress` narration.
+ * Called when a new answer bubble starts after activity: the agent often emits
+ * its "I'll read X" preamble as a standalone text message before the tool call,
+ * so once a *later* answer arrives the earlier text is revealed as narration —
+ * only the latest assistant text should read as the answer. Pure.
+ */
+function demotePriorAnswer(messages: ChatMessage[]): ChatMessage[] {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (!m || m.role !== "assistant") continue;
+    if (m.text === "") return messages;
+    const next = messages.slice();
+    next[i] = { role: "progress", text: m.text };
+    return next;
+  }
+  return messages;
+}
+
+/**
+ * Fold a streaming text chunk into the transcript: extend the trailing
+ * assistant message, or start a new one if the last entry is not an assistant
+ * message (e.g. a user turn or an interleaved tool line). When it starts a new
+ * bubble after activity, any earlier answer bubble is demoted to narration so
+ * only the latest text reads as the answer. Pure and exported for unit testing.
+ */
+export function appendChunk(messages: ChatMessage[], text: string): ChatMessage[] {
+  const last = messages[messages.length - 1];
+  if (last && last.role === "assistant") {
+    return [...messages.slice(0, -1), { ...last, text: last.text + text }];
+  }
+  return [...demotePriorAnswer(messages), { role: "assistant", text }];
+}
+
+/**
+ * Insert a non-answer activity line (a `tool` call or `progress` narration).
+ * `send` seeds an empty assistant placeholder that renders as "thinking…"; when
+ * activity arrives before the answer (the norm on turns where the agent
+ * reads/edits/narrates before speaking), splice it in just *before* that
+ * placeholder so the placeholder stays trailing — the next answer chunk then
+ * fills it via `appendChunk` instead of stranding an empty bubble above the
+ * activity.
+ */
+function insertActivity(messages: ChatMessage[], line: ChatMessage): ChatMessage[] {
+  const last = messages[messages.length - 1];
+  if (last && last.role === "assistant" && last.text === "") {
+    return [...messages.slice(0, -1), line, last];
+  }
+  return [...messages, line];
+}
+
+/** Insert a live-activity tool line. Pure and exported for unit testing. */
+export function appendTool(
+  messages: ChatMessage[],
+  tool: { name: string; target?: string },
+): ChatMessage[] {
+  return insertActivity(messages, { role: "tool", name: tool.name, target: tool.target });
+}
+
+/**
+ * Insert a progress-narration line — assistant text the agent emits alongside a
+ * tool call ("I'll read X"), shown muted so it doesn't compete with the answer.
+ * Pure and exported for unit testing.
+ */
+export function appendProgress(messages: ChatMessage[], text: string): ChatMessage[] {
+  return insertActivity(messages, { role: "progress", text });
+}
+
+/**
+ * Drop the ephemeral activity lines (`tool` calls and `progress` narration) so
+ * the persisted transcript keeps only the user's questions and the answers.
+ */
+export function stripEphemeral(messages: ChatMessage[]): StoredMessage[] {
+  return messages.filter((m): m is StoredMessage => m.role !== "tool" && m.role !== "progress");
+}
+
+/**
+ * Remove a trailing empty assistant placeholder. Called on turn end so a turn
+ * that produced only activity (no text answer) leaves no stray empty bubble.
+ * Pure and exported for unit testing.
+ */
+export function dropEmptyPlaceholder(messages: ChatMessage[]): ChatMessage[] {
+  const last = messages[messages.length - 1];
+  if (last && last.role === "assistant" && last.text === "") return messages.slice(0, -1);
+  return messages;
+}
+
+/** A compact, muted glyph shown next to a live-activity line for a tool name. */
+export function toolIcon(name: string): string {
+  const icons: Record<string, string> = {
+    Read: "▸",
+    Edit: "✎",
+    Write: "✎",
+    Bash: "$",
+    Grep: "⌕",
+    Glob: "⌕",
+    TodoWrite: "☑",
+    ExitPlanMode: "✓",
+  };
+  return icons[name] ?? "•";
+}
 
 /**
  * One read-only-or-apply chat conversation with the agent over the `/api/chat`
@@ -9,13 +120,15 @@ export type ChatMessage = { role: "user" | "assistant"; text: string };
  * maps to a single Claude session.
  *
  * Messages are seeded from `initial` (e.g. a persisted transcript) and every
- * change is reported through `onChange` so the caller can persist it. The hook
- * starts a fresh session per mount, so the first `send` after a reload re-sends
- * `firstTurnContext`; later turns rely on `--resume`.
+ * change is reported through `onChange` so the caller can persist it. Ephemeral
+ * activity (tool + progress lines) is stripped before `onChange` so only
+ * user/assistant text is saved.
+ * The hook starts a fresh session per mount, so the first `send` after a reload
+ * re-sends `firstTurnContext`; later turns rely on `--resume`.
  */
 export function useDiffChat(
   initial: ChatMessage[] = [],
-  onChange?: (messages: ChatMessage[]) => void,
+  onChange?: (messages: StoredMessage[]) => void,
 ) {
   const [messages, setMessages] = useState<ChatMessage[]>(initial);
   const [streaming, setStreaming] = useState(false);
@@ -26,17 +139,13 @@ export function useDiffChat(
   onChangeRef.current = onChange;
 
   const commit = useCallback((next: ChatMessage[]) => {
-    onChangeRef.current?.(next);
+    onChangeRef.current?.(stripEphemeral(next));
     return next;
   }, []);
 
   const appendToAssistant = useCallback(
     (text: string) => {
-      setMessages((msgs) => {
-        const last = msgs[msgs.length - 1];
-        if (!last || last.role !== "assistant") return msgs;
-        return commit([...msgs.slice(0, -1), { ...last, text: last.text + text }]);
-      });
+      setMessages((msgs) => commit(appendChunk(msgs, text)));
     },
     [commit],
   );
@@ -50,18 +159,25 @@ export function useDiffChat(
         case "chunk":
           appendToAssistant(frame.text);
           break;
+        case "tool":
+          setMessages((m) => commit(appendTool(m, { name: frame.name, target: frame.target })));
+          break;
+        case "progress":
+          setMessages((m) => commit(appendProgress(m, frame.text)));
+          break;
         case "error":
           appendToAssistant(`⚠ ${frame.message}`);
           setStreaming(false);
           break;
         case "done":
+          setMessages((m) => commit(dropEmptyPlaceholder(m)));
           setStreaming(false);
           break;
         case "busy":
           break;
       }
     },
-    [appendToAssistant],
+    [appendToAssistant, commit],
   );
 
   const ensureSocket = useCallback((): WebSocket => {
