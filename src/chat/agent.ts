@@ -89,6 +89,18 @@ function toolTarget(input: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * Shorten a tool target for display by making an absolute path under `cwd`
+ * repo-relative (the agent runs in `cwd`, so its file operations live there).
+ * A plain prefix strip — not `path.relative` — so non-path targets (a Bash
+ * command, a Grep pattern) and paths outside `cwd` are returned untouched.
+ */
+export function relativizeTarget(target: string | undefined, cwd: string): string | undefined {
+  if (target === undefined) return undefined;
+  const prefix = cwd.endsWith("/") ? cwd : `${cwd}/`;
+  return target.startsWith(prefix) ? target.slice(prefix.length) : target;
+}
+
 /** Extract the `tool_use` blocks of an assistant message as name/target pairs. */
 function toolUses(message: unknown): { name: string; target?: string }[] {
   if (typeof message !== "object" || message === null) return [];
