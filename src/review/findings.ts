@@ -50,7 +50,11 @@ function clampSeverity(value: unknown): ReviewSeverity {
 
 function deriveTitle(title: unknown, body: string): string {
   if (typeof title === "string" && title.trim() !== "") return title.trim();
-  const first = body.split("\n").find((line) => line.trim() !== "")?.trim() ?? "";
+  const first =
+    body
+      .split("\n")
+      .find((line) => line.trim() !== "")
+      ?.trim() ?? "";
   if (first === "") return "(finding)";
   return first.length > 80 ? `${first.slice(0, 79)}…` : first;
 }

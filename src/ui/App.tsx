@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileTree } from "./components/FileTree";
 import { ChatPanel } from "./components/ChatPanel";
 import { DiffPanel } from "./components/DiffPanel";
@@ -6,9 +6,14 @@ import { DiffStat } from "./components/DiffStat";
 import { ModePicker } from "./components/ModePicker";
 import { PathPicker } from "./components/PathPicker";
 import { RefPathPicker } from "./components/RefPathPicker";
+import { ReviewPanel } from "./components/ReviewPanel";
+import { findingsToComments } from "../review/transform";
 import { encodeMode } from "../shared/modeQuery";
+import { isClearableReviewComment } from "../shared/review";
+import type { LensId, ReviewFinding } from "../shared/review";
 import { sumTotals } from "./totals";
 import { useComments } from "./useComments";
+import { useReview } from "./useReview";
 import type { DiffOutputFormat, FileDiff, ServerMode } from "./types";
 
 const DIFF_OUTPUT_FORMAT_KEY = "prv:diffOutputFormat";
@@ -47,8 +52,46 @@ export function App() {
   const [diffOutputFormat, setDiffOutputFormat] = useState<DiffOutputFormat>(
     readStoredDiffOutputFormat,
   );
-  const { comments, addComment, updateComment, removeComment } = useComments(bootstrapped);
+  const { comments, addComment, updateComment, removeComment, removeWhere } =
+    useComments(bootstrapped);
   const refreshDiff = useCallback(() => setReloadKey((k) => k + 1), []);
+
+  // Findings anchor against the diff snapshot taken when Review was pressed,
+  // so a mid-run refresh or mode switch can't shear the anchors (worst case
+  // they render as orphaned, exactly like hand-made comments).
+  const reviewFilesRef = useRef<FileDiff[]>([]);
+  const handleFindings = useCallback(
+    (lens: LensId, findings: ReviewFinding[], runId: string) => {
+      const result = findingsToComments({
+        findings,
+        files: reviewFilesRef.current,
+        runId,
+        lens,
+      });
+      result.comments.forEach(addComment);
+    },
+    [addComment],
+  );
+  const review = useReview(handleFindings);
+  const { start: startReviewRun, running: reviewRunning } = review;
+
+  const startReview = useCallback(() => {
+    if (reviewRunning) return;
+    reviewFilesRef.current = files ?? [];
+    const params = new URLSearchParams();
+    if (mode) encodeMode(mode, params);
+    startReviewRun(params.toString()); // empty query → the server's default mode
+  }, [reviewRunning, files, mode, startReviewRun]);
+
+  const hasAgentComments = comments.some((c) => c.source === "review");
+  const clearableCount = comments.filter(isClearableReviewComment).length;
+  const openAgentCount = comments.filter(
+    (c) => c.source === "review" && c.status === "open",
+  ).length;
+  const clearAgentComments = useCallback(
+    () => removeWhere(isClearableReviewComment),
+    [removeWhere],
+  );
 
   useEffect(() => {
     try {
@@ -207,6 +250,18 @@ export function App() {
           </button>
           <button
             type="button"
+            className={"refresh-btn" + (reviewRunning ? " is-active" : "")}
+            disabled={reviewRunning || !files || files.length === 0}
+            onClick={startReview}
+          >
+            {reviewRunning
+              ? review.totalCount > 0
+                ? `Reviewing… ${review.doneCount}/${review.totalCount}`
+                : "Reviewing…"
+              : "Review"}
+          </button>
+          <button
+            type="button"
             className={"refresh-btn" + (chatOpen ? " is-active" : "")}
             aria-pressed={chatOpen}
             onClick={() => setChatOpen((c) => !c)}
@@ -230,6 +285,14 @@ export function App() {
         )}
 
         <main className="main-col">
+          {(review.run !== null || hasAgentComments) && (
+            <ReviewPanel
+              run={review.run}
+              openAgentCount={openAgentCount}
+              clearableCount={clearableCount}
+              onClear={clearAgentComments}
+            />
+          )}
           {error && <div className="error">Error: {error}</div>}
           {files === null && !error && <div className="placeholder">loading…</div>}
           {files !== null && files.length === 0 && !error && (

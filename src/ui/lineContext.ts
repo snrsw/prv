@@ -75,8 +75,6 @@ export function buildCommentContext(file: FileDiff, slice: DiffRow[]): string {
  */
 export function buildThreadContext(context: string, messages: StoredMessage[]): string {
   if (messages.length === 0) return context;
-  const transcript = messages.map(
-    (m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`,
-  );
+  const transcript = messages.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`);
   return [context, "", "Prior conversation on this comment:", "", ...transcript].join("\n");
 }

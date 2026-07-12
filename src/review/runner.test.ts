@@ -86,10 +86,7 @@ describe("runReviewPanel — one lens", () => {
   });
 
   test("a malformed reply retries once via --resume, then succeeds", async () => {
-    const { runner, calls } = fakeRunner(
-      [session("s1"), done("no json here")],
-      [done(goodReply)],
-    );
+    const { runner, calls } = fakeRunner([session("s1"), done("no json here")], [done(goodReply)]);
     const frames = await run(runner, [lens("correctness")]);
     expect(calls).toHaveLength(2);
     expect(calls[1]).toMatchObject({ sessionId: "s1", prompt: RETRY_PROMPT, mode: "ask" });
@@ -114,9 +111,7 @@ describe("runReviewPanel — one lens", () => {
   });
 
   test("an error event with no result fails the lens without retrying", async () => {
-    const { runner, calls } = fakeRunner([
-      { kind: "error", message: "claude CLI not found" },
-    ]);
+    const { runner, calls } = fakeRunner([{ kind: "error", message: "claude CLI not found" }]);
     const frames = await run(runner, [lens("correctness")]);
     expect(calls).toHaveLength(1);
     expect(frames.at(-1)).toEqual({
@@ -165,7 +160,10 @@ describe("reviewCwd", () => {
       reviewCwd({ kind: "git", cwd: "/repo", leftRef: "HEAD", right: { kind: "worktree" } }, "/fb"),
     ).toBe("/repo");
     expect(
-      reviewCwd({ kind: "ref-vs-path", cwd: "/repo", ref: "HEAD", path: "/p", refOnLeft: true }, "/fb"),
+      reviewCwd(
+        { kind: "ref-vs-path", cwd: "/repo", ref: "HEAD", path: "/p", refOnLeft: true },
+        "/fb",
+      ),
     ).toBe("/repo");
   });
 });

@@ -122,8 +122,6 @@ describe("reduceReview — terminal frames", () => {
     const run = initialRun(["a"]);
     expect(reduceReview(run, { type: "busy" })).toBe(run);
     expect(reduceReview(null, { type: "done" })).toBeNull();
-    expect(
-      reduceReview(null, { type: "progress", lens: "correctness", text: "x" }),
-    ).toBeNull();
+    expect(reduceReview(null, { type: "progress", lens: "correctness", text: "x" })).toBeNull();
   });
 });

@@ -47,9 +47,7 @@ type Flattened = { rows: DiffRow[]; maps: LineMaps };
 
 /** The finding's message as stored in the thread: bold title, then the body. */
 function findingText(finding: ReviewFinding): string {
-  return finding.body === ""
-    ? `**${finding.title}**`
-    : `**${finding.title}**\n\n${finding.body}`;
+  return finding.body === "" ? `**${finding.title}**` : `**${finding.title}**\n\n${finding.body}`;
 }
 
 /**
@@ -82,7 +80,11 @@ function findingToComment(
           const lo = Math.min(...gis);
           const hi = Math.max(...gis);
           const slice = rows.slice(lo, hi + 1);
-          return { start: keyOfRow(rows[lo]!), end: keyOfRow(rows[hi]!), anchorText: anchorTextOf(slice) };
+          return {
+            start: keyOfRow(rows[lo]!),
+            end: keyOfRow(rows[hi]!),
+            anchorText: anchorTextOf(slice),
+          };
         })();
 
   return {

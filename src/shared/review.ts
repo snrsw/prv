@@ -48,7 +48,5 @@ export type ReviewWsData = { kind: "review"; busy: boolean };
 
 /** "Clear agent comments" removes open review comments no human has replied to. */
 export function isClearableReviewComment(c: Comment): boolean {
-  return (
-    c.source === "review" && c.status === "open" && !c.messages.some((m) => m.role === "user")
-  );
+  return c.source === "review" && c.status === "open" && !c.messages.some((m) => m.role === "user");
 }

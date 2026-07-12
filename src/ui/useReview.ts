@@ -53,7 +53,10 @@ function failUnfinished(run: ReviewRun, message: string, keepErrors: boolean): R
   const lenses = Object.fromEntries(
     Object.entries(run.lenses).map(([id, lens]) => {
       const finished = lens.phase === "done" || (keepErrors && lens.phase === "error");
-      return [id, finished ? lens : { ...lens, phase: "error" as const, error: lens.error ?? message }];
+      return [
+        id,
+        finished ? lens : { ...lens, phase: "error" as const, error: lens.error ?? message },
+      ];
     }),
   );
   return { ...run, running: false, lenses };
@@ -148,11 +151,9 @@ export function useReview(
           r && r.running ? reduceReview(r, { type: "error", message: "connection closed" }) : r,
         );
       };
-      ws.addEventListener(
-        "open",
-        () => ws.send(JSON.stringify({ type: "start", modeQuery })),
-        { once: true },
-      );
+      ws.addEventListener("open", () => ws.send(JSON.stringify({ type: "start", modeQuery })), {
+        once: true,
+      });
       wsRef.current = ws;
     },
     [handleFrame],
