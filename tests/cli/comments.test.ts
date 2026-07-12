@@ -178,6 +178,34 @@ describe("comment", () => {
     expect(res.err).toContain("<file>:<line>");
   });
 
+  test("--role assistant is accepted as an explicit value", async () => {
+    const repo = await repoWithEdit();
+    await runCommentsCli(["comment", "a.ts:11", "note", "--role", "assistant"], repo);
+    const c = (await readComments(repo))[0]!;
+    expect(c.messages).toEqual([{ role: "assistant", text: "note" }]);
+  });
+
+  test("target present but message missing: exit 1 with usage", async () => {
+    const repo = await repoWithEdit();
+    const res = await runCommentsCli(["comment", "a.ts:11"], repo);
+    expect(res.code).toBe(1);
+    expect(res.err).toContain("usage: prv comment");
+  });
+
+  test("same id anchored in a different file does not block a new comment", async () => {
+    const repo = await repoWithEdit();
+    await writeComments([seeded({ id: "c:_11:_11", file: "b.ts", anchorText: ["+eleven"] })], repo);
+    const res = await runCommentsCli(["comment", "a.ts:11", "on a"], repo);
+    expect(res.code).toBe(0);
+    const stored = await readComments(repo);
+    expect(
+      stored
+        .filter((c) => c.id === "c:_11:_11")
+        .map((c) => c.file)
+        .sort(),
+    ).toEqual(["a.ts", "b.ts"]);
+  });
+
   test("duplicate range: exit 1 and suggests reply", async () => {
     const repo = await repoWithEdit();
     await runCommentsCli(["comment", "a.ts:11", "first"], repo);
@@ -245,6 +273,14 @@ describe("reply", () => {
     const res = await runCommentsCli(["reply", "c:9_9:9_9", "msg"], repo);
     expect(res.code).toBe(1);
     expect(res.err).toContain("no comment");
+  });
+
+  test("unknown id with --file names the file in the error", async () => {
+    const repo = await tmpRepo();
+    await writeComments([seeded()], repo);
+    const res = await runCommentsCli(["reply", "c:9_9:9_9", "msg", "--file", "a.ts"], repo);
+    expect(res.code).toBe(1);
+    expect(res.err).toContain("on a.ts");
   });
 
   test("id colliding across files: exit 1 naming files; --file disambiguates", async () => {
@@ -379,6 +415,25 @@ describe("more list output", () => {
     const res = await runCommentsCli(["comments", "list"], repo);
     expect(res.out).toContain("a.ts:2-4");
     expect(res.out).toContain("2 messages");
+  });
+
+  test("all-null endpoints and no messages render without an excerpt line", async () => {
+    const repo = await tmpRepo();
+    await writeComments(
+      [
+        seeded({
+          id: "c:_:_",
+          start: { old: null, new: null },
+          end: { old: null, new: null },
+          anchorText: [],
+          messages: [],
+        }),
+      ],
+      repo,
+    );
+    const res = await runCommentsCli(["comments", "list"], repo);
+    expect(res.code).toBe(0);
+    expect(res.out).toBe("c:_:_  a.ts:  open  0 messages");
   });
 
   test("list with extra args errors", async () => {
