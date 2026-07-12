@@ -251,13 +251,13 @@ export function App() {
           <button
             type="button"
             className={"refresh-btn" + (reviewRunning ? " is-active" : "")}
-            disabled={reviewRunning || !files || files.length === 0}
-            onClick={startReview}
+            disabled={!reviewRunning && (!files || files.length === 0)}
+            onClick={reviewRunning ? review.stop : startReview}
           >
             {reviewRunning
               ? review.totalCount > 0
-                ? `Reviewing… ${review.doneCount}/${review.totalCount}`
-                : "Reviewing…"
+                ? `Stop (${review.doneCount}/${review.totalCount})`
+                : "Stop"
               : "Review"}
           </button>
           <button

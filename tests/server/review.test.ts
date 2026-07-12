@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { createServer } from "../../src/server";
 import { encodeMode } from "../../src/shared/modeQuery";
 import { mkTempRepo } from "../support";
-import type { ChatEvent } from "../../src/chat/agent";
+import type { ChatEvent, RunTurnArgs } from "../../src/chat/agent";
 import type { ChatServerFrame } from "../../src/shared/chat";
 import type { ReviewServerFrame } from "../../src/shared/review";
 
@@ -21,10 +21,14 @@ const finding = {
 };
 const reply = `\`\`\`json\n${JSON.stringify({ findings: [finding] })}\n\`\`\``;
 
+/** Args of every turn the fake runner served, for signal assertions. */
+const seenTurns: RunTurnArgs[] = [];
+
 /** Every turn: a session, one narration line, then a good findings reply.
  * The sleep keeps the run in flight long enough for a mid-run client message
  * (a synchronous fake would finish before a loopback round-trip). */
-async function* fakeTurn(): AsyncGenerator<ChatEvent> {
+async function* fakeTurn(args: RunTurnArgs): AsyncGenerator<ChatEvent> {
+  seenTurns.push(args);
   yield { kind: "session", sessionId: "s1" };
   yield { kind: "text", text: "hi" };
   await Bun.sleep(10);
@@ -142,6 +146,24 @@ test("a clean repo reports no reviewable changes", async () => {
   ws.close();
 
   expect(frames).toEqual([{ type: "error", message: "no reviewable changes" }, { type: "done" }]);
+});
+
+test("closing the socket mid-run aborts the in-flight turns", async () => {
+  const before = seenTurns.length;
+  const ws = await openSocket("/api/review");
+  const sawRun = new Promise<void>((resolve) => {
+    ws.onmessage = (e) => {
+      if ((JSON.parse(String(e.data)) as ReviewServerFrame).type === "run") resolve();
+    };
+  });
+  ws.send(JSON.stringify({ type: "start", modeQuery: gitModeQuery(await dirtyRepo()) }));
+  await sawRun;
+  ws.close();
+  await Bun.sleep(30); // let the close reach the server and the run drain
+
+  const turns = seenTurns.slice(before);
+  expect(turns).toHaveLength(3);
+  for (const turn of turns) expect(turn.signal?.aborted).toBe(true);
 });
 
 test("the /api/chat socket still works through the shared dispatcher", async () => {

@@ -43,8 +43,9 @@ export type ReviewServerFrame =
   | { type: "busy" }
   | { type: "done" };
 
-/** Per-connection state stored on the /api/review WebSocket. */
-export type ReviewWsData = { kind: "review"; busy: boolean };
+/** Per-connection state stored on the /api/review WebSocket. `abort` kills the
+ * in-flight run's claude subprocesses when the client disconnects. */
+export type ReviewWsData = { kind: "review"; busy: boolean; abort?: AbortController };
 
 /** "Clear agent comments" removes open review comments no human has replied to. */
 export function isClearableReviewComment(c: Comment): boolean {

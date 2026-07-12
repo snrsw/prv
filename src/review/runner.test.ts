@@ -151,6 +151,33 @@ describe("runReviewPanel — the panel", () => {
     });
     expect(frames).toContainEqual({ type: "lens", lens: "silent-failures", state: "done" });
   });
+
+  test("the abort signal reaches every turn and stops lenses silently", async () => {
+    const controller = new AbortController();
+    const calls: RunTurnArgs[] = [];
+    // First (and only) turn: aborts mid-stream, then returns a reply that
+    // would normally trigger a retry — the abort must win.
+    const runner: TurnRunner = (args) => {
+      calls.push(args);
+      return (async function* () {
+        yield session("s1");
+        controller.abort();
+        yield done("no json here");
+      })();
+    };
+    const frames: ReviewServerFrame[] = [];
+    await runReviewPanel({
+      annotatedDiff: "### a.ts (modified)\n1\t1\t x",
+      cwd: "/repo",
+      emit: (f) => frames.push(f),
+      signal: controller.signal,
+      lenses: [lens("correctness")],
+      turnRunner: runner,
+    });
+    expect(calls).toHaveLength(1); // no retry after abort
+    expect(calls[0]?.signal).toBe(controller.signal); // forwarded to the turn
+    expect(frames).toEqual([{ type: "lens", lens: "correctness", state: "running" }]);
+  });
 });
 
 describe("reviewCwd", () => {

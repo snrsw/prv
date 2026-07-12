@@ -120,6 +120,10 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
         }
         return handleChatMessage(ws, data, raw, turnRunner);
       },
+      close(ws) {
+        // A client that disconnects mid-review cancels it: kill the turns.
+        if (ws.data.kind === "review") ws.data.abort?.abort();
+      },
     },
   });
 }
@@ -226,6 +230,7 @@ async function handleReviewMessage(
   }
 
   data.busy = true;
+  data.abort = new AbortController();
   try {
     const mode = decodeMode(new URLSearchParams(msg.modeQuery)) ?? defaultMode;
     if (!mode) {
@@ -244,12 +249,14 @@ async function handleReviewMessage(
       annotatedDiff,
       cwd: reviewCwd(mode, process.cwd()),
       emit: send,
+      signal: data.abort.signal,
       turnRunner,
     });
   } catch (err) {
     send({ type: "error", message: err instanceof Error ? err.message : String(err) });
   } finally {
     data.busy = false;
+    data.abort = undefined;
     send({ type: "done" });
   }
 }

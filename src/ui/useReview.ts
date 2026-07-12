@@ -159,6 +159,16 @@ export function useReview(
     [handleFrame],
   );
 
+  const stop = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws) return;
+    // Null the ref first so onclose doesn't synthesize "connection closed";
+    // the server aborts the run's claude subprocesses when the socket closes.
+    wsRef.current = null;
+    ws.close();
+    setRun((r) => (r && r.running ? reduceReview(r, { type: "error", message: "stopped" }) : r));
+  }, []);
+
   useEffect(() => () => wsRef.current?.close(), []);
 
   const lenses = run ? Object.values(run.lenses) : [];
@@ -168,5 +178,6 @@ export function useReview(
     doneCount: lenses.filter((l) => l.phase === "done" || l.phase === "error").length,
     totalCount: lenses.length,
     start,
+    stop,
   };
 }

@@ -24,6 +24,8 @@ export type RunPanelArgs = {
   annotatedDiff: string;
   cwd: string;
   emit: (frame: ReviewServerFrame) => void;
+  /** Aborting kills in-flight turns; aborted lenses stop silently. */
+  signal?: AbortSignal;
   lenses?: readonly Lens[];
   turnRunner?: TurnRunner;
 };
@@ -73,11 +75,18 @@ async function runLens(
   cwd: string,
   emit: (frame: ReviewServerFrame) => void,
   turnRunner: TurnRunner,
+  signal?: AbortSignal,
 ): Promise<void> {
   emit({ type: "lens", lens: lens.id, state: "running" });
 
   const prompt = buildReviewPrompt(lens, annotatedDiff);
-  const first = await collectTurn(turnRunner({ cwd, prompt, mode: "ask" }), lens.id, cwd, emit);
+  const first = await collectTurn(
+    turnRunner({ cwd, prompt, mode: "ask", signal }),
+    lens.id,
+    cwd,
+    emit,
+  );
+  if (signal?.aborted) return; // stopped on purpose — no error, no retry
   if (first.result === null) {
     // Spawn failure or a turn that died before producing a result — the
     // session is broken (or absent), so resuming it would fail again.
@@ -97,10 +106,12 @@ async function runLens(
       prompt: RETRY_PROMPT,
       sessionId: first.sessionId,
       mode: "ask",
+      signal,
     });
     const second = await collectTurn(retry, lens.id, cwd, emit);
     if (second.result !== null) parsed = extractFindings(second.result);
   }
+  if (signal?.aborted) return;
   if (parsed === null) {
     emit({
       type: "lens",
@@ -125,12 +136,13 @@ export async function runReviewPanel({
   annotatedDiff,
   cwd,
   emit,
+  signal,
   lenses = LENSES,
   turnRunner = runTurn,
 }: RunPanelArgs): Promise<void> {
   await Promise.all(
     lenses.map((lens) =>
-      runLens(lens, annotatedDiff, cwd, emit, turnRunner).catch((err: unknown) => {
+      runLens(lens, annotatedDiff, cwd, emit, turnRunner, signal).catch((err: unknown) => {
         emit({
           type: "lens",
           lens: lens.id,
