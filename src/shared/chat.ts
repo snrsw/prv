@@ -19,8 +19,10 @@ export type ChatServerFrame =
   | { type: "error"; message: string }
   | { type: "busy" };
 
-/** Per-connection state stored on the WebSocket. */
+/** Per-connection state stored on the WebSocket. `kind` routes the shared
+ * websocket handler (Bun.serve has a single handler for all upgraded routes). */
 export type ChatWsData = {
+  kind: "chat";
   sessionId: string | null;
   busy: boolean;
 };

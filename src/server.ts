@@ -27,7 +27,7 @@ export function createServer(options: ServerOptions): Bun.Server<ChatWsData> {
     routes: {
       "/": index,
       "/api/chat": (req, server) => {
-        const data: ChatWsData = { sessionId: null, busy: false };
+        const data: ChatWsData = { kind: "chat", sessionId: null, busy: false };
         if (server.upgrade(req, { data })) return undefined;
         return new Response("expected websocket upgrade", { status: 426 });
       },
@@ -100,71 +100,80 @@ export function createServer(options: ServerOptions): Bun.Server<ChatWsData> {
     websocket: {
       async message(ws, raw) {
         const data = ws.data;
-        const send = (frame: ChatServerFrame): void => {
-          ws.send(JSON.stringify(frame));
-        };
-
-        let msg: ChatAsk;
-        try {
-          msg = JSON.parse(String(raw)) as ChatAsk;
-        } catch {
-          return;
-        }
-        if (msg.type !== "ask" || typeof msg.question !== "string") return;
-        if (data.busy) {
-          send({ type: "busy" });
-          return;
-        }
-
-        data.busy = true;
-        const isFirstTurn = !data.sessionId;
-        const mode = msg.mode ?? "ask";
-        const prompt = buildPrompt({
-          diff: msg.diff ?? "",
-          question: msg.question,
-          isFirstTurn,
-          mode,
-        });
-        try {
-          for await (const event of runTurn({
-            cwd: process.cwd(),
-            prompt,
-            sessionId: data.sessionId ?? undefined,
-            mode,
-          })) {
-            switch (event.kind) {
-              case "session":
-                data.sessionId = event.sessionId;
-                send({ type: "session", sessionId: event.sessionId });
-                break;
-              case "text":
-                send({ type: "chunk", text: event.text });
-                break;
-              case "progress":
-                send({ type: "progress", text: event.text });
-                break;
-              case "tool":
-                send({
-                  type: "tool",
-                  name: event.name,
-                  target: relativizeTarget(event.target, process.cwd()),
-                });
-                break;
-              case "error":
-                send({ type: "error", message: event.message });
-                break;
-              case "done":
-                // `done` is emitted in the finally below, once the turn has
-                // fully completed and `busy` is cleared — so a client that
-                // fires its next question on `done` never races `busy`.
-                break;
-            }
-          }
-        } finally {
-          data.busy = false;
-          send({ type: "done" });
-        }
+        if (data.kind === "chat") return handleChatMessage(ws, data, raw);
       },
     },
   });
+}
+
+/** Handle one /api/chat message: run a claude turn and relay its events. */
+async function handleChatMessage(
+  ws: Bun.ServerWebSocket<ChatWsData>,
+  data: ChatWsData,
+  raw: string | Buffer,
+): Promise<void> {
+  const send = (frame: ChatServerFrame): void => {
+    ws.send(JSON.stringify(frame));
+  };
+
+  let msg: ChatAsk;
+  try {
+    msg = JSON.parse(String(raw)) as ChatAsk;
+  } catch {
+    return;
+  }
+  if (msg.type !== "ask" || typeof msg.question !== "string") return;
+  if (data.busy) {
+    send({ type: "busy" });
+    return;
+  }
+
+  data.busy = true;
+  const isFirstTurn = !data.sessionId;
+  const mode = msg.mode ?? "ask";
+  const prompt = buildPrompt({
+    diff: msg.diff ?? "",
+    question: msg.question,
+    isFirstTurn,
+    mode,
+  });
+  try {
+    for await (const event of runTurn({
+      cwd: process.cwd(),
+      prompt,
+      sessionId: data.sessionId ?? undefined,
+      mode,
+    })) {
+      switch (event.kind) {
+        case "session":
+          data.sessionId = event.sessionId;
+          send({ type: "session", sessionId: event.sessionId });
+          break;
+        case "text":
+          send({ type: "chunk", text: event.text });
+          break;
+        case "progress":
+          send({ type: "progress", text: event.text });
+          break;
+        case "tool":
+          send({
+            type: "tool",
+            name: event.name,
+            target: relativizeTarget(event.target, process.cwd()),
+          });
+          break;
+        case "error":
+          send({ type: "error", message: event.message });
+          break;
+        case "done":
+          // `done` is emitted in the finally below, once the turn has
+          // fully completed and `busy` is cleared — so a client that
+          // fires its next question on `done` never races `busy`.
+          break;
+      }
+    }
+  } finally {
+    data.busy = false;
+    send({ type: "done" });
+  }
 }
