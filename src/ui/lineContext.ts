@@ -5,14 +5,7 @@ import type { DiffRow, LineSide } from "../shared/lines";
 
 // Pure diff-line helpers live in src/shared/lines.ts (shared with the
 // headless comments CLI); re-exported here for the UI's existing imports.
-export {
-  anchorTextOf,
-  commentId,
-  flattenDiff,
-  keyGi,
-  keyOfRow,
-  lineMaps,
-} from "../shared/lines";
+export { anchorTextOf, commentId, flattenDiff, keyGi, keyOfRow, lineMaps } from "../shared/lines";
 export type { DiffRow, LineMaps, LineSide } from "../shared/lines";
 
 export type Located = {
