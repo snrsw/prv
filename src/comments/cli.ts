@@ -7,15 +7,22 @@
  * HEAD-vs-worktree diff (never from raw file content), so CLI-created
  * comments anchor in the UI exactly like browser-created ones.
  */
-import { stat } from "node:fs/promises";
+import { $ } from "bun";
 import { computeDiff } from "../diff/engine";
 import type { Comment, StoredMessage } from "../shared/comments";
+import { pathExists } from "../shared/fs";
 import { anchorTextOf, commentId, flattenDiff, keyOfRow } from "../shared/lines";
-import { readComments, writeComments } from "./store";
+import { readCommentsStrict, writeComments } from "./store";
 
 export type CliResult = { code: number; out: string; err: string };
 
-export const COMMENT_SUBCOMMANDS = ["comments", "comment", "reply", "resolve", "unresolve"];
+export const COMMENT_SUBCOMMANDS: readonly string[] = [
+  "comments",
+  "comment",
+  "reply",
+  "resolve",
+  "unresolve",
+] as const;
 
 const ok = (out = ""): CliResult => ({ code: 0, out, err: "" });
 const fail = (err: string): CliResult => ({ code: 1, out: "", err });
@@ -36,7 +43,7 @@ type Flags = {
   positional: string[];
   unresolved: boolean;
   json: boolean;
-  role: string;
+  role: StoredMessage["role"];
   file?: string;
 };
 
@@ -44,7 +51,11 @@ function parseFlags(argv: string[]): Flags | { error: string } {
   const flags: Flags = { positional: [], unresolved: false, json: false, role: "assistant" };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
-    if (arg === "--unresolved") flags.unresolved = true;
+    if (arg === "--") {
+      // End of options: everything after is positional (dash-leading messages).
+      flags.positional.push(...argv.slice(i + 1));
+      break;
+    } else if (arg === "--unresolved") flags.unresolved = true;
     else if (arg === "--json") flags.json = true;
     else if (arg === "--role") {
       const next = argv[++i];
@@ -101,20 +112,16 @@ function formatComment(c: Comment): string {
 }
 
 async function list(flags: Flags, cwd: string): Promise<CliResult> {
-  const all = await readComments(cwd);
+  const all = await readCommentsStrict(cwd);
   const comments = flags.unresolved ? all.filter((c) => c.status === "open") : all;
   if (flags.json) return ok(JSON.stringify(comments, null, 2));
   if (comments.length === 0) return ok("no comments");
   return ok(comments.map(formatComment).join("\n"));
 }
 
-async function pathExists(p: string): Promise<boolean> {
-  try {
-    await stat(p);
-    return true;
-  } catch {
-    return false;
-  }
+async function isGitRepo(cwd: string): Promise<boolean> {
+  const r = await $`git -C ${cwd} rev-parse --is-inside-work-tree`.nothrow().quiet();
+  return r.exitCode === 0;
 }
 
 async function addComment(flags: Flags, cwd: string): Promise<CliResult> {
@@ -124,6 +131,9 @@ async function addComment(flags: Flags, cwd: string): Promise<CliResult> {
   if (!parsed) return fail(`invalid target '${target}' — expected <file>:<line> (line >= 1)`);
   const file = parsed.file.replace(/^\.\//, "");
   if (!(await pathExists(`${cwd}/${file}`))) return fail(`prv comment: '${file}' does not exist`);
+  if (!(await isGitRepo(cwd))) {
+    return fail("prv comment: not a git repository — comments anchor to the HEAD-vs-worktree diff");
+  }
 
   const diff = await computeDiff({
     kind: "git",
@@ -144,7 +154,7 @@ async function addComment(flags: Flags, cwd: string): Promise<CliResult> {
   // Build the comment exactly like the UI does, so it relocates in the browser.
   const key = keyOfRow(row);
   const id = commentId(key, key);
-  const comments = await readComments(cwd);
+  const comments = await readCommentsStrict(cwd);
   if (comments.some((c) => c.id === id && c.file === fileDiff.path)) {
     return fail(
       `prv comment: a comment already exists on ${fileDiff.path}:${parsed.line} — ` +
@@ -158,7 +168,7 @@ async function addComment(flags: Flags, cwd: string): Promise<CliResult> {
     end: key,
     anchorText: anchorTextOf([row]),
     status: "open",
-    messages: [{ role: flags.role as StoredMessage["role"], text: message }],
+    messages: [{ role: flags.role, text: message }],
   };
   await writeComments([...comments, comment], cwd);
   if (flags.json) return ok(JSON.stringify(comment, null, 2));
@@ -175,7 +185,7 @@ type Mutation = {
 async function mutateById(flags: Flags, cwd: string, m: Mutation): Promise<CliResult> {
   const [id] = flags.positional;
   if (!id) return fail(m.usage);
-  const comments = await readComments(cwd);
+  const comments = await readCommentsStrict(cwd);
   const located = locateById(comments, id, flags.file);
   if ("error" in located) return fail(`${m.errorPrefix}: ${located.error}`);
   const updated = comments.map((c) => (c === located.comment ? m.mutate(c) : c));
@@ -186,7 +196,7 @@ async function mutateById(flags: Flags, cwd: string, m: Mutation): Promise<CliRe
 function replyMutation(flags: Flags): Mutation | { error: string } {
   const message = flags.positional[1];
   if (!message) return { error: 'usage: prv reply <id> "message" [--file <path>]' };
-  const role = flags.role as StoredMessage["role"];
+  const role = flags.role;
   return {
     usage: 'usage: prv reply <id> "message" [--file <path>]',
     errorPrefix: "prv reply",
@@ -207,6 +217,16 @@ export async function runCommentsCli(argv: string[], cwd: string): Promise<CliRe
   const flags = parseFlags(rest);
   if ("error" in flags) return fail(`prv ${command}: ${flags.error}`);
 
+  try {
+    return await dispatch(command!, flags, cwd);
+  } catch (err) {
+    // e.g. a corrupt .prv/comments.json from readCommentsStrict.
+    const message = err instanceof Error ? err.message : String(err);
+    return fail(`prv ${command}: ${message}`);
+  }
+}
+
+async function dispatch(command: string, flags: Flags, cwd: string): Promise<CliResult> {
   switch (command) {
     case "comments": {
       const [sub, ...subRest] = flags.positional;

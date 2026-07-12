@@ -2,7 +2,7 @@ import { test, expect, describe, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readComments, writeComments, commentsPath } from "./store";
+import { readComments, readCommentsStrict, writeComments, commentsPath } from "./store";
 import type { Comment } from "../shared/comments";
 
 const dirs: string[] = [];
@@ -48,5 +48,22 @@ describe("comment store", () => {
     mkdirSync(join(dir, ".prv"));
     writeFileSync(commentsPath(dir), JSON.stringify([sample]));
     expect(await readComments(dir)).toEqual([sample]);
+  });
+
+  test("strict read: missing file is empty, corrupt file throws", async () => {
+    const missing = tmp();
+    expect(await readCommentsStrict(missing)).toEqual([]);
+
+    const dir = tmp();
+    mkdirSync(join(dir, ".prv"));
+    writeFileSync(commentsPath(dir), "{ not json");
+    expect(readCommentsStrict(dir)).rejects.toThrow(/comments\.json/);
+  });
+
+  test("strict read: wrong JSON shape throws", async () => {
+    const dir = tmp();
+    mkdirSync(join(dir, ".prv"));
+    writeFileSync(commentsPath(dir), JSON.stringify({ comments: "nope" }));
+    expect(readCommentsStrict(dir)).rejects.toThrow(/comments\.json/);
   });
 });

@@ -1,6 +1,14 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import { $ } from "bun";
-import { rmSync, writeFileSync, appendFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  appendFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mkTempRepo } from "../support";
 import { parseTarget, runCommentsCli } from "../../src/comments/cli";
@@ -226,6 +234,113 @@ describe("reply", () => {
   });
 });
 
+describe("bad inputs exit 1 with a pointed error", () => {
+  test.each([
+    [["reply", "c:2_2:2_2", "msg", "--role", "banana"], "--role"],
+    [["resolve", "c:2_2:2_2", "--bogus"], "unknown flag"],
+    [["reply", "c:2_2:2_2", "msg", "--file"], "--file"],
+    [["reply", "c:2_2:2_2"], "usage"],
+    [["resolve"], "usage"],
+    [["unresolve"], "usage"],
+    [["frobnicate"], "unknown command"],
+  ])("%p -> error containing %p", async (argv, needle) => {
+    const repo = await tmpRepo();
+    await writeComments([seeded()], repo);
+    const res = await runCommentsCli(argv as string[], repo);
+    expect(res.code).toBe(1);
+    expect(res.err).toContain(needle as string);
+  });
+});
+
+describe("-- end-of-options separator", () => {
+  test("reply accepts a dash-leading message after --", async () => {
+    const repo = await tmpRepo();
+    await writeComments([seeded()], repo);
+    const res = await runCommentsCli(["reply", "c:2_2:2_2", "--", "-nit: tighten this"], repo);
+    expect(res.code).toBe(0);
+    const c = (await readComments(repo))[0]!;
+    expect(c.messages.at(-1)).toEqual({ role: "assistant", text: "-nit: tighten this" });
+  });
+
+  test("comment accepts a dash-leading message after --", async () => {
+    const repo = await repoWithEdit();
+    const res = await runCommentsCli(["comment", "--", "a.ts:11", "-1 on this rename"], repo);
+    expect(res.code).toBe(0);
+    const c = (await readComments(repo))[0]!;
+    expect(c.messages[0]!.text).toBe("-1 on this rename");
+  });
+});
+
+describe("corrupt comment store", () => {
+  const corrupt = (repo: string) => {
+    mkdirSync(join(repo, ".prv"), { recursive: true });
+    writeFileSync(join(repo, ".prv/comments.json"), '{"comments": [ {"id": "c:1_1:1_1", TRUNC');
+  };
+
+  test("list refuses with exit 1 instead of reporting an empty store", async () => {
+    const repo = await tmpRepo();
+    corrupt(repo);
+    const res = await runCommentsCli(["comments", "list"], repo);
+    expect(res.code).toBe(1);
+    expect(res.err).toContain("comments.json");
+  });
+
+  test("comment refuses to overwrite a corrupt store", async () => {
+    const repo = await repoWithEdit();
+    corrupt(repo);
+    const before = readFileSync(join(repo, ".prv/comments.json"), "utf8");
+    const res = await runCommentsCli(["comment", "a.ts:11", "x"], repo);
+    expect(res.code).toBe(1);
+    expect(res.err).toContain("comments.json");
+    expect(readFileSync(join(repo, ".prv/comments.json"), "utf8")).toBe(before);
+  });
+
+  test("reply reports the corruption, not a missing id", async () => {
+    const repo = await tmpRepo();
+    corrupt(repo);
+    const res = await runCommentsCli(["reply", "c:1_1:1_1", "msg"], repo);
+    expect(res.code).toBe(1);
+    expect(res.err).toContain("comments.json");
+  });
+});
+
+describe("more list output", () => {
+  test("empty store human format says 'no comments'", async () => {
+    const repo = await tmpRepo();
+    const res = await runCommentsCli(["comments", "list"], repo);
+    expect(res.code).toBe(0);
+    expect(res.out).toBe("no comments");
+  });
+
+  test("old-side-only anchor labels as 'old N'", async () => {
+    const repo = await tmpRepo();
+    await writeComments(
+      [
+        seeded({
+          id: "c:5_:5_",
+          start: { old: 5, new: null },
+          end: { old: 5, new: null },
+          anchorText: ["-five"],
+        }),
+      ],
+      repo,
+    );
+    const res = await runCommentsCli(["comments", "list"], repo);
+    expect(res.out).toContain("a.ts:old 5");
+  });
+});
+
+describe("outside a git repository", () => {
+  test("comment exits 1 naming the real cause", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "prv-nongit-"));
+    repos.push(dir);
+    writeFileSync(join(dir, "x.txt"), "hello\n");
+    const res = await runCommentsCli(["comment", "x.txt:1", "m"], dir);
+    expect(res.code).toBe(1);
+    expect(res.err).toContain("not a git repository");
+  });
+});
+
 describe("cli dispatch (e2e)", () => {
   const cliPath = join(import.meta.dir, "../../src/cli.ts");
 
@@ -251,6 +366,19 @@ describe("cli dispatch (e2e)", () => {
     const err = await new Response(proc.stderr).text();
     expect(await proc.exited).toBe(1);
     expect(err).toContain("usage: prv comment");
+  });
+
+  test("keyword wins over a file literally named 'comments'", async () => {
+    const repo = await tmpRepo();
+    writeFileSync(join(repo, "comments"), "i am a file\n");
+    const proc = Bun.spawn(["bun", cliPath, "comments", "list", "--json"], {
+      cwd: repo,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const out = await new Response(proc.stdout).text();
+    expect(await proc.exited).toBe(0);
+    expect(JSON.parse(out)).toEqual([]);
   });
 
   test("`prv --help` documents the comments commands", async () => {

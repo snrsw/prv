@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 import { $ } from "bun";
-import { stat } from "node:fs/promises";
 import { COMMENT_SUBCOMMANDS, runCommentsCli } from "./comments/cli";
 import type { DiffMode } from "./diff/engine";
 import { createServer } from "./server";
+import { pathExists } from "./shared/fs";
 import { version } from "./version";
 
 export type CLIOptions = {
@@ -13,15 +13,6 @@ export type CLIOptions = {
   help: boolean;
   version: boolean;
 };
-
-async function pathExists(p: string): Promise<boolean> {
-  try {
-    await stat(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 async function isRef(cwd: string, ref: string): Promise<boolean> {
   const r = await $`git -C ${cwd} rev-parse --verify --quiet ${ref}`.nothrow().quiet();
