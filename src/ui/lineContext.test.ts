@@ -1,14 +1,13 @@
 import { test, expect, describe } from "bun:test";
 import {
   flattenDiff,
-  lineMaps,
-  keyGi,
   keyOfRow,
   anchorTextOf,
   commentId,
   relocateComment,
   rangeLabel,
   buildCommentContext,
+  buildThreadContext,
 } from "./lineContext";
 import type { FileDiff } from "./types";
 import type { Comment } from "../shared/comments";
@@ -36,29 +35,8 @@ const file: FileDiff = {
   ],
 };
 
+// flattenDiff/lineMaps/keyGi behavior is covered in src/shared/diffLines.test.ts.
 const rows = flattenDiff(file);
-
-describe("flattenDiff", () => {
-  test("assigns global indices and old/new numbers per marker", () => {
-    expect(rows.map((r) => [r.gi, r.marker, r.old, r.new])).toEqual([
-      [0, " ", 1, 1],
-      [1, "-", 2, null],
-      [2, "+", null, 2],
-      [3, "+", null, 3],
-      [4, " ", 3, 4],
-    ]);
-  });
-});
-
-describe("lineMaps + keyGi", () => {
-  const maps = lineMaps(rows);
-  test("new and old numbers resolve to the right global index", () => {
-    expect(keyGi(maps, { old: null, new: 2 })).toBe(2); // added line
-    expect(keyGi(maps, { old: 2, new: null })).toBe(1); // deleted line
-    expect(keyGi(maps, { old: 1, new: 1 })).toBe(0); // context, prefers new
-    expect(keyGi(maps, { old: 99, new: null })).toBeNull();
-  });
-});
 
 describe("relocateComment", () => {
   const mixed: Comment = {
@@ -105,5 +83,23 @@ describe("rangeLabel + context + id", () => {
     expect(commentId(keyOfRow(rows[1]!), keyOfRow(rows[3]!))).toBe(
       commentId({ old: 2, new: null }, { old: null, new: 3 }),
     );
+  });
+});
+
+describe("buildThreadContext", () => {
+  const context = "File: greet.ts\nI'm commenting on these diff lines:";
+
+  test("an empty transcript returns the context unchanged", () => {
+    expect(buildThreadContext(context, [])).toBe(context);
+  });
+
+  test("appends the transcript with role labels, in order", () => {
+    const ctx = buildThreadContext(context, [
+      { role: "assistant", text: "**Finding**\n\nDetails." },
+      { role: "user", text: "Is this real?" },
+    ]);
+    expect(ctx.startsWith(context)).toBe(true);
+    expect(ctx).toContain("Prior conversation on this comment:");
+    expect(ctx.indexOf("Assistant: **Finding**")).toBeLessThan(ctx.indexOf("User: Is this real?"));
   });
 });

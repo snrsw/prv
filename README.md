@@ -56,6 +56,12 @@ prv --no-open                      # don't auto-open browser
 
 `diff` auto-classifies each argument: an existing path is treated as a path; otherwise it is resolved against the current repo as a git ref. **When an argument is both an existing path and a valid ref name, the path wins.** To force ref interpretation, use `HEAD`, a SHA, or `origin/<branch>`. To force path interpretation, use `./name`.
 
+### Agent review
+
+The **Review** button in the topbar runs three read-only review agents in parallel over the current diff — correctness, silent failures, and test coverage. Their findings land as inline review comments, anchored to the diff lines they cite (with severity and lens badges). Each one is a normal comment thread: reply to discuss it with the agent, use "Apply with agent" to fix it, resolve or delete it. Re-running a review stacks new comments; "Clear agent comments" removes open ones no human has replied to. Stop cancels an in-flight run.
+
+Like the diff chat, this needs Claude Code (the `claude` CLI) installed and logged in. Each review spawns three `claude` runs over the whole diff.
+
 ## Use with Claude Code
 
 prv ships as a Claude Code plugin (requires the `prv` binary on PATH — install it with Nix as above):

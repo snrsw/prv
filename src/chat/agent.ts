@@ -176,6 +176,8 @@ export type RunTurnArgs = {
   prompt: string;
   sessionId?: string;
   mode?: TurnMode;
+  /** Aborting kills the claude subprocess; the turn ends without a result. */
+  signal?: AbortSignal;
 };
 
 const BASE_ARGS = ["--print", "--verbose", "--output-format", "stream-json"];
@@ -206,6 +208,7 @@ export async function* runTurn({
   prompt,
   sessionId,
   mode = "ask",
+  signal,
 }: RunTurnArgs): AsyncGenerator<ChatEvent> {
   const args = buildArgs(mode, sessionId);
 
@@ -225,29 +228,44 @@ export async function* runTurn({
     return;
   }
 
+  const onAbort = (): void => {
+    proc.kill();
+  };
+  if (signal?.aborted) onAbort();
+  else signal?.addEventListener("abort", onAbort, { once: true });
+
   let sawResult = false;
   const decoder = new TextDecoder();
   let buf = "";
 
-  const reader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    let nl: number;
-    while ((nl = buf.indexOf("\n")) >= 0) {
-      const line = buf.slice(0, nl);
-      buf = buf.slice(nl + 1);
-      for (const event of parseEvent(line)) {
-        if (event.kind === "done") sawResult = true;
-        yield event;
+  try {
+    const reader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl);
+        buf = buf.slice(nl + 1);
+        for (const event of parseEvent(line)) {
+          if (event.kind === "done") sawResult = true;
+          yield event;
+        }
       }
     }
+    for (const event of parseEvent(buf)) {
+      if (event.kind === "done") sawResult = true;
+      yield event;
+    }
+  } finally {
+    // Reaps the subprocess when the consumer stops iterating early; a no-op
+    // after normal exit.
+    signal?.removeEventListener("abort", onAbort);
+    proc.kill();
   }
-  for (const event of parseEvent(buf)) {
-    if (event.kind === "done") sawResult = true;
-    yield event;
-  }
+
+  if (signal?.aborted) return; // killed on purpose — not an error
 
   const exitCode = await proc.exited;
   if (!sawResult) {

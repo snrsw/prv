@@ -11,7 +11,7 @@ import { $ } from "bun";
 import { computeDiff } from "../diff/engine";
 import type { Comment, StoredMessage } from "../shared/comments";
 import { pathExists } from "../shared/fs";
-import { anchorTextOf, commentId, flattenDiff, keyOfRow } from "../shared/lines";
+import { anchorTextOf, commentId, flattenDiff, keyOfRow } from "../shared/diffLines";
 import { readCommentsStrict, writeComments } from "./store";
 
 export type CliResult = { code: number; out: string; err: string };

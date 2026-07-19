@@ -1,19 +1,28 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import DOMPurify from "dompurify";
+import { markdownToHtml } from "../markdown";
 import { useDiffChat } from "../useDiffChat";
+import { buildThreadContext } from "../lineContext";
+import { splitFindingBody } from "../reviewComments";
 import { ChatMessageList } from "./ChatMessageList";
 import type { Comment, StoredMessage } from "../../shared/comments";
 import type { FileDiff } from "../types";
+
+/** How the parent placed this thread in the diff. */
+export type ThreadPlacement = "anchored" | "moved" | "file-level";
 
 /**
  * An inline GitHub-style comment thread for a (possibly multi-line, mixed +/-)
  * diff range, backed by a persisted Comment. Read-only Q&A by default; "Apply
  * with agent" (after confirmation) lets the agent edit files, then refreshes
  * the diff. `label` and `context` are computed by the parent from the diff.
+ * Agent-review comments additionally render a badge row and their finding
+ * body as markdown.
  */
 export function CommentThread({
   file,
   comment,
-  orphaned,
+  placement,
   label,
   context,
   onUpdate,
@@ -22,7 +31,7 @@ export function CommentThread({
 }: {
   file: FileDiff;
   comment: Comment;
-  orphaned: boolean;
+  placement: ThreadPlacement;
   label: string;
   context: string;
   onUpdate: (updater: (c: Comment) => Comment) => void;
@@ -37,10 +46,20 @@ export function CommentThread({
   const applyPendingRef = useRef(false);
 
   const resolved = comment.status === "resolved";
+  const isReview = comment.source === "review";
+  // A fresh session's first turn carries the persisted transcript, so replies
+  // to a review finding (or to any thread after a reload) keep their context.
+  const threadContext = buildThreadContext(context, comment.messages);
+
+  const { body, rest } = isReview ? splitFindingBody(messages) : { body: null, rest: messages };
+  const bodyHtml = useMemo(
+    () => (body === null ? "" : DOMPurify.sanitize(markdownToHtml(body))),
+    [body],
+  );
 
   const onSend = () => {
     if (input.trim() === "" || streaming) return;
-    send(input, context, "ask");
+    send(input, threadContext, "ask");
     setInput("");
   };
 
@@ -51,7 +70,7 @@ export function CommentThread({
       .pop();
     const instruction = input.trim() || lastUser?.text || "Make the change discussed above.";
     applyPendingRef.current = true;
-    send(instruction, context, "apply");
+    send(instruction, threadContext, "apply");
     setInput("");
   };
 
@@ -74,9 +93,20 @@ export function CommentThread({
   return (
     <div className={`prv-thread ${resolved ? "prv-thread-resolved" : ""}`}>
       <div className="prv-thread-head">
-        <span className="prv-thread-loc">
-          {file.path}:{label}
-          {resolved && <span className="prv-thread-badge"> resolved</span>}
+        <span className="prv-thread-title">
+          <span className="prv-thread-loc">
+            {label ? `${file.path}:${label}` : file.path}
+            {resolved && <span className="prv-thread-badge"> resolved</span>}
+          </span>
+          {isReview && (
+            <span className="prv-thread-chips">
+              <span className="prv-agent-badge">agent review</span>
+              <span className={`prv-severity prv-severity-${comment.severity ?? "info"}`}>
+                {comment.severity ?? "info"}
+              </span>
+              {comment.lens && <span className="prv-lens-tag">{comment.lens}</span>}
+            </span>
+          )}
         </span>
         <span className="prv-thread-actions">
           <button
@@ -97,17 +127,29 @@ export function CommentThread({
         </span>
       </div>
 
-      {orphaned && (
+      {placement === "moved" && (
         <div className="prv-thread-banner">
           The lines this comment was on have changed; showing it here without an anchor.
+        </div>
+      )}
+      {placement === "file-level" && (
+        <div className="prv-thread-banner prv-thread-banner-info">
+          File-level finding — not tied to specific lines.
         </div>
       )}
 
       {!resolved && (
         <>
-          {messages.length > 0 && (
+          {body !== null && (
+            <div
+              className="markdown-body prv-finding-body"
+              // Sanitized via DOMPurify in the useMemo above before injection.
+              dangerouslySetInnerHTML={{ __html: bodyHtml }}
+            />
+          )}
+          {rest.length > 0 && (
             <div className="prv-thread-messages">
-              <ChatMessageList messages={messages} streaming={streaming} />
+              <ChatMessageList messages={rest} streaming={streaming} />
               <div ref={endRef} />
             </div>
           )}

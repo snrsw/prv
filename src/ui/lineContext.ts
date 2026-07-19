@@ -1,12 +1,20 @@
 import type { FileDiff } from "./types";
-import type { Comment } from "../shared/comments";
-import { anchorTextOf, flattenDiff, keyGi, lineMaps } from "../shared/lines";
-import type { DiffRow, LineSide } from "../shared/lines";
+import type { Comment, StoredMessage } from "../shared/comments";
+import { anchorTextOf, flattenDiff, keyGi, lineMaps, type DiffRow } from "../shared/diffLines";
+import type { LineSide } from "../shared/diffLines";
 
-// Pure diff-line helpers live in src/shared/lines.ts (shared with the
-// headless comments CLI); re-exported here for the UI's existing imports.
-export { anchorTextOf, commentId, flattenDiff, keyGi, keyOfRow, lineMaps } from "../shared/lines";
-export type { DiffRow, LineMaps, LineSide } from "../shared/lines";
+// The pure diff-row helpers (incl. commentId) live in shared/ — the server
+// and the headless comments CLI use them too; keep re-exporting them here so
+// UI code has a single import site.
+export {
+  anchorTextOf,
+  commentId,
+  flattenDiff,
+  keyGi,
+  keyOfRow,
+  lineMaps,
+} from "../shared/diffLines";
+export type { DiffRow, LineMaps, LineSide } from "../shared/diffLines";
 
 export type Located = {
   lo: number;
@@ -59,4 +67,16 @@ export function buildCommentContext(file: FileDiff, slice: DiffRow[]): string {
     "",
     ...anchorTextOf(slice),
   ].join("\n");
+}
+
+/**
+ * A thread's first-turn context plus its persisted transcript, so a fresh
+ * claude session knows the prior conversation (for review comments, that
+ * includes the finding itself). Harmless on later turns of a live session —
+ * only a session's first send transmits context.
+ */
+export function buildThreadContext(context: string, messages: StoredMessage[]): string {
+  if (messages.length === 0) return context;
+  const transcript = messages.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`);
+  return [context, "", "Prior conversation on this comment:", "", ...transcript].join("\n");
 }

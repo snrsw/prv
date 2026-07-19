@@ -1,8 +1,9 @@
 /**
- * Pure diff-line helpers shared by the UI and the headless comments CLI:
- * flattening a FileDiff into rows, mapping line numbers to rows, and deriving
- * a comment's anchor (id + anchorText) from a row range.
+ * Pure helpers over a file's diff lines, shared by the UI (comment anchoring,
+ * selection) and the server (review findings → comment transform). Moved out
+ * of `src/ui/lineContext.ts` so non-UI code never imports from `ui/`.
  */
+
 import type { FileDiff } from "../diff/types";
 import type { LineKey } from "./comments";
 
