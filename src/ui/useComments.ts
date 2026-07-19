@@ -53,8 +53,13 @@ export function useComments(ready: boolean) {
     (id: string) => mutate((prev) => prev.filter((c) => c.id !== id)),
     [mutate],
   );
+  /** Remove every matching comment in one mutation (one debounced PUT). */
+  const removeWhere = useCallback(
+    (pred: (c: Comment) => boolean) => mutate((prev) => prev.filter((c) => !pred(c))),
+    [mutate],
+  );
 
-  return { comments, addComment, updateComment, removeComment };
+  return { comments, addComment, updateComment, removeComment, removeWhere };
 }
 
 export type CommentsApi = ReturnType<typeof useComments>;

@@ -1565,3 +1565,161 @@ input:focus-visible {
   right: 0;
   z-index: 3;
 }
+
+/* ---- Agent review panel ---- */
+.review-card {
+  background: var(--canvas-default);
+  border: 1px solid var(--border-default);
+  border-radius: var(--card-radius);
+}
+.review-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--border-muted);
+}
+.review-card-title {
+  font-weight: 600;
+}
+.review-card-running {
+  color: var(--fg-subtle);
+  font-style: italic;
+  font-size: var(--fs-ui-sm);
+}
+.review-card-count {
+  background: var(--accent-subtle);
+  color: var(--accent-fg);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: var(--fs-ui-sm);
+}
+.review-card-spacer {
+  flex: 1;
+}
+.review-run-error {
+  color: var(--danger-fg);
+  font-size: var(--fs-ui-sm);
+  padding: var(--sp-2) var(--sp-3);
+}
+.review-lens {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+}
+.review-lens + .review-lens {
+  border-top: 1px solid var(--border-muted);
+}
+.review-lens-name {
+  flex: none;
+  width: 120px;
+  font-family: var(--ff-mono);
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-muted);
+}
+.review-lens-state {
+  flex: none;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: var(--fs-ui-sm);
+  white-space: nowrap;
+}
+.review-lens-state-queued {
+  background: var(--canvas-subtle);
+  color: var(--fg-subtle);
+}
+.review-lens-state-running {
+  background: var(--accent-subtle);
+  color: var(--accent-fg);
+}
+.review-lens-state-done {
+  background: var(--success-subtle);
+  color: var(--success-fg);
+}
+.review-lens-state-error {
+  background: var(--danger-subtle);
+  color: var(--danger-fg);
+}
+/* min-width lets .chat-activity-target's ellipsis work inside the row. */
+.review-lens-activity {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.review-lens-error {
+  color: var(--danger-fg);
+  font-size: var(--fs-ui-sm);
+  padding: 2px var(--sp-2);
+}
+
+/* ---- Review comment chips + finding body ---- */
+.prv-thread-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.prv-thread-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-family: var(--ff-sans);
+}
+.prv-agent-badge {
+  background: var(--accent-subtle);
+  color: var(--accent-fg);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.prv-severity {
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.prv-severity-info {
+  background: var(--accent-subtle);
+  color: var(--accent-fg);
+}
+.prv-severity-minor {
+  background: var(--attention-subtle);
+  color: var(--attention-fg);
+}
+.prv-severity-major {
+  background: var(--danger-subtle);
+  color: var(--danger-fg);
+}
+.prv-severity-critical {
+  background: var(--danger-emphasis);
+  color: #ffffff;
+}
+.prv-lens-tag {
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  color: var(--fg-subtle);
+  background: var(--canvas-subtle);
+  border: 1px solid var(--border-muted);
+  border-radius: 999px;
+  padding: 0 7px;
+  white-space: nowrap;
+}
+.prv-thread-banner-info {
+  color: var(--accent-fg);
+  background: var(--accent-subtle);
+}
+/* Findings render as markdown; keep them compact inside a thread card. */
+.prv-finding-body {
+  font-size: var(--fs-ui-sm);
+  padding: 0 var(--sp-1);
+}
+.prv-finding-body > :first-child {
+  margin-top: 0;
+}
+.prv-finding-body > :last-child {
+  margin-bottom: 0;
+}

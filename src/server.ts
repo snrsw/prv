@@ -7,7 +7,11 @@ import type { Comment } from "./shared/comments";
 import { computeDiff } from "./diff/engine";
 import type { DiffMode } from "./diff/types";
 import { loadFile } from "./file/loader";
+import { annotateDiff } from "./review/annotate";
+import { LENSES } from "./review/lenses";
+import { reviewCwd, runReviewPanel, type TurnRunner } from "./review/runner";
 import type { ChatAsk, ChatServerFrame, ChatWsData } from "./shared/chat";
+import type { ReviewServerFrame, ReviewStart, ReviewWsData } from "./shared/review";
 import { decodeMode } from "./shared/modeQuery";
 import index from "./ui/index.html";
 
@@ -16,10 +20,16 @@ export type ServerOptions = {
   defaultMode?: DiffMode;
   /** Enable frontend HMR + console forwarding. Dev only; off for the shipped binary. */
   development?: boolean;
+  /** Injectable claude-turn runner so tests can script agent turns. */
+  turnRunner?: TurnRunner;
 };
 
-export function createServer(options: ServerOptions): Bun.Server<ChatWsData> {
+/** Every WebSocket route's per-connection state, discriminated by `kind`. */
+type WsData = ChatWsData | ReviewWsData;
+
+export function createServer(options: ServerOptions): Bun.Server<WsData> {
   const { defaultMode } = options;
+  const turnRunner = options.turnRunner ?? runTurn;
 
   return Bun.serve({
     port: options.port,
@@ -27,7 +37,12 @@ export function createServer(options: ServerOptions): Bun.Server<ChatWsData> {
     routes: {
       "/": index,
       "/api/chat": (req, server) => {
-        const data: ChatWsData = { sessionId: null, busy: false };
+        const data: ChatWsData = { kind: "chat", sessionId: null, busy: false };
+        if (server.upgrade(req, { data })) return undefined;
+        return new Response("expected websocket upgrade", { status: 426 });
+      },
+      "/api/review": (req, server) => {
+        const data: ReviewWsData = { kind: "review", busy: false };
         if (server.upgrade(req, { data })) return undefined;
         return new Response("expected websocket upgrade", { status: 426 });
       },
@@ -100,71 +115,148 @@ export function createServer(options: ServerOptions): Bun.Server<ChatWsData> {
     websocket: {
       async message(ws, raw) {
         const data = ws.data;
-        const send = (frame: ChatServerFrame): void => {
-          ws.send(JSON.stringify(frame));
-        };
-
-        let msg: ChatAsk;
-        try {
-          msg = JSON.parse(String(raw)) as ChatAsk;
-        } catch {
-          return;
+        if (data.kind === "review") {
+          return handleReviewMessage(ws, data, raw, defaultMode, turnRunner);
         }
-        if (msg.type !== "ask" || typeof msg.question !== "string") return;
-        if (data.busy) {
-          send({ type: "busy" });
-          return;
-        }
-
-        data.busy = true;
-        const isFirstTurn = !data.sessionId;
-        const mode = msg.mode ?? "ask";
-        const prompt = buildPrompt({
-          diff: msg.diff ?? "",
-          question: msg.question,
-          isFirstTurn,
-          mode,
-        });
-        try {
-          for await (const event of runTurn({
-            cwd: process.cwd(),
-            prompt,
-            sessionId: data.sessionId ?? undefined,
-            mode,
-          })) {
-            switch (event.kind) {
-              case "session":
-                data.sessionId = event.sessionId;
-                send({ type: "session", sessionId: event.sessionId });
-                break;
-              case "text":
-                send({ type: "chunk", text: event.text });
-                break;
-              case "progress":
-                send({ type: "progress", text: event.text });
-                break;
-              case "tool":
-                send({
-                  type: "tool",
-                  name: event.name,
-                  target: relativizeTarget(event.target, process.cwd()),
-                });
-                break;
-              case "error":
-                send({ type: "error", message: event.message });
-                break;
-              case "done":
-                // `done` is emitted in the finally below, once the turn has
-                // fully completed and `busy` is cleared — so a client that
-                // fires its next question on `done` never races `busy`.
-                break;
-            }
-          }
-        } finally {
-          data.busy = false;
-          send({ type: "done" });
-        }
+        return handleChatMessage(ws, data, raw, turnRunner);
+      },
+      close(ws) {
+        // A client that disconnects mid-review cancels it: kill the turns.
+        if (ws.data.kind === "review") ws.data.abort?.abort();
       },
     },
   });
+}
+
+/** Handle one /api/chat message: run a claude turn and relay its events. */
+async function handleChatMessage(
+  ws: Bun.ServerWebSocket<WsData>,
+  data: ChatWsData,
+  raw: string | Buffer,
+  turnRunner: TurnRunner,
+): Promise<void> {
+  const send = (frame: ChatServerFrame): void => {
+    ws.send(JSON.stringify(frame));
+  };
+
+  let msg: ChatAsk;
+  try {
+    msg = JSON.parse(String(raw)) as ChatAsk;
+  } catch {
+    return;
+  }
+  if (msg.type !== "ask" || typeof msg.question !== "string") return;
+  if (data.busy) {
+    send({ type: "busy" });
+    return;
+  }
+
+  data.busy = true;
+  const isFirstTurn = !data.sessionId;
+  const mode = msg.mode ?? "ask";
+  const prompt = buildPrompt({
+    diff: msg.diff ?? "",
+    question: msg.question,
+    isFirstTurn,
+    mode,
+  });
+  try {
+    for await (const event of turnRunner({
+      cwd: process.cwd(),
+      prompt,
+      sessionId: data.sessionId ?? undefined,
+      mode,
+    })) {
+      switch (event.kind) {
+        case "session":
+          data.sessionId = event.sessionId;
+          send({ type: "session", sessionId: event.sessionId });
+          break;
+        case "text":
+          send({ type: "chunk", text: event.text });
+          break;
+        case "progress":
+          send({ type: "progress", text: event.text });
+          break;
+        case "tool":
+          send({
+            type: "tool",
+            name: event.name,
+            target: relativizeTarget(event.target, process.cwd()),
+          });
+          break;
+        case "error":
+          send({ type: "error", message: event.message });
+          break;
+        case "done":
+          // `done` is emitted in the finally below, once the turn has
+          // fully completed and `busy` is cleared — so a client that
+          // fires its next question on `done` never races `busy`.
+          break;
+      }
+    }
+  } finally {
+    data.busy = false;
+    send({ type: "done" });
+  }
+}
+
+/**
+ * Handle one /api/review message: compute + annotate the requested diff, then
+ * run the lens panel, streaming its frames. Every accepted start terminates
+ * with exactly one `done` (via finally); `busy` is a lone reply.
+ */
+async function handleReviewMessage(
+  ws: Bun.ServerWebSocket<WsData>,
+  data: ReviewWsData,
+  raw: string | Buffer,
+  defaultMode: DiffMode | undefined,
+  turnRunner: TurnRunner,
+): Promise<void> {
+  const send = (frame: ReviewServerFrame): void => {
+    ws.send(JSON.stringify(frame));
+  };
+
+  let msg: ReviewStart;
+  try {
+    msg = JSON.parse(String(raw)) as ReviewStart;
+  } catch {
+    return;
+  }
+  if (msg.type !== "start" || typeof msg.modeQuery !== "string") return;
+  if (data.busy) {
+    send({ type: "busy" });
+    return;
+  }
+
+  data.busy = true;
+  data.abort = new AbortController();
+  try {
+    const mode = decodeMode(new URLSearchParams(msg.modeQuery)) ?? defaultMode;
+    if (!mode) {
+      send({ type: "error", message: "no diff mode" });
+      return;
+    }
+    const files = await computeDiff(mode);
+    const annotatedDiff = annotateDiff(files);
+    if (annotatedDiff === "") {
+      send({ type: "error", message: "no reviewable changes" });
+      return;
+    }
+    const runId = crypto.randomUUID().slice(0, 8);
+    send({ type: "run", runId, lenses: LENSES.map((l) => l.id) });
+    await runReviewPanel({
+      annotatedDiff,
+      cwd: reviewCwd(mode, process.cwd()),
+      emit: send,
+      signal: data.abort.signal,
+      turnRunner,
+    });
+  } catch (err) {
+    send({ type: "error", message: err instanceof Error ? err.message : String(err) });
+  } finally {
+    data.busy = false;
+    data.abort = undefined;
+    send({ type: "done" });
+  }
 }

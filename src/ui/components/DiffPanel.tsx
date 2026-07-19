@@ -20,6 +20,7 @@ import {
   relocateComment,
   type LineSide,
 } from "../lineContext";
+import { fileLevelContext, isFileLevelComment } from "../reviewComments";
 import { fileTotals } from "../totals";
 import { CommentThread } from "./CommentThread";
 import { DiffStat } from "./DiffStat";
@@ -464,7 +465,7 @@ export function DiffPanel({
               <CommentThread
                 file={file}
                 comment={comment}
-                orphaned={false}
+                placement="anchored"
                 label={rangeLabel(loc.slice)}
                 context={buildCommentContext(file, loc.slice)}
                 onUpdate={(updater) => updateComment(comment.id, updater)}
@@ -476,19 +477,25 @@ export function DiffPanel({
           )}
           {orphaned.length > 0 && (
             <div className="prv-orphaned">
-              {orphaned.map((comment) => (
-                <CommentThread
-                  key={comment.id}
-                  file={file}
-                  comment={comment}
-                  orphaned
-                  label="lines changed"
-                  context={orphanContext(file.path, comment)}
-                  onUpdate={(updater) => updateComment(comment.id, updater)}
-                  onRemove={() => removeComment(comment.id)}
-                  onApplied={onApplied}
-                />
-              ))}
+              {orphaned.map((comment) => {
+                // Never-anchored review findings are file-level, not "moved".
+                const fileLevel = isFileLevelComment(comment);
+                return (
+                  <CommentThread
+                    key={comment.id}
+                    file={file}
+                    comment={comment}
+                    placement={fileLevel ? "file-level" : "moved"}
+                    label={fileLevel ? "" : "lines changed"}
+                    context={
+                      fileLevel ? fileLevelContext(file.path) : orphanContext(file.path, comment)
+                    }
+                    onUpdate={(updater) => updateComment(comment.id, updater)}
+                    onRemove={() => removeComment(comment.id)}
+                    onApplied={onApplied}
+                  />
+                );
+              })}
             </div>
           )}
         </div>
