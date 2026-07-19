@@ -62,6 +62,37 @@ The **Review** button in the topbar runs three read-only review agents in parall
 
 Like the diff chat, this needs Claude Code (the `claude` CLI) installed and logged in. Each review spawns three `claude` runs over the whole diff.
 
+## Use with Claude Code
+
+prv ships as a Claude Code plugin (requires the `prv` binary on PATH — install it with Nix as above):
+
+```sh
+claude plugin marketplace add snrsw/prv
+claude plugin install prv@prv
+```
+
+This adds:
+
+- **`/prv`** — launches the review UI on the current repo state, or on two refs/paths (`/prv main feature`).
+- **`prv-review` skill** — teaches the agent to read and act on review comments headlessly.
+
+### Headless review comments (for agents and scripts)
+
+The same review comments the browser UI shows live in `.prv/comments.json` and can be driven from the CLI — no server needed:
+
+```sh
+prv comments list --unresolved --json   # what needs attention
+prv comment src/app.ts:42 "This branch is dead code."
+prv reply c:_42:_42 "Fixed: removed the branch."
+prv resolve c:_42:_42
+```
+
+A typical agent loop: list unresolved comments, make the requested change, reply on the thread, resolve. Notes:
+
+- Run from the repo root — comments are stored under the current directory.
+- `prv comment` anchors to lines of the `HEAD` vs working-tree diff (changed lines plus nearby context), so CLI-created comments render in the UI on the right lines.
+- Use `--json` for machine-readable output; errors exit 1 with a message on stderr.
+
 ## Development
 
 The repo ships a Nix flake; `direnv allow` will drop you into a shell with `bun` and `git`.

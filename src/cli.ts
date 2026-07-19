@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 import { $ } from "bun";
-import { stat } from "node:fs/promises";
+import { COMMENT_SUBCOMMANDS, runCommentsCli } from "./comments/cli";
 import type { DiffMode } from "./diff/engine";
 import { createServer } from "./server";
+import { pathExists } from "./shared/fs";
 import { version } from "./version";
 
 export type CLIOptions = {
@@ -12,15 +13,6 @@ export type CLIOptions = {
   help: boolean;
   version: boolean;
 };
-
-async function pathExists(p: string): Promise<boolean> {
-  try {
-    await stat(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 async function isRef(cwd: string, ref: string): Promise<boolean> {
   const r = await $`git -C ${cwd} rev-parse --verify --quiet ${ref}`.nothrow().quiet();
@@ -106,12 +98,37 @@ Usage:
   prv --version, -v            Print version and exit
   prv --help, -h               Print this help and exit
 
+Review comments (headless, no browser — for agents and scripts):
+  prv comments list            List review comments [--unresolved] [--json]
+  prv comment <file>:<line> "msg"
+                               Add a comment anchored to a diff line
+                               [--role user|assistant] [--json]
+  prv reply <id> "msg"         Append to a comment thread [--role] [--file <path>]
+  prv resolve <id>             Mark a comment resolved [--file <path>]
+  prv unresolve <id>           Reopen a resolved comment [--file <path>]
+
+  Comments live in .prv/comments.json under the current directory; run these
+  from the repo root. \`prv comment\` anchors to lines of the HEAD-vs-worktree
+  diff (changed lines plus nearby context). These keywords take precedence
+  over file names — view a file named "comment" with \`prv ./comment\`.
+
 Notes:
   The "chat about the diff" feature requires Claude Code (the \`claude\` CLI)
   installed separately.`;
 
 async function main() {
-  const opts = await parseArgs(Bun.argv.slice(2), process.cwd());
+  const argv = Bun.argv.slice(2);
+
+  // Headless comments CLI: keywords win over file names (`prv ./comment`
+  // forces the path form, matching the existing ref/path convention).
+  if (argv[0] !== undefined && COMMENT_SUBCOMMANDS.includes(argv[0])) {
+    const res = await runCommentsCli(argv, process.cwd());
+    if (res.out) console.log(res.out);
+    if (res.err) console.error(res.err);
+    process.exit(res.code);
+  }
+
+  const opts = await parseArgs(argv, process.cwd());
 
   if (opts.help) {
     console.log(HELP);

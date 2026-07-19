@@ -23,6 +23,31 @@ export async function readComments(dir: string = process.cwd()): Promise<Comment
   }
 }
 
+/**
+ * Read comments for `dir`, but treat an existing-yet-unreadable store as an
+ * error instead of an empty list. Used by the headless CLI, where "corrupt
+ * file" silently becoming "no comments" would mislead an agent (and a
+ * follow-up write would destroy the corrupt file's contents). Missing file
+ * still reads as `[]`. The server keeps the tolerant `readComments` so the
+ * browser UI degrades gracefully.
+ */
+export async function readCommentsStrict(dir: string = process.cwd()): Promise<Comment[]> {
+  const file = Bun.file(commentsPath(dir));
+  if (!(await file.exists())) return [];
+  let data: CommentsFile | Comment[] | null;
+  try {
+    data = (await file.json()) as CommentsFile | Comment[] | null;
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(`could not read ${commentsPath(dir)}: ${reason} — fix or remove the file`);
+  }
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.comments)) return data.comments;
+  throw new Error(
+    `could not read ${commentsPath(dir)}: unrecognized shape — fix or remove the file`,
+  );
+}
+
 /** Replace the whole comment store for `dir`. Creates `.prv/` if needed. */
 export async function writeComments(
   comments: Comment[],

@@ -1,18 +1,20 @@
 import type { FileDiff } from "./types";
-import type { Comment, LineKey, StoredMessage } from "../shared/comments";
+import type { Comment, StoredMessage } from "../shared/comments";
 import { anchorTextOf, flattenDiff, keyGi, lineMaps, type DiffRow } from "../shared/diffLines";
 import type { LineSide } from "../shared/diffLines";
 
-// The pure diff-row helpers live in shared/ (the server uses them too); keep
-// re-exporting them here so UI code has a single import site.
-export { anchorTextOf, flattenDiff, keyGi, keyOfRow, lineMaps } from "../shared/diffLines";
+// The pure diff-row helpers (incl. commentId) live in shared/ — the server
+// and the headless comments CLI use them too; keep re-exporting them here so
+// UI code has a single import site.
+export {
+  anchorTextOf,
+  commentId,
+  flattenDiff,
+  keyGi,
+  keyOfRow,
+  lineMaps,
+} from "../shared/diffLines";
 export type { DiffRow, LineMaps, LineSide } from "../shared/diffLines";
-
-/** Stable id derived from a comment's range endpoints. */
-export function commentId(start: LineKey, end: LineKey): string {
-  const k = (key: LineKey) => `${key.old ?? ""}_${key.new ?? ""}`;
-  return `c:${k(start)}:${k(end)}`;
-}
 
 export type Located = {
   lo: number;

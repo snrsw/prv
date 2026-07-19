@@ -75,3 +75,9 @@ export function keyOfRow(row: DiffRow): LineKey {
 export function anchorTextOf(slice: DiffRow[]): string[] {
   return slice.map((r) => r.marker + r.text);
 }
+
+/** Stable id derived from a comment's range endpoints. */
+export function commentId(start: LineKey, end: LineKey): string {
+  const k = (key: LineKey) => `${key.old ?? ""}_${key.new ?? ""}`;
+  return `c:${k(start)}:${k(end)}`;
+}

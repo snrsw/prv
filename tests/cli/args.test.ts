@@ -1,10 +1,40 @@
 import { test, expect } from "bun:test";
 import { $ } from "bun";
-import { mkdtempSync, mkdirSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "../../src/cli";
 import { mkTempRepo } from "../support";
+
+test("`./comments` is a path, not the comments subcommand (keyword escape hatch)", async () => {
+  // The comments-CLI dispatch keys on a bare keyword; `./comments` must fall
+  // through to the viewer and serve a file literally named `comments`,
+  // instead of running the headless comments CLI.
+  const repo = await mkTempRepo("prv-cli-escape-");
+  writeFileSync(join(repo, "comments"), "i am a file\n");
+  await $`git -C ${repo} add comments`.quiet();
+  await $`git -C ${repo} commit -qm init`.quiet();
+  writeFileSync(join(repo, "comments"), "edited\n");
+
+  const cliPath = join(import.meta.dir, "../../src/cli.ts");
+  const proc = Bun.spawn(["bun", cliPath, "./comments", "--no-open", "--port", "0"], {
+    cwd: repo,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  // The viewer path prints "prv listening at <url>"; the headless path would
+  // instead print comments output and exit. Read until we see the banner.
+  const reader = proc.stdout.getReader();
+  let buf = "";
+  const decoder = new TextDecoder();
+  while (!buf.includes("listening at")) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value);
+  }
+  proc.kill();
+  expect(buf).toContain("prv listening at");
+});
 
 test("no args → git mode HEAD vs worktree at cwd, open=true, port=0", async () => {
   const opts = await parseArgs([], "/work");
