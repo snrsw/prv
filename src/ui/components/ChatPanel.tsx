@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { isSubmitKey } from "../keys";
 import { useDiffChat } from "../useDiffChat";
 import { ChatMessageList } from "./ChatMessageList";
 import type { FileDiff } from "../types";
@@ -54,7 +55,14 @@ export function ChatPanel({ files, open }: { files: FileDiff[] | null; open: boo
           rows={2}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+            if (
+              isSubmitKey({
+                key: e.key,
+                shiftKey: e.shiftKey,
+                isComposing: e.nativeEvent.isComposing,
+                keyCode: e.keyCode,
+              })
+            ) {
               e.preventDefault();
               onSend();
             }
