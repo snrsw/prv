@@ -18,15 +18,6 @@ export async function loadFile(mode: DiffMode, path: string, side: FileSide): Pr
 type Source = { kind: "disk"; root: string } | { kind: "git"; cwd: string; ref: string };
 
 function resolveSource(mode: DiffMode, side: FileSide): Source {
-  if (mode.kind === "path-vs-path") {
-    return { kind: "disk", root: side === "new" ? mode.b : mode.a };
-  }
-  if (mode.kind === "ref-vs-path") {
-    const useRef = side === "new" ? !mode.refOnLeft : mode.refOnLeft;
-    return useRef
-      ? { kind: "git", cwd: mode.cwd, ref: mode.ref }
-      : { kind: "disk", root: mode.path };
-  }
   if (side === "old") return { kind: "git", cwd: mode.cwd, ref: mode.leftRef };
   if (mode.right.kind === "ref") return { kind: "git", cwd: mode.cwd, ref: mode.right.ref };
   return { kind: "disk", root: mode.cwd };

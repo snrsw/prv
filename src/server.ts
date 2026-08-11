@@ -1,6 +1,4 @@
 import { $ } from "bun";
-import { readdir } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
 import { buildPrompt, relativizeTarget, runTurn } from "./chat/agent";
 import { readComments, writeComments } from "./comments/store";
 import type { Comment } from "./shared/comments";
@@ -9,7 +7,7 @@ import type { DiffMode } from "./diff/types";
 import { loadFile } from "./file/loader";
 import { annotateDiff } from "./review/annotate";
 import { LENSES } from "./review/lenses";
-import { reviewCwd, runReviewPanel, type TurnRunner } from "./review/runner";
+import { runReviewPanel, type TurnRunner } from "./review/runner";
 import type { ChatAsk, ChatServerFrame, ChatWsData } from "./shared/chat";
 import type { ReviewServerFrame, ReviewStart, ReviewWsData } from "./shared/review";
 import { decodeMode } from "./shared/modeQuery";
@@ -46,7 +44,7 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
         if (server.upgrade(req, { data })) return undefined;
         return new Response("expected websocket upgrade", { status: 426 });
       },
-      "/api/config": () => Response.json({ mode: defaultMode ?? null, serverCwd: process.cwd() }),
+      "/api/config": () => Response.json({ mode: defaultMode ?? null }),
       "/api/diff": {
         GET: async (req) => {
           const mode = decodeMode(new URL(req.url).searchParams) ?? defaultMode;
@@ -82,22 +80,6 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
             .filter((line) => line.startsWith("\t"))
             .map((line) => line.slice(1));
           return Response.json({ branches });
-        },
-      },
-      "/api/list-dirs": {
-        GET: async (req) => {
-          const path = new URL(req.url).searchParams.get("path");
-          if (!path || !isAbsolute(path)) return Response.json({ dirs: [] });
-          try {
-            const entries = await readdir(path, { withFileTypes: true });
-            const dirs = entries
-              .filter((e) => e.isDirectory() && !e.name.startsWith("."))
-              .map((e) => join(path, e.name))
-              .sort();
-            return Response.json({ dirs });
-          } catch {
-            return Response.json({ dirs: [] });
-          }
         },
       },
       "/api/comments": {
@@ -247,7 +229,7 @@ async function handleReviewMessage(
     send({ type: "run", runId, lenses: LENSES.map((l) => l.id) });
     await runReviewPanel({
       annotatedDiff,
-      cwd: reviewCwd(mode, process.cwd()),
+      cwd: mode.cwd,
       emit: send,
       signal: data.abort.signal,
       turnRunner,

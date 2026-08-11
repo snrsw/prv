@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { reviewCwd, runReviewPanel, type TurnRunner } from "./runner";
+import { runReviewPanel, type TurnRunner } from "./runner";
 import { RETRY_PROMPT, LENSES, type Lens } from "./lenses";
 import type { ChatEvent, RunTurnArgs } from "../chat/agent";
 import type { ReviewFinding, ReviewServerFrame } from "../shared/review";
@@ -177,20 +177,5 @@ describe("runReviewPanel — the panel", () => {
     expect(calls).toHaveLength(1); // no retry after abort
     expect(calls[0]?.signal).toBe(controller.signal); // forwarded to the turn
     expect(frames).toEqual([{ type: "lens", lens: "correctness", state: "running" }]);
-  });
-});
-
-describe("reviewCwd", () => {
-  test("uses the diff's repo when it has one, the fallback otherwise", () => {
-    expect(reviewCwd({ kind: "path-vs-path", a: "/x", b: "/y" }, "/fb")).toBe("/fb");
-    expect(
-      reviewCwd({ kind: "git", cwd: "/repo", leftRef: "HEAD", right: { kind: "worktree" } }, "/fb"),
-    ).toBe("/repo");
-    expect(
-      reviewCwd(
-        { kind: "ref-vs-path", cwd: "/repo", ref: "HEAD", path: "/p", refOnLeft: true },
-        "/fb",
-      ),
-    ).toBe("/repo");
   });
 });

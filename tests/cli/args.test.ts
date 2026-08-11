@@ -58,45 +58,19 @@ test("--port 8765 sets port", async () => {
   expect(opts.port).toBe(8765);
 });
 
-test("diff <ref> <path>: ref classified as ref, existing dir as path → ref-vs-path with refOnLeft=true", async () => {
+test("diff <ref> <dir>: a directory arg is rejected — prv compares refs only", async () => {
   const repo = await mkTempRepo("prv-cli-");
   await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
   const folder = mkdtempSync(join(tmpdir(), "prv-cli-folder-"));
 
-  const opts = await parseArgs(["diff", "HEAD", folder], repo);
-
-  expect(opts.mode).toEqual({
-    kind: "ref-vs-path",
-    cwd: repo,
-    ref: "HEAD",
-    path: folder,
-    refOnLeft: true,
-  });
+  await expect(parseArgs(["diff", "HEAD", folder], repo)).rejects.toThrow(/git ref/);
 });
 
-test("diff <path> <ref>: refOnLeft=false when path comes first", async () => {
-  const repo = await mkTempRepo("prv-cli-");
-  await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
-  const folder = mkdtempSync(join(tmpdir(), "prv-cli-folder-"));
-
-  const opts = await parseArgs(["diff", folder, "HEAD"], repo);
-
-  expect(opts.mode).toEqual({
-    kind: "ref-vs-path",
-    cwd: repo,
-    ref: "HEAD",
-    path: folder,
-    refOnLeft: false,
-  });
-});
-
-test("diff <path> <path>: both existing dirs → path-vs-path", async () => {
+test("diff <dir> <dir>: two directories are rejected — prv compares refs only", async () => {
   const a = mkdtempSync(join(tmpdir(), "prv-cli-a-"));
   const b = mkdtempSync(join(tmpdir(), "prv-cli-b-"));
 
-  const opts = await parseArgs(["diff", a, b], "/work");
-
-  expect(opts.mode).toEqual({ kind: "path-vs-path", a, b });
+  await expect(parseArgs(["diff", a, b], "/work")).rejects.toThrow(/git ref/);
 });
 
 test("diff <ref> <ref>: both resolve as refs → git mode with both refs", async () => {
@@ -114,26 +88,25 @@ test("diff <ref> <ref>: both resolve as refs → git mode with both refs", async
   });
 });
 
-test("diff <neither> <neither>: throws when args are neither paths nor refs", async () => {
+test("diff <neither> <neither>: throws when neither arg resolves as a ref", async () => {
   const repo = await mkTempRepo("prv-cli-");
   await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
 
   await expect(parseArgs(["diff", "no-such-thing", "also-bogus"], repo)).rejects.toThrow();
 });
 
-test("diff: when an arg is both a valid ref and an existing dir, path interpretation wins", async () => {
+test("diff: a name that is both a ref and an existing dir is read as the ref", async () => {
   const repo = await mkTempRepo("prv-cli-");
   await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
-  const ambiguous = join(repo, "main");
-  mkdirSync(ambiguous);
-  const opts = await parseArgs(["diff", ambiguous, "HEAD"], repo);
+  mkdirSync(join(repo, "main"));
+
+  const opts = await parseArgs(["diff", "main", "HEAD"], repo);
 
   expect(opts.mode).toEqual({
-    kind: "ref-vs-path",
+    kind: "git",
     cwd: repo,
-    ref: "HEAD",
-    path: ambiguous,
-    refOnLeft: false,
+    leftRef: "main",
+    right: { kind: "ref", ref: "HEAD" },
   });
 });
 

@@ -68,7 +68,7 @@ prv comment <file>:<line> "This branch is dead code." [--json]
 
 ## Showing the UI to the human
 
-Launch `prv` (or `prv diff <a> <b>`) in the background and report the
+Launch `prv` (or `prv diff <refA> <refB>`) in the background and report the
 `prv listening at <url>` line. CLI-created comments appear in the UI on the
 anchored lines.
 
