@@ -3,8 +3,8 @@ import { createPortal } from "react-dom";
 import { html as diff2html } from "diff2html";
 import { Diff2HtmlUI } from "diff2html/lib/ui/js/diff2html-ui-base";
 import hljs from "highlight.js";
-import DOMPurify from "dompurify";
-import { isMarkdownPath, markdownToHtml } from "../markdown";
+import { isMarkdownPath } from "../markdown";
+import { Markdown } from "./Markdown";
 import type { DiffOutputFormat, FileContent, FileDiff, FileSide, ServerMode } from "../types";
 import { encodeMode } from "../../shared/modeQuery";
 import type { Comment, LineKey } from "../../shared/comments";
@@ -675,24 +675,8 @@ function MarkdownFileView({ path, text }: { path: string; text: string }) {
           Source
         </button>
       </div>
-      {md === "rendered" ? (
-        <MarkdownView text={text} />
-      ) : (
-        <FileContentCode path={path} text={text} />
-      )}
+      {md === "rendered" ? <Markdown source={text} /> : <FileContentCode path={path} text={text} />}
     </div>
-  );
-}
-
-/** Render Markdown to sanitized HTML. Sanitization guards against scripts/handlers in file content. */
-function MarkdownView({ text }: { text: string }) {
-  const html = useMemo(() => DOMPurify.sanitize(markdownToHtml(text)), [text]);
-  return (
-    <div
-      className="markdown-body"
-      // Sanitized via DOMPurify on the line above before injection.
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
   );
 }
 
