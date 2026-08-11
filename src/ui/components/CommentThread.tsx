@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import DOMPurify from "dompurify";
 import { markdownToHtml } from "../markdown";
 import { useDiffChat } from "../useDiffChat";
+import { isSubmitKey } from "../keys";
 import { buildThreadContext } from "../lineContext";
 import { splitFindingBody } from "../reviewComments";
 import { ChatMessageList } from "./ChatMessageList";
@@ -182,7 +183,14 @@ export function CommentThread({
                 rows={2}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
+                  if (
+                    isSubmitKey({
+                      key: e.key,
+                      shiftKey: e.shiftKey,
+                      isComposing: e.nativeEvent.isComposing,
+                      keyCode: e.keyCode,
+                    })
+                  ) {
                     e.preventDefault();
                     onSend();
                   }
