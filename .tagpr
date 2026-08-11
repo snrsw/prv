@@ -1,0 +1,6 @@
+[tagpr]
+    vPrefix = true
+    releaseBranch = main
+    versionFile = package.json, .claude-plugin/plugin.json
+    changelog = true
+    release = true
