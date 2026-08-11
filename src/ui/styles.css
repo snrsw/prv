@@ -960,6 +960,12 @@ input:focus-visible {
   padding: var(--sp-3);
   border-radius: 6px;
   overflow-x: auto;
+  /* A code line cannot wrap, so its intrinsic width would widen every ancestor —
+     the chat panel, or the table cell holding a comment thread. `width: 0` keeps
+     that contribution at zero and `min-width` fills the space actually available,
+     so long lines scroll inside the block instead. */
+  width: 0;
+  min-width: 100%;
 }
 .markdown-body pre code {
   background: transparent;
@@ -1225,6 +1231,9 @@ input:focus-visible {
 
 .chat-panel {
   flex: 0 0 380px;
+  /* A rendered code block cannot wrap, so without min-width its intrinsic width
+     would beat the 380px basis and stretch the panel over the diff. */
+  min-width: 0;
   background: var(--canvas-default);
   border-left: 1px solid var(--border-default);
   position: sticky;
@@ -1265,6 +1274,7 @@ input:focus-visible {
 
 .chat-messages {
   flex: 1 1 auto;
+  min-width: 0;
   overflow-y: auto;
   padding: var(--sp-3);
   display: flex;
@@ -1298,6 +1308,54 @@ input:focus-visible {
 .chat-thinking {
   color: var(--fg-subtle);
   font-style: italic;
+}
+/* Assistant replies render as markdown; strip the file-view padding and tighten
+   block spacing so a short answer stays one bubble tall. `white-space: normal`
+   undoes the `pre-wrap` of .chat-msg, which would otherwise double the gaps. */
+.chat-markdown {
+  white-space: normal;
+  padding: 0;
+  font-size: inherit;
+  line-height: 1.55;
+}
+.chat-markdown > :last-child {
+  margin-bottom: 0;
+}
+.chat-markdown p,
+.chat-markdown ul,
+.chat-markdown ol,
+.chat-markdown blockquote,
+.chat-markdown pre,
+.chat-markdown table {
+  margin: 0 0 0.6em;
+}
+.chat-markdown ul,
+.chat-markdown ol {
+  padding-left: 1.4em;
+}
+.chat-markdown h1,
+.chat-markdown h2,
+.chat-markdown h3,
+.chat-markdown h4 {
+  margin: 0.8em 0 0.4em;
+  font-size: var(--fs-ui);
+}
+.chat-markdown h1,
+.chat-markdown h2 {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+/* The bubble is already --canvas-subtle, so code needs a lighter fill to stand out. */
+.chat-markdown code {
+  background: var(--canvas-default);
+  border: 1px solid var(--border-muted);
+}
+.chat-markdown pre {
+  background: var(--canvas-default);
+  border: 1px solid var(--border-muted);
+}
+.chat-markdown pre code {
+  border: 0;
 }
 .chat-activity {
   display: flex;
