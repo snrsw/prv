@@ -1,10 +1,14 @@
 import { toolIcon, type ChatMessage } from "../useDiffChat";
+import { Markdown } from "./Markdown";
 
 /**
  * Renders the chat transcript: user/assistant text bubbles, muted `tool`
  * activity lines, and muted `progress` narration. Shared by ChatPanel and
  * CommentThread so the per-message rendering lives in one place. Callers own the
  * surrounding scroll container and trailing scroll anchor.
+ *
+ * Assistant replies render as Markdown, since that is what the agent writes.
+ * User messages stay plain text so the bubble shows exactly what was typed.
  */
 export function ChatMessageList({
   messages,
@@ -33,9 +37,20 @@ export function ChatMessageList({
             </div>
           );
         }
+        if (m.text === "" && streaming) {
+          return (
+            <div key={i} className={`chat-msg chat-msg-${m.role}`}>
+              <span className="chat-thinking">thinking…</span>
+            </div>
+          );
+        }
         return (
           <div key={i} className={`chat-msg chat-msg-${m.role}`}>
-            {m.text === "" && streaming ? <span className="chat-thinking">thinking…</span> : m.text}
+            {m.role === "assistant" ? (
+              <Markdown source={m.text} className="chat-markdown" />
+            ) : (
+              m.text
+            )}
           </div>
         );
       })}

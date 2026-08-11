@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import DOMPurify from "dompurify";
-import { markdownToHtml } from "../markdown";
+import { useEffect, useRef, useState } from "react";
+import { Markdown } from "./Markdown";
 import { useDiffChat } from "../useDiffChat";
 import { isSubmitKey } from "../keys";
 import { buildThreadContext } from "../lineContext";
@@ -53,10 +52,6 @@ export function CommentThread({
   const threadContext = buildThreadContext(context, comment.messages);
 
   const { body, rest } = isReview ? splitFindingBody(messages) : { body: null, rest: messages };
-  const bodyHtml = useMemo(
-    () => (body === null ? "" : DOMPurify.sanitize(markdownToHtml(body))),
-    [body],
-  );
 
   const onSend = () => {
     if (input.trim() === "" || streaming) return;
@@ -141,13 +136,7 @@ export function CommentThread({
 
       {!resolved && (
         <>
-          {body !== null && (
-            <div
-              className="markdown-body prv-finding-body"
-              // Sanitized via DOMPurify in the useMemo above before injection.
-              dangerouslySetInnerHTML={{ __html: bodyHtml }}
-            />
-          )}
+          {body !== null && <Markdown source={body} className="prv-finding-body" />}
           {rest.length > 0 && (
             <div className="prv-thread-messages">
               <ChatMessageList messages={rest} streaming={streaming} />

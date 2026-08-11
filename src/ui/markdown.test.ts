@@ -25,3 +25,22 @@ test("markdownToHtml: renders list items and emphasis", () => {
   expect(html).toContain("<li>");
   expect(html).toContain("<strong>bold</strong>");
 });
+
+// Shapes an agent reply commonly uses in the chat panel.
+test("markdownToHtml: renders fenced code with the language class", () => {
+  const html = markdownToHtml("```ts\nconst a = 1;\n```");
+  expect(html).toContain("<pre>");
+  expect(html).toContain("language-ts");
+  expect(html).toContain("const a = 1;");
+});
+
+test("markdownToHtml: renders a table", () => {
+  const html = markdownToHtml("| a | b |\n| --- | --- |\n| 1 | 2 |");
+  expect(html).toContain("<table>");
+  expect(html).toContain("<th>a</th>");
+  expect(html).toContain("<td>2</td>");
+});
+
+test("markdownToHtml: escapes HTML in an inline code span", () => {
+  expect(markdownToHtml("use `<script>` here")).toContain("<code>&lt;script&gt;</code>");
+});
