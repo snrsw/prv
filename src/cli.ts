@@ -19,20 +19,17 @@ async function isRef(cwd: string, ref: string): Promise<boolean> {
   return r.exitCode === 0;
 }
 
-async function classifyDiffArgs(cwd: string, a: string, b: string): Promise<DiffMode> {
-  const [aIsPath, bIsPath] = await Promise.all([pathExists(a), pathExists(b)]);
-  const [aIsRef, bIsRef] = await Promise.all([
-    aIsPath ? Promise.resolve(false) : isRef(cwd, a),
-    bIsPath ? Promise.resolve(false) : isRef(cwd, b),
-  ]);
-
-  if (aIsPath && bIsPath) return { kind: "path-vs-path", a, b };
-  if (aIsRef && bIsRef) return { kind: "git", cwd, leftRef: a, right: { kind: "ref", ref: b } };
-  if (aIsRef && bIsPath) return { kind: "ref-vs-path", cwd, ref: a, path: b, refOnLeft: true };
-  if (aIsPath && bIsRef) return { kind: "ref-vs-path", cwd, ref: b, path: a, refOnLeft: false };
-  throw new Error(
-    `prv diff: '${a}' and '${b}' are neither both paths, both refs, nor a ref+path pair.`,
-  );
+/** `prv diff <a> <b>` compares two git refs; a name that isn't one is an error. */
+async function refDiffMode(cwd: string, a: string, b: string): Promise<DiffMode> {
+  const [aIsRef, bIsRef] = await Promise.all([isRef(cwd, a), isRef(cwd, b)]);
+  const notRefs = [aIsRef ? null : a, bIsRef ? null : b].filter((x) => x !== null);
+  if (notRefs.length > 0) {
+    throw new Error(
+      `not a git ref: ${notRefs.map((r) => `'${r}'`).join(", ")}. ` +
+        "prv compares git refs (e.g. `prv diff main HEAD`).",
+    );
+  }
+  return { kind: "git", cwd, leftRef: a, right: { kind: "ref", ref: b } };
 }
 
 export async function parseArgs(argv: string[], cwd: string): Promise<CLIOptions> {
@@ -50,7 +47,7 @@ export async function parseArgs(argv: string[], cwd: string): Promise<CLIOptions
       const a = argv[i + 1];
       const b = argv[i + 2];
       if (!a || !b) throw new Error("`diff` requires two args: prv diff <a> <b>");
-      mode = await classifyDiffArgs(cwd, a, b);
+      mode = await refDiffMode(cwd, a, b);
       usedDiff = true;
       i += 2;
     } else if (arg === "--no-open") {
@@ -88,11 +85,8 @@ const HELP = `prv — Pull-Request like View. Local GitHub-style diff viewer.
 
 Usage:
   prv                          Diff HEAD vs the working tree (default)
-  prv diff <a> <b>             Diff two args; each is auto-classified:
-                                 path vs path, ref vs ref, or ref + path.
-                                 If an arg is both a ref name and an existing
-                                 path, the path wins. Force ref with HEAD/a SHA/
-                                 origin/<branch>; force path with ./name.
+  prv <file>                   Diff HEAD vs the working tree for one file
+  prv diff <a> <b>             Diff two git refs (branch, tag, SHA, HEAD)
   prv --port <n>               Pin the server port (default: a free port)
   prv --no-open                Do not open a browser
   prv --version, -v            Print version and exit
@@ -196,9 +190,7 @@ if (import.meta.main) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (/not a git repository/i.test(message)) {
-      console.error(
-        "prv: not a git repository. cd into a repo, or compare folders with `prv diff <a> <b>`.",
-      );
+      console.error("prv: not a git repository. cd into a git repo and try again.");
     } else {
       console.error(`prv: ${message}`);
     }

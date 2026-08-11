@@ -4,8 +4,6 @@ import { ChatPanel } from "./components/ChatPanel";
 import { DiffPanel } from "./components/DiffPanel";
 import { DiffStat } from "./components/DiffStat";
 import { ModePicker } from "./components/ModePicker";
-import { PathPicker } from "./components/PathPicker";
-import { RefPathPicker } from "./components/RefPathPicker";
 import { ReviewPanel } from "./components/ReviewPanel";
 import { findingsToComments } from "../review/transform";
 import { encodeMode } from "../shared/modeQuery";
@@ -26,7 +24,7 @@ function readStoredDiffOutputFormat(): DiffOutputFormat {
   }
 }
 
-type ServerConfig = { mode: ServerMode | null; serverCwd: string };
+type ServerConfig = { mode: ServerMode | null };
 
 function pathToAnchor(path: string): string {
   return "file-" + path;
@@ -41,7 +39,6 @@ function buildDiffUrl(mode: ServerMode | null): string {
 
 export function App() {
   const [mode, setMode] = useState<ServerMode | null>(null);
-  const [serverCwd, setServerCwd] = useState<string>("");
   const [bootstrapped, setBootstrapped] = useState(false);
   const [files, setFiles] = useState<FileDiff[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -107,35 +104,12 @@ export function App() {
       const cfg = (await fetch("/api/config").then((r) => r.json())) as ServerConfig;
       if (cancelled) return;
       setMode(cfg.mode);
-      setServerCwd(cfg.serverCwd);
       setBootstrapped(true);
     })();
     return () => {
       cancelled = true;
     };
   }, []);
-
-  const cwdOf = (m: ServerMode | null): string => {
-    if (!m) return serverCwd;
-    if (m.kind === "path-vs-path") return m.a;
-    return m.cwd;
-  };
-  const switchToGit = () => {
-    if (mode?.kind === "git") return;
-    setMode({ kind: "git", cwd: cwdOf(mode), leftRef: "HEAD", right: { kind: "worktree" } });
-  };
-  const switchToPaths = () => {
-    if (mode?.kind === "path-vs-path") return;
-    const a = mode?.kind === "ref-vs-path" ? mode.path : (mode?.cwd ?? serverCwd);
-    setMode({ kind: "path-vs-path", a, b: a });
-  };
-  const switchToRefPath = () => {
-    if (mode?.kind === "ref-vs-path") return;
-    const cwd = cwdOf(mode);
-    const ref = mode?.kind === "git" ? mode.leftRef : "HEAD";
-    const path = mode?.kind === "path-vs-path" ? mode.b : cwd;
-    setMode({ kind: "ref-vs-path", cwd, ref, path, refOnLeft: true });
-  };
 
   useEffect(() => {
     if (!bootstrapped) return;
@@ -179,40 +153,7 @@ export function App() {
             <SidebarIcon />
           </button>
           <span className="brand">prv</span>
-          {mode && (
-            <div className="mode-kind-toggle" role="tablist" aria-label="Comparison kind">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode.kind === "git"}
-                className={mode.kind === "git" ? "is-active" : ""}
-                onClick={switchToGit}
-              >
-                Refs
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode.kind === "path-vs-path"}
-                className={mode.kind === "path-vs-path" ? "is-active" : ""}
-                onClick={switchToPaths}
-              >
-                Dirs
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode.kind === "ref-vs-path"}
-                className={mode.kind === "ref-vs-path" ? "is-active" : ""}
-                onClick={switchToRefPath}
-              >
-                Ref ↔ Dir
-              </button>
-            </div>
-          )}
-          {mode?.kind === "git" && <ModePicker mode={mode} onChange={setMode} />}
-          {mode?.kind === "path-vs-path" && <PathPicker mode={mode} onChange={setMode} />}
-          {mode?.kind === "ref-vs-path" && <RefPathPicker mode={mode} onChange={setMode} />}
+          {mode && <ModePicker mode={mode} onChange={setMode} />}
         </div>
         <div className="topbar-meta">
           {files && (

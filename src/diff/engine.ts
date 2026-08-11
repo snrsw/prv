@@ -1,30 +1,10 @@
 import { $ } from "bun";
 import { realpathSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { DiffMode, FileDiff, Hunk, Status } from "./types";
 
 export type { DiffMode, FileDiff, GitRight, Hunk, Status } from "./types";
 
-type RawDiff = { raw: string; aRoot: string; bRoot: string };
-
-async function computeRawDiff(mode: DiffMode): Promise<RawDiff> {
-  if (mode.kind === "path-vs-path") {
-    const result = await $`git diff --no-color --no-index ${mode.a} ${mode.b}`.nothrow().quiet();
-    return { raw: result.stdout.toString(), aRoot: mode.a, bRoot: mode.b };
-  }
-  if (mode.kind === "ref-vs-path") {
-    const tmp = await mkdtemp(join(tmpdir(), "prv-ref-"));
-    try {
-      await $`git -C ${mode.cwd} archive ${mode.ref} | tar -xC ${tmp}`.quiet();
-      const [a, b] = mode.refOnLeft ? [tmp, mode.path] : [mode.path, tmp];
-      const r = await $`git diff --no-color --no-index ${a} ${b}`.nothrow().quiet();
-      return { raw: r.stdout.toString(), aRoot: a, bRoot: b };
-    } finally {
-      await rm(tmp, { recursive: true, force: true });
-    }
-  }
+async function computeRawDiff(mode: DiffMode): Promise<string> {
   // `paths`, when set, is a git pathspec that scopes the diff (e.g. `prv <file>`).
   const paths = mode.paths ?? [];
   if (mode.right.kind === "ref") {
@@ -32,14 +12,13 @@ async function computeRawDiff(mode: DiffMode): Promise<RawDiff> {
       await $`git -C ${mode.cwd} diff --no-color ${mode.leftRef} ${mode.right.ref} -- ${paths}`
         .nothrow()
         .quiet();
-    return { raw: r.stdout.toString(), aRoot: mode.cwd, bRoot: mode.cwd };
+    return r.stdout.toString();
   }
   const tracked = await $`git -C ${mode.cwd} diff --no-color ${mode.leftRef} -- ${paths}`
     .nothrow()
     .quiet();
   const untracked = await rawUntrackedDiffs(mode.cwd, paths);
-  const raw = [tracked.stdout.toString(), untracked].filter((s) => s.length > 0).join("");
-  return { raw, aRoot: mode.cwd, bRoot: mode.cwd };
+  return [tracked.stdout.toString(), untracked].filter((s) => s.length > 0).join("");
 }
 
 async function rawUntrackedDiffs(cwd: string, paths: string[]): Promise<string> {
@@ -62,18 +41,17 @@ async function rawUntrackedDiffs(cwd: string, paths: string[]): Promise<string> 
 }
 
 export async function computeDiff(mode: DiffMode): Promise<FileDiff[]> {
-  const { raw, aRoot, bRoot } = await computeRawDiff(mode);
-  return parseUnifiedDiff(raw, aRoot, bRoot);
+  return parseUnifiedDiff(await computeRawDiff(mode));
 }
 
-function parseUnifiedDiff(text: string, aRoot: string, bRoot: string): FileDiff[] {
+function parseUnifiedDiff(text: string): FileDiff[] {
   if (text.length === 0) return [];
 
   const sections = text.split(/^diff --git /m).filter((s) => s.length > 0);
-  return sections.map((s) => parseFileSection("diff --git " + s, aRoot, bRoot));
+  return sections.map((s) => parseFileSection("diff --git " + s));
 }
 
-function parseFileSection(section: string, aRoot: string, bRoot: string): FileDiff {
+function parseFileSection(section: string): FileDiff {
   const lines = section.split("\n");
   const headerMatch = /^diff --git (a\/\S+) (b\/\S+)/.exec(lines[0] ?? "");
   let oldHeader = "";
@@ -96,7 +74,7 @@ function parseFileSection(section: string, aRoot: string, bRoot: string): FileDi
   }
 
   const status = computeStatus(oldHeader, newHeader);
-  const path = computePath({ binary, headerMatch, oldHeader, newHeader, status, aRoot, bRoot });
+  const path = computePath({ binary, headerMatch, oldHeader, newHeader, status });
 
   const hunks: Hunk[] = [];
   let current: Hunk | null = null;
@@ -136,18 +114,14 @@ function computePath(args: {
   oldHeader: string;
   newHeader: string;
   status: Status;
-  aRoot: string;
-  bRoot: string;
 }): string {
-  const { binary, headerMatch, oldHeader, newHeader, status, aRoot, bRoot } = args;
-  if (binary) return stripRoot(headerMatch?.[2] ?? "", bRoot);
-  return status === "deleted" ? stripRoot(oldHeader, aRoot) : stripRoot(newHeader, bRoot);
+  const { binary, headerMatch, oldHeader, newHeader, status } = args;
+  if (binary) return stripSidePrefix(headerMatch?.[2] ?? "");
+  return stripSidePrefix(status === "deleted" ? oldHeader : newHeader);
 }
 
-function stripRoot(prefixedPath: string, root: string): string {
-  let out = prefixedPath;
-  if (out.startsWith("a/") || out.startsWith("b/")) out = out.slice(2);
-  const r = root.startsWith("/") ? root.slice(1) : root;
-  if (out.startsWith(r + "/")) out = out.slice(r.length + 1);
-  return out;
+/** Git writes every diff path repo-relative behind an `a/` or `b/` side prefix. */
+function stripSidePrefix(prefixedPath: string): string {
+  const out = prefixedPath;
+  return out.startsWith("a/") || out.startsWith("b/") ? out.slice(2) : out;
 }

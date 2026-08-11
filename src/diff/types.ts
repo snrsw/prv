@@ -19,8 +19,11 @@ export type FileDiff = {
 
 export type GitRight = { kind: "ref"; ref: string } | { kind: "worktree" };
 
-export type DiffMode =
-  | { kind: "path-vs-path"; a: string; b: string }
+export type DiffMode = {
+  kind: "git";
+  cwd: string;
+  leftRef: string;
+  right: GitRight;
   // `paths`, when set, limits the diff to those git pathspecs (used by `prv <file>`).
-  | { kind: "git"; cwd: string; leftRef: string; right: GitRight; paths?: string[] }
-  | { kind: "ref-vs-path"; cwd: string; ref: string; path: string; refOnLeft: boolean };
+  paths?: string[];
+};

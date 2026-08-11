@@ -7,18 +7,12 @@
  */
 
 import { relativizeTarget, runTurn, type ChatEvent, type RunTurnArgs } from "../chat/agent";
-import type { DiffMode } from "../diff/types";
 import type { LensId, ReviewServerFrame } from "../shared/review";
 import { extractFindings } from "./findings";
 import { buildReviewPrompt, LENSES, RETRY_PROMPT, type Lens } from "./lenses";
 
 /** `runTurn`'s shape, injectable so tests can script turns without a claude CLI. */
 export type TurnRunner = (args: RunTurnArgs) => AsyncGenerator<ChatEvent>;
-
-/** cwd the reviewers run in: the diff's repo when it has one. */
-export function reviewCwd(mode: DiffMode, fallback: string): string {
-  return mode.kind === "path-vs-path" ? fallback : mode.cwd;
-}
 
 export type RunPanelArgs = {
   annotatedDiff: string;

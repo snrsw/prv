@@ -1,9 +1,9 @@
 # prv — Pull-Request like View
 
-Local GitHub-style diff viewer. Designed for two workflows:
+Local GitHub-style diff viewer for git repositories. Designed for two workflows:
 
 - **Review AI-agent changes before committing** — `prv` opens a browser at a PR-style view of `HEAD` vs working tree.
-- **Compare arbitrary directories** — `prv diff <a> <b>` works on any two paths, refs, or a mix, so you can diff `tmp/feature1/approach1` vs `tmp/feature1/approach2`, `HEAD` vs `./build`, or `main` vs `feature`.
+- **Compare two refs** — `prv diff main feature` gives the same PR-style view for any two branches, tags, or SHAs.
 
 ## Install
 
@@ -11,7 +11,7 @@ Install with Nix (flakes enabled):
 
 ```sh
 nix run github:snrsw/prv                 # run without installing
-nix run github:snrsw/prv -- diff a b     # pass args after --
+nix run github:snrsw/prv -- diff main HEAD   # pass args after --
 nix profile install github:snrsw/prv     # install to your profile
 nix profile upgrade prv                  # later: upgrade
 nix profile remove prv                   # later: remove
@@ -46,15 +46,13 @@ environment.systemPackages = [ inputs.prv.packages.${pkgs.system}.default ];
 ```sh
 prv                                # HEAD vs working tree
 prv <file>                         # HEAD vs working tree, scoped to one file
-prv diff <pathA> <pathB>           # folder vs folder (works outside a git repo)
-prv diff <ref> <path>              # git ref vs an arbitrary folder (or path vs ref)
 prv diff <refA> <refB>             # ref vs ref in the current repo
 
 prv --port 8765                    # pin port
 prv --no-open                      # don't auto-open browser
 ```
 
-`diff` auto-classifies each argument: an existing path is treated as a path; otherwise it is resolved against the current repo as a git ref. **When an argument is both an existing path and a valid ref name, the path wins.** To force ref interpretation, use `HEAD`, a SHA, or `origin/<branch>`. To force path interpretation, use `./name`.
+prv compares git refs, so it runs inside a git repository. Both `diff` arguments are resolved as refs — a branch, tag, SHA, or `HEAD` — and a name that resolves to none of those is an error. Comparing plain directories is not supported.
 
 ### Agent review
 
