@@ -21,6 +21,17 @@ import {
   type LineSide,
 } from "../lineContext";
 import { fileLevelContext, isFileLevelComment } from "../reviewComments";
+import {
+  EXPAND_STEP,
+  addRange,
+  expandFile,
+  gapsOf,
+  revealRange,
+  splitLines,
+  type ExpandDirection,
+  type Gap,
+  type LineRange,
+} from "../hunkExpand";
 import { fileTotals } from "../totals";
 import { CommentThread } from "./CommentThread";
 import { DiffStat } from "./DiffStat";
@@ -75,6 +86,13 @@ export function DiffPanel({
   const fileBodyRef = useRef<HTMLDivElement>(null);
   const scrollHintRef = useRef<{ line: number; screenY: number } | null>(null);
 
+  // Context the reader has asked to see, as new-side line ranges, plus the
+  // file's own lines to fill them from (fetched on the first expand click).
+  const [reveals, setReveals] = useState<LineRange[]>([]);
+  const [source, setSource] = useState<string[] | null>(null);
+  const sourceRef = useRef<Promise<string[] | null> | null>(null);
+  const modeKey = useMemo(() => JSON.stringify(mode), [mode]);
+
   const [hoverPlus, setHoverPlus] = useState<HoverPlus | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   // Stable portal containers (one per thread) — moved into the freshly rendered
@@ -85,6 +103,48 @@ export function DiffPanel({
   // Bumped whenever the diff DOM is (re)built, so the anchoring effect re-runs.
   const [renderTick, setRenderTick] = useState(0);
 
+  // The diff as currently shown: the original one, with any revealed context
+  // folded in. Everything downstream (rendering, anchoring, selection) reads
+  // this, so expanded context behaves exactly like context git sent us.
+  const shown = useMemo(
+    () => (source ? expandFile(file, source, reveals) : file),
+    [file, source, reveals],
+  );
+  const gaps = useMemo(
+    () => (file.binary ? [] : gapsOf(shown.hunks, source?.length ?? null)),
+    [shown.hunks, source, file.binary],
+  );
+
+  // A new diff (or a different comparison) hides everything again.
+  useEffect(() => {
+    sourceRef.current = null;
+    setSource(null);
+    setReveals((prev) => (prev.length === 0 ? prev : []));
+  }, [file.raw, modeKey]);
+
+  const loadSource = useCallback(async (): Promise<string[] | null> => {
+    if (!mode) return null;
+    if (!sourceRef.current) {
+      const side: FileSide = file.status === "deleted" ? "old" : "new";
+      sourceRef.current = fetchFileContent(mode, file.path, side)
+        .then((res) => (res.kind === "text" ? splitLines(res.content) : null))
+        .catch(() => null);
+    }
+    const lines = await sourceRef.current;
+    if (lines) setSource(lines);
+    return lines;
+  }, [mode, file.path, file.status]);
+
+  const onExpand = useCallback(
+    async (gap: Gap, direction: ExpandDirection) => {
+      const range = revealRange(gap, direction);
+      if (!range) return;
+      if (!(await loadSource())) return;
+      setReveals((prev) => addRange(prev, range));
+    },
+    [loadSource],
+  );
+
   useEffect(() => {
     if (!expanded || !ref.current) return;
     if (view !== "diff") return;
@@ -92,7 +152,7 @@ export function DiffPanel({
       ref.current.innerHTML = `<div class="binary-notice">Binary file differs</div>`;
       return;
     }
-    ref.current.innerHTML = diff2html(file.raw, {
+    ref.current.innerHTML = diff2html(shown.raw, {
       drawFileList: false,
       matching: "none",
       outputFormat: outputFormat === "split" ? "side-by-side" : "line-by-line",
@@ -105,7 +165,14 @@ export function DiffPanel({
     );
     ui.highlightCode();
     setRenderTick((t) => t + 1);
-  }, [file.raw, file.binary, expanded, view, outputFormat]);
+  }, [shown.raw, file.binary, expanded, view, outputFormat]);
+
+  // Turn every hunk header into an expander for the lines it hides.
+  useLayoutEffect(() => {
+    const root = ref.current;
+    if (!root || view !== "diff" || file.binary) return;
+    injectExpanders(root, gaps, shown.hunks.length, outputFormat, onExpand);
+  }, [renderTick, gaps, shown.hunks.length, outputFormat, view, file.binary, onExpand]);
 
   // Gutter drag selection. The live drag lives in a ref (read by a window
   // mouseup listener without stale closures); `dragViz` mirrors it for render.
@@ -114,7 +181,7 @@ export function DiffPanel({
 
   // Flatten the diff into a single global-index (gi) line list, so a range can
   // span deleted and added lines (and, in split, both columns).
-  const rows = useMemo(() => flattenDiff(file), [file]);
+  const rows = useMemo(() => flattenDiff(shown), [shown]);
   const maps = useMemo(() => lineMaps(rows), [rows]);
 
   const getContainer = (id: string): HTMLDivElement => {
@@ -149,12 +216,12 @@ export function DiffPanel({
   // Place each comment in the current diff: relocated → anchored under its last
   // line; null → "orphaned" (its lines changed) and rendered below.
   const { anchored, orphaned } = useMemo(() => {
-    const located = comments.map((c) => ({ comment: c, loc: relocateComment(file, c) }));
+    const located = comments.map((c) => ({ comment: c, loc: relocateComment(shown, c) }));
     return {
       anchored: located.flatMap(({ comment, loc }) => (loc ? [{ comment, loc }] : [])),
       orphaned: located.flatMap(({ comment, loc }) => (loc ? [] : [comment])),
     };
-  }, [comments, file]);
+  }, [comments, shown]);
 
   // The line key of a gutter cell, then its global index.
   const keyFromCell = useCallback((cell: HTMLElement): LineKey | null => {
@@ -467,7 +534,7 @@ export function DiffPanel({
                 comment={comment}
                 placement="anchored"
                 label={rangeLabel(loc.slice)}
-                context={buildCommentContext(file, loc.slice)}
+                context={buildCommentContext(shown, loc.slice)}
                 onUpdate={(updater) => updateComment(comment.id, updater)}
                 onRemove={() => removeComment(comment.id)}
                 onApplied={onApplied}
@@ -544,6 +611,137 @@ function orphanContext(path: string, comment: Comment): string {
     "",
     ...(comment.anchorText ?? []),
   ].join("\n");
+}
+
+type ExpandAction = { direction: ExpandDirection; glyph: string; title: string };
+
+/**
+ * What a gap offers: a small one is revealed whole in a single click, a large
+ * one a step at a time from whichever hunk borders it.
+ */
+function expandActions(gap: Gap, hunkCount: number): ExpandAction[] {
+  const size = gap.end === null ? null : gap.end - gap.start + 1;
+  if (size !== null && size <= EXPAND_STEP) {
+    return [
+      { direction: "all", glyph: "↕", title: `Expand ${size} hidden line${size === 1 ? "" : "s"}` },
+    ];
+  }
+  const hidden = size === null ? "to the end of the file" : `${size} hidden lines`;
+  const up: ExpandAction = {
+    direction: "up",
+    glyph: "↑",
+    title: `Expand ${EXPAND_STEP} lines up (${hidden})`,
+  };
+  const down: ExpandAction = {
+    direction: "down",
+    glyph: "↓",
+    title: `Expand ${EXPAND_STEP} lines down (${hidden})`,
+  };
+  return [...(gap.hunkIndex < hunkCount ? [up] : []), ...(gap.hunkIndex > 0 ? [down] : [])];
+}
+
+function expanderButton(
+  action: ExpandAction,
+  gap: Gap,
+  onExpand: (gap: Gap, direction: ExpandDirection) => void,
+): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "prv-expander";
+  button.textContent = action.glyph;
+  button.title = action.title;
+  button.setAttribute("aria-label", action.title);
+  // The gutter is also the comment-selection surface; keep clicks out of it.
+  button.addEventListener("pointerdown", (e) => e.stopPropagation());
+  button.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onExpand(gap, action.direction);
+  });
+  return button;
+}
+
+/**
+ * Fill a hunk-header gutter with its expanders. When the gap offers only one
+ * move, the whole blue row takes the click too — that row is the affordance
+ * readers reach for. `onclick` (not a listener) keeps re-injection idempotent.
+ */
+function fillExpanderCell(
+  cell: HTMLElement,
+  gap: Gap,
+  hunkCount: number,
+  onExpand: (gap: Gap, direction: ExpandDirection) => void,
+): void {
+  const actions = expandActions(gap, hunkCount);
+  if (actions.length === 0) return;
+  cell.classList.add("prv-has-expander");
+  for (const action of actions) cell.appendChild(expanderButton(action, gap, onExpand));
+
+  const row = cell.closest<HTMLElement>("tr");
+  if (!row || actions.length !== 1) return;
+  row.classList.add("prv-expand-clickable");
+  row.onclick = (e) => {
+    if ((e.target as HTMLElement).closest(".prv-expander")) return;
+    onExpand(gap, actions[0]!.direction);
+  };
+}
+
+/** A hunk-header-looking row for the gap below the last hunk, which has none. */
+function trailingExpandRow(
+  gap: Gap,
+  hunkCount: number,
+  split: boolean,
+  onExpand: (gap: Gap, direction: ExpandDirection) => void,
+): HTMLTableRowElement {
+  const row = document.createElement("tr");
+  row.className = "prv-expand-row";
+  const gutter = document.createElement("td");
+  gutter.className = `${split ? "d2h-code-side-linenumber" : "d2h-code-linenumber"} d2h-info`;
+  const code = document.createElement("td");
+  code.className = "d2h-info";
+  const line = document.createElement("div");
+  line.className = split ? "d2h-code-side-line" : "d2h-code-line";
+  code.appendChild(line);
+  row.append(gutter, code);
+  fillExpanderCell(gutter, gap, hunkCount, onExpand);
+  return row;
+}
+
+/**
+ * Put an expander on every hunk header that hides something, and append one
+ * for the gap after the last hunk. In split view both tables get the same
+ * rows, so the two sides stay aligned row for row.
+ */
+function injectExpanders(
+  root: HTMLElement,
+  gaps: Gap[],
+  hunkCount: number,
+  outputFormat: DiffOutputFormat,
+  onExpand: (gap: Gap, direction: ExpandDirection) => void,
+): void {
+  root.querySelectorAll(".prv-expand-row").forEach((n) => n.remove());
+  root.querySelectorAll(".prv-expander").forEach((n) => n.remove());
+  root.querySelectorAll(".prv-has-expander").forEach((n) => n.classList.remove("prv-has-expander"));
+  root.querySelectorAll<HTMLElement>(".prv-expand-clickable").forEach((n) => {
+    n.classList.remove("prv-expand-clickable");
+    n.onclick = null;
+  });
+
+  const split = outputFormat === "split";
+  const tbodies = root.querySelectorAll<HTMLElement>(split ? ".d2h-file-side-diff tbody" : "tbody");
+  // diff2html renders one header row per hunk, so the i-th is hunk i's.
+  const above = new Map(gaps.filter((g) => g.hunkIndex < hunkCount).map((g) => [g.hunkIndex, g]));
+  const trailing = gaps.find((g) => g.hunkIndex === hunkCount);
+
+  for (const tbody of tbodies) {
+    const cells = tbody.querySelectorAll<HTMLElement>(
+      "td.d2h-code-linenumber.d2h-info, td.d2h-code-side-linenumber.d2h-info",
+    );
+    cells.forEach((cell, i) => {
+      const gap = above.get(i);
+      if (gap) fillExpanderCell(cell, gap, hunkCount, onExpand);
+    });
+    if (trailing) tbody.appendChild(trailingExpandRow(trailing, hunkCount, split, onExpand));
+  }
 }
 
 /** Insert a full-width thread row directly under the matching unified row. */
@@ -788,7 +986,7 @@ async function fetchFileContent(
   mode: ServerMode,
   filePath: string,
   side: FileSide,
-  signal: AbortSignal,
+  signal?: AbortSignal,
 ): Promise<FileContent> {
   const url = new URL("/api/file", window.location.origin);
   encodeMode(mode, url.searchParams);

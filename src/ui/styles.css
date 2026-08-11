@@ -1173,6 +1173,54 @@ input:focus-visible {
   display: none !important;
 }
 
+/* ---- hunk header expanders (reveal the context the diff hides) ---- */
+
+/* The dots stand for "there is more here"; the arrows say it better. */
+.d2h-code-linenumber.d2h-info.prv-has-expander::before,
+.d2h-info .d2h-code-linenumber.prv-has-expander::before {
+  display: none !important;
+}
+/* Two arrows must sit on one line, or the header row doubles in height. The
+   split gutter is rtl (that is how diff2html right-aligns its line numbers),
+   which would show the arrows in reverse. */
+.prv-has-expander {
+  white-space: nowrap !important;
+  direction: ltr !important;
+}
+.prv-expander {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent-fg);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.prv-expander:hover {
+  background: var(--accent-subtle);
+}
+/* The split gutter is half the width of the unified one. */
+.d2h-code-side-linenumber .prv-expander {
+  width: 16px;
+}
+tr.prv-expand-clickable {
+  cursor: pointer;
+}
+tr.prv-expand-clickable:hover .d2h-info {
+  filter: brightness(0.97);
+}
+/* The synthetic row below the last hunk mirrors a hunk header's geometry. */
+.prv-expand-row .d2h-code-line,
+.prv-expand-row .d2h-code-side-line {
+  min-height: var(--fs-code-lh);
+}
+
 /* ---- diff2html overrides toward GitHub (side-by-side / split) ---- */
 
 .d2h-files-diff {
