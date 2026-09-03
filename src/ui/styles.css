@@ -511,6 +511,43 @@ input:focus-visible {
   box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
 }
 
+/* Drag handle between panels. It straddles the panel border via negative
+   margins so the grab target is wider than the 2px line it paints. */
+.panel-resizer {
+  flex: 0 0 auto;
+  width: 7px;
+  margin: 0 -3px;
+  position: relative;
+  z-index: 6;
+  cursor: col-resize;
+  touch-action: none;
+}
+.panel-resizer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background-color 80ms ease;
+}
+.panel-resizer:hover::before,
+.panel-resizer:focus-visible::before,
+.panel-resizer.is-dragging::before {
+  background: var(--accent-emphasis);
+}
+.panel-resizer:focus-visible {
+  outline: none;
+}
+/* While a drag is live the pointer can leave the 7px strip between move
+   events; keep the resize cursor and kill text selection everywhere. */
+html.prv-col-resize,
+html.prv-col-resize * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
 .sidebar-empty {
   padding: var(--sp-4);
   color: var(--fg-muted);

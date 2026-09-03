@@ -8,7 +8,15 @@ function assembleDiff(files: FileDiff[] | null): string {
   return (files ?? []).map((f) => f.raw).join("\n");
 }
 
-export function ChatPanel({ files, open }: { files: FileDiff[] | null; open: boolean }) {
+export function ChatPanel({
+  files,
+  open,
+  width,
+}: {
+  files: FileDiff[] | null;
+  open: boolean;
+  width: number;
+}) {
   const { messages, streaming, send, reset } = useDiffChat();
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
@@ -24,7 +32,7 @@ export function ChatPanel({ files, open }: { files: FileDiff[] | null; open: boo
   }, [messages]);
 
   return (
-    <aside className="chat-panel" style={{ display: open ? "flex" : "none" }}>
+    <aside className="chat-panel" style={{ display: open ? "flex" : "none", flexBasis: width }}>
       <div className="chat-header">
         <span className="chat-title">Ask about this diff</span>
         <button
