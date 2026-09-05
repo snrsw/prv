@@ -169,13 +169,18 @@ export function App() {
             <SidebarIcon />
           </button>
           <span className="brand">prv</span>
-          {mode && <ModePicker mode={mode} onChange={setMode} />}
+          {mode?.kind === "git" && <ModePicker mode={mode} onChange={setMode} />}
+          {mode?.kind === "files" && (
+            <span className="mode-chip" title={mode.paths.join("\n")}>
+              {mode.paths.join(", ")}
+            </span>
+          )}
         </div>
         <div className="topbar-meta">
           {files && (
             <>
               <span className="meta-item">
-                <strong>{files.length}</strong> changed
+                <strong>{files.length}</strong> {mode?.kind === "files" ? "files" : "changed"}
               </span>
               <span className="meta-item adds">+{totals.adds}</span>
               <span className="meta-item dels">−{totals.dels}</span>

@@ -45,7 +45,8 @@ environment.systemPackages = [ inputs.prv.packages.${pkgs.system}.default ];
 
 ```sh
 prv                                # HEAD vs working tree
-prv <file>                         # HEAD vs working tree, scoped to one file
+prv <path>                         # HEAD vs working tree, scoped to one file or directory
+prv ~/.claude/plans/x.md           # a file git can't diff is shown whole
 prv diff <refA> <refB>             # ref vs ref in the current repo
 
 prv --port 8765                    # pin port
@@ -53,6 +54,8 @@ prv --no-open                      # don't auto-open browser
 ```
 
 prv compares git refs, so it runs inside a git repository. Both `diff` arguments are resolved as refs — a branch, tag, SHA, or `HEAD` — and a name that resolves to none of those is an error. Comparing plain directories is not supported.
+
+The one exception is `prv <path>` on a path git's diff cannot show: a file outside any repository, or one the repository ignores (a plan under `.claude/plans/`, say). prv then shows the file whole, as an added file, so it can still be read, commented on, and reviewed or discussed with the agent. A directory shows every file under it.
 
 ### Diff chat
 

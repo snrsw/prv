@@ -37,3 +37,13 @@ test("decode returns null for an unknown mode kind", () => {
   const params = new URLSearchParams({ mode: "path-vs-path", a: "/x", b: "/y" });
   expect(decodeMode(params)).toBeNull();
 });
+
+test("files mode round-trips through encode/decode, keeping path order", () => {
+  const mode: DiffMode = { kind: "files", cwd: "/home/me", paths: ["b.md", "/abs/a.md"] };
+  expect(roundTrip(mode)).toEqual(mode);
+});
+
+test("decode returns null for files mode without a path", () => {
+  const params = new URLSearchParams({ mode: "files", cwd: "/home/me" });
+  expect(decodeMode(params)).toBeNull();
+});

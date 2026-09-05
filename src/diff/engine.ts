@@ -1,10 +1,12 @@
 import { $ } from "bun";
 import { realpathSync } from "node:fs";
+import { rawFilesDiff } from "./files";
 import type { DiffMode, FileDiff, Hunk, Status } from "./types";
 
-export type { DiffMode, FileDiff, GitRight, Hunk, Status } from "./types";
+export type { DiffMode, FileDiff, FilesMode, GitMode, GitRight, Hunk, Status } from "./types";
 
 async function computeRawDiff(mode: DiffMode): Promise<string> {
+  if (mode.kind === "files") return rawFilesDiff(mode);
   // `paths`, when set, is a git pathspec that scopes the diff (e.g. `prv <file>`).
   const paths = mode.paths ?? [];
   if (mode.right.kind === "ref") {
