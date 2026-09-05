@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ChatAsk, ChatServerFrame } from "../shared/chat";
+import {
+  DEFAULT_CHAT_AGENT,
+  type ChatAgent,
+  type ChatAsk,
+  type ChatServerFrame,
+} from "../shared/chat";
 import type { StoredMessage } from "../shared/comments";
 import { getChatSettings } from "./chatSettings";
 
@@ -106,6 +111,9 @@ export function toolIcon(name: string): string {
     Read: "▸",
     Edit: "✎",
     Write: "✎",
+    Delete: "✕",
+    WebSearch: "⌕",
+    MCP: "⚙",
     Bash: "$",
     Grep: "⌕",
     Glob: "⌕",
@@ -118,15 +126,17 @@ export function toolIcon(name: string): string {
 /**
  * One read-only-or-apply chat conversation with the agent over the `/api/chat`
  * WebSocket. Each hook instance owns a single connection, which on the server
- * maps to a single Claude session.
+ * maps to a single agent-CLI session.
  *
  * Messages are seeded from `initial` (e.g. a persisted transcript) and every
  * change is reported through `onChange` so the caller can persist it. Ephemeral
  * activity (tool + progress lines) is stripped before `onChange` so only
  * user/assistant text is saved.
  * The hook starts a fresh session per mount, so the first `send` after a reload
- * re-sends `firstTurnContext`; later turns rely on `--resume`. Every turn also
- * carries the app-wide model/effort choice (see `chatSettings`).
+ * re-sends `firstTurnContext`; later turns resume the CLI's session. Every turn
+ * also carries the app-wide agent/model/effort choice (see `chatSettings`);
+ * switching the agent mid-conversation starts a new session (the other CLI
+ * cannot resume it), so the diff is sent again.
  */
 export function useDiffChat(
   initial: ChatMessage[] = [],
@@ -137,6 +147,7 @@ export function useDiffChat(
 
   const wsRef = useRef<WebSocket | null>(null);
   const hasSessionRef = useRef(false);
+  const sessionAgentRef = useRef<ChatAgent | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
@@ -199,15 +210,19 @@ export function useDiffChat(
     (question: string, firstTurnContext: string, mode: ChatAsk["mode"] = "ask") => {
       const q = question.trim();
       if (!q || streaming) return;
-      const diff = hasSessionRef.current ? "" : firstTurnContext;
+      const settings = getChatSettings();
+      const agent = settings.agent ?? DEFAULT_CHAT_AGENT;
+      const resumes = hasSessionRef.current && sessionAgentRef.current === agent;
+      const diff = resumes ? "" : firstTurnContext;
+      sessionAgentRef.current = agent;
       setMessages((m) =>
         commit([...m, { role: "user", text: q }, { role: "assistant", text: "" }]),
       );
       setStreaming(true);
       const ws = ensureSocket();
-      // The app-wide model/effort choice rides along on every turn so a change
-      // made mid-conversation applies from the next question.
-      const payload: ChatAsk = { type: "ask", question: q, diff, mode, ...getChatSettings() };
+      // The app-wide agent/model/effort choice rides along on every turn so a
+      // change made mid-conversation applies from the next question.
+      const payload: ChatAsk = { type: "ask", question: q, diff, mode, ...settings };
       const data = JSON.stringify(payload);
       if (ws.readyState === WebSocket.OPEN) ws.send(data);
       else ws.addEventListener("open", () => ws.send(data), { once: true });
@@ -219,6 +234,7 @@ export function useDiffChat(
     wsRef.current?.close();
     wsRef.current = null;
     hasSessionRef.current = false;
+    sessionAgentRef.current = null;
     setMessages(commit([]));
     setStreaming(false);
   }, [commit]);

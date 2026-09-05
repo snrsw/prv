@@ -1,5 +1,5 @@
 /**
- * Parallel lens runner. Each lens is one read-only claude turn over the same
+ * Parallel lens runner. Each lens is one read-only agent turn over the same
  * annotated diff; its stream events are relayed as lens-tagged wire frames
  * through an injected emitter, and its final reply is parsed into findings
  * (with one --resume retry when the reply lost the JSON block). One lens
@@ -7,11 +7,12 @@
  */
 
 import { relativizeTarget, runTurn, type ChatEvent, type RunTurnArgs } from "../chat/agent";
+import type { ChatSettings } from "../shared/chat";
 import type { LensId, ReviewServerFrame } from "../shared/review";
 import { extractFindings } from "./findings";
 import { buildReviewPrompt, LENSES, RETRY_PROMPT, type Lens } from "./lenses";
 
-/** `runTurn`'s shape, injectable so tests can script turns without a claude CLI. */
+/** `runTurn`'s shape, injectable so tests can script turns without an agent CLI. */
 export type TurnRunner = (args: RunTurnArgs) => AsyncGenerator<ChatEvent>;
 
 export type RunPanelArgs = {
@@ -20,6 +21,8 @@ export type RunPanelArgs = {
   emit: (frame: ReviewServerFrame) => void;
   /** Aborting kills in-flight turns; aborted lenses stop silently. */
   signal?: AbortSignal;
+  /** Which CLI (and model/effort) runs every lens; omitted = Claude Code defaults. */
+  settings?: ChatSettings;
   lenses?: readonly Lens[];
   turnRunner?: TurnRunner;
 };
@@ -69,13 +72,14 @@ async function runLens(
   cwd: string,
   emit: (frame: ReviewServerFrame) => void,
   turnRunner: TurnRunner,
+  settings: ChatSettings,
   signal?: AbortSignal,
 ): Promise<void> {
   emit({ type: "lens", lens: lens.id, state: "running" });
 
   const prompt = buildReviewPrompt(lens, annotatedDiff);
   const first = await collectTurn(
-    turnRunner({ cwd, prompt, mode: "ask", signal }),
+    turnRunner({ cwd, prompt, mode: "ask", signal, ...settings }),
     lens.id,
     cwd,
     emit,
@@ -101,6 +105,7 @@ async function runLens(
       sessionId: first.sessionId,
       mode: "ask",
       signal,
+      ...settings,
     });
     const second = await collectTurn(retry, lens.id, cwd, emit);
     if (second.result !== null) parsed = extractFindings(second.result);
@@ -131,19 +136,22 @@ export async function runReviewPanel({
   cwd,
   emit,
   signal,
+  settings = {},
   lenses = LENSES,
   turnRunner = runTurn,
 }: RunPanelArgs): Promise<void> {
   await Promise.all(
     lenses.map((lens) =>
-      runLens(lens, annotatedDiff, cwd, emit, turnRunner, signal).catch((err: unknown) => {
-        emit({
-          type: "lens",
-          lens: lens.id,
-          state: "error",
-          message: err instanceof Error ? err.message : String(err),
-        });
-      }),
+      runLens(lens, annotatedDiff, cwd, emit, turnRunner, settings, signal).catch(
+        (err: unknown) => {
+          emit({
+            type: "lens",
+            lens: lens.id,
+            state: "error",
+            message: err instanceof Error ? err.message : String(err),
+          });
+        },
+      ),
     ),
   );
 }

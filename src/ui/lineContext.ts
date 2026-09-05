@@ -71,7 +71,7 @@ export function buildCommentContext(file: FileDiff, slice: DiffRow[]): string {
 
 /**
  * A thread's first-turn context plus its persisted transcript, so a fresh
- * claude session knows the prior conversation (for review comments, that
+ * agent session knows the prior conversation (for review comments, that
  * includes the finding itself). Harmless on later turns of a live session —
  * only a session's first send transmits context.
  */

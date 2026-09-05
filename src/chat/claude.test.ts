@@ -1,5 +1,6 @@
 import { test, expect, describe } from "bun:test";
-import { buildArgs, buildPrompt, parseEvent, relativizeTarget } from "./agent";
+import { buildPrompt, relativizeTarget } from "./agent";
+import { buildClaudeArgs as buildArgs, parseClaudeEvent as parseEvent } from "./claude";
 
 describe("buildArgs", () => {
   test("ask profile is read-only (plan + disallow Edit/Write/Bash)", () => {

@@ -179,3 +179,31 @@ describe("runReviewPanel — the panel", () => {
     expect(frames).toEqual([{ type: "lens", lens: "correctness", state: "running" }]);
   });
 });
+
+describe("runReviewPanel — agent settings", () => {
+  test("settings reach the first turn and the --resume retry alike", async () => {
+    const { runner, calls } = fakeRunner([session("s1"), done("no json here")], [done(goodReply)]);
+    const frames: ReviewServerFrame[] = [];
+    await runReviewPanel({
+      annotatedDiff: "### a.ts (modified)\n1\t1\t x",
+      cwd: "/repo",
+      emit: (f) => frames.push(f),
+      settings: { agent: "codex", model: "gpt-5.5", effort: "low" },
+      lenses: [lens("correctness")],
+      turnRunner: runner,
+    });
+    expect(calls).toHaveLength(2);
+    for (const call of calls) {
+      expect(call).toMatchObject({ agent: "codex", model: "gpt-5.5", effort: "low" });
+    }
+    expect(frames.at(-1)).toEqual({ type: "lens", lens: "correctness", state: "done" });
+  });
+
+  test("without settings the turns carry no agent/model/effort (CLI defaults)", async () => {
+    const { runner, calls } = fakeRunner([done(goodReply)]);
+    await run(runner, [lens("correctness")]);
+    expect(calls[0]?.agent).toBeUndefined();
+    expect(calls[0]?.model).toBeUndefined();
+    expect(calls[0]?.effort).toBeUndefined();
+  });
+});

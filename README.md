@@ -39,7 +39,7 @@ environment.systemPackages = [ inputs.prv.packages.${pkgs.system}.default ];
 
 - macOS opens your browser with `open`; Linux uses `xdg-open`. On a headless/SSH box no browser opens — use the printed URL (or pass `--no-open`).
 - The Nix package targets Linux and macOS only (not Windows).
-- The "chat about the diff" / AI-review feature needs Claude Code (the `claude` CLI) installed separately; core diff viewing works without it.
+- The "chat about the diff" / AI-review feature needs a local coding agent installed separately — Claude Code (the `claude` CLI) or OpenAI Codex (the `codex` CLI); core diff viewing works without either.
 
 ## Usage
 
@@ -59,13 +59,15 @@ The one exception is `prv <path>` on a path git's diff cannot show: a file outsi
 
 ### Diff chat
 
-The **Chat** button opens a read-only conversation with your local Claude Code about the current diff. The **model** and **effort** pickers next to Send map to `claude --model` / `claude --effort`; leave either on `default` to use the CLI's own setting. The model list offers the CLI aliases (`fable`, `opus`, `sonnet`, `haiku`) and a custom entry for a full model name. The choice is remembered in the browser and also applies to inline comment threads, including "Apply with agent".
+The **Chat** button opens a read-only conversation with your local coding agent about the current diff. The **agent** picker next to Send chooses which CLI answers — **Claude Code** (`claude`, the default) or **Codex** (`codex`). The **model** and **effort** pickers map to that CLI's own setting (`claude --model` / `claude --effort`; `codex --model` / Codex's `model_reasoning_effort`); leave either on `default` to use the CLI's configured value. For Claude the model list offers the CLI aliases (`fable`, `opus`, `sonnet`, `haiku`); for Codex enter a full model name via the custom entry. The choice is remembered in the browser and also applies to inline comment threads (including "Apply with agent") and to agent reviews. Switching agents mid-conversation starts a fresh session, since neither CLI can resume the other's.
+
+With Codex, read-only chat runs `codex exec` in its `read-only` sandbox and "Apply with agent" in `workspace-write`; approvals are set to `never` because there is no one to answer them.
 
 ### Agent review
 
 The **Review** button in the topbar runs three read-only review agents in parallel over the current diff — correctness, silent failures, and test coverage. Their findings land as inline review comments, anchored to the diff lines they cite (with severity and lens badges). Each one is a normal comment thread: reply to discuss it with the agent, use "Apply with agent" to fix it, resolve or delete it. Re-running a review stacks new comments; "Clear agent comments" removes open ones no human has replied to. Stop cancels an in-flight run.
 
-Like the diff chat, this needs Claude Code (the `claude` CLI) installed and logged in. Each review spawns three `claude` runs over the whole diff.
+Like the diff chat, this needs the selected agent's CLI installed and logged in — Claude Code (`claude`) or Codex (`codex`). Each review spawns three runs of that CLI over the whole diff.
 
 ## Use with Claude Code
 

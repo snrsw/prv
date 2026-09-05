@@ -8,7 +8,7 @@ import { loadFile } from "./file/loader";
 import { annotateDiff } from "./review/annotate";
 import { LENSES } from "./review/lenses";
 import { runReviewPanel, type TurnRunner } from "./review/runner";
-import { sanitizeChatSettings } from "./shared/chat";
+import { DEFAULT_CHAT_AGENT, sanitizeChatSettings } from "./shared/chat";
 import type { ChatAsk, ChatServerFrame, ChatWsData } from "./shared/chat";
 import type { ReviewServerFrame, ReviewStart, ReviewWsData } from "./shared/review";
 import { decodeMode } from "./shared/modeQuery";
@@ -19,7 +19,7 @@ export type ServerOptions = {
   defaultMode?: DiffMode;
   /** Enable frontend HMR + console forwarding. Dev only; off for the shipped binary. */
   development?: boolean;
-  /** Injectable claude-turn runner so tests can script agent turns. */
+  /** Injectable agent-turn runner so tests can script agent turns. */
   turnRunner?: TurnRunner;
 };
 
@@ -36,7 +36,7 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
     routes: {
       "/": index,
       "/api/chat": (req, server) => {
-        const data: ChatWsData = { kind: "chat", sessionId: null, busy: false };
+        const data: ChatWsData = { kind: "chat", sessionId: null, agent: null, busy: false };
         if (server.upgrade(req, { data })) return undefined;
         return new Response("expected websocket upgrade", { status: 426 });
       },
@@ -111,7 +111,7 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
   });
 }
 
-/** Handle one /api/chat message: run a claude turn and relay its events. */
+/** Handle one /api/chat message: run an agent turn and relay its events. */
 async function handleChatMessage(
   ws: Bun.ServerWebSocket<WsData>,
   data: ChatWsData,
@@ -135,10 +135,17 @@ async function handleChatMessage(
   }
 
   data.busy = true;
-  const isFirstTurn = !data.sessionId;
   const mode = msg.mode ?? "ask";
-  // The frame is untrusted input: keep only well-formed model/effort values.
+  // The frame is untrusted input: keep only well-formed agent/model/effort values.
   const settings = sanitizeChatSettings(msg);
+  const agent = settings.agent ?? DEFAULT_CHAT_AGENT;
+  // A session is bound to the CLI that created it; a different agent cannot
+  // resume it, so switching agents starts over (the client re-sends the diff).
+  if (data.agent !== agent) {
+    data.sessionId = null;
+    data.agent = agent;
+  }
+  const isFirstTurn = !data.sessionId;
   const prompt = buildPrompt({
     diff: msg.diff ?? "",
     question: msg.question,
@@ -236,6 +243,8 @@ async function handleReviewMessage(
       cwd: mode.cwd,
       emit: send,
       signal: data.abort.signal,
+      // Untrusted frame: keep only well-formed agent/model/effort values.
+      settings: sanitizeChatSettings(msg),
       turnRunner,
     });
   } catch (err) {

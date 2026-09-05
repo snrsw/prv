@@ -1,24 +1,22 @@
 /**
- * Wrapper around the Claude Code CLI (`claude`) used to power the read-only
- * "chat about this diff" feature. We spawn one `claude` subprocess per turn in
- * non-interactive streaming mode and relay its events back to the caller.
- *
- * Read-only is enforced two ways: `--permission-mode plan` (no edits) plus
- * `--disallowedTools Edit,Write,Bash` (mutation tools removed entirely).
+ * Runs one agent turn for the "chat about this diff" and review features. We
+ * spawn one CLI subprocess per turn in non-interactive streaming mode and
+ * relay its events back to the caller. Which CLI — Claude Code (`claude`) or
+ * Codex (`codex`) — is chosen per turn by `agent` in the settings; each
+ * backend lives in its own module and only knows argv + line parsing.
  */
 
-import type { ChatEffort, ChatSettings } from "../shared/chat";
+import { type ChatAgent, type ChatEffort, DEFAULT_CHAT_AGENT } from "../shared/chat";
+import type { Backend, ChatEvent, TurnMode } from "./backend";
+import { claudeBackend } from "./claude";
+import { codexBackend } from "./codex";
 
-/** A simplified event produced from the CLI's stream-json output. */
-export type ChatEvent =
-  | { kind: "session"; sessionId: string }
-  | { kind: "text"; text: string }
-  | { kind: "progress"; text: string }
-  | { kind: "tool"; name: string; target?: string }
-  | { kind: "done"; result: string }
-  | { kind: "error"; message: string };
+export type { ChatEvent, TurnMode } from "./backend";
 
-export type TurnMode = "ask" | "apply";
+export const BACKENDS: Record<ChatAgent, Backend> = {
+  claude: claudeBackend,
+  codex: codexBackend,
+};
 
 export type BuildPromptArgs = {
   diff: string;
@@ -28,11 +26,11 @@ export type BuildPromptArgs = {
 };
 
 /**
- * Build the prompt text sent to `claude` for a single turn.
+ * Build the prompt text sent to the agent for a single turn.
  *
- * On the first turn the diff context is included; later turns rely on
- * `--resume` so only the new message is sent. `mode: "apply"` asks the agent
- * to edit the files rather than just explain.
+ * On the first turn the diff context is included; later turns resume the
+ * CLI's session so only the new message is sent. `mode: "apply"` asks the
+ * agent to edit the files rather than just explain.
  */
 export function buildPrompt({
   diff,
@@ -57,40 +55,6 @@ export function buildPrompt({
   return [...lead, "", "<diff>", diff, "</diff>", "", `${label}: ${question}`].join("\n");
 }
 
-/** Extract the concatenated text of all `text` blocks in an assistant message. */
-function assistantText(message: unknown): string {
-  if (typeof message !== "object" || message === null) return "";
-  const content = (message as { content?: unknown }).content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .filter(
-      (block): block is { type: "text"; text: string } =>
-        typeof block === "object" &&
-        block !== null &&
-        (block as { type?: unknown }).type === "text" &&
-        typeof (block as { text?: unknown }).text === "string",
-    )
-    .map((block) => block.text)
-    .join("");
-}
-
-/**
- * Derive a short human label for a tool call from its input object. We probe a
- * small ordered set of well-known keys and return the first string value found
- * (e.g. `file_path` for Read/Edit/Write, `command` for Bash, `pattern` for
- * Grep). Returns `undefined` when nothing obvious is present.
- */
-function toolTarget(input: unknown): string | undefined {
-  if (typeof input !== "object" || input === null) return undefined;
-  const record = input as Record<string, unknown>;
-  const keys = ["file_path", "notebook_path", "command", "pattern", "url", "query", "description"];
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === "string") return value;
-  }
-  return undefined;
-}
-
 /**
  * Shorten a tool target for display by making an absolute path under `cwd`
  * repo-relative (the agent runs in `cwd`, so its file operations live there).
@@ -103,146 +67,55 @@ export function relativizeTarget(target: string | undefined, cwd: string): strin
   return target.startsWith(prefix) ? target.slice(prefix.length) : target;
 }
 
-/** Extract the `tool_use` blocks of an assistant message as name/target pairs. */
-function toolUses(message: unknown): { name: string; target?: string }[] {
-  if (typeof message !== "object" || message === null) return [];
-  const content = (message as { content?: unknown }).content;
-  if (!Array.isArray(content)) return [];
-  return content
-    .filter(
-      (block): block is { type: "tool_use"; name: string; input?: unknown } =>
-        typeof block === "object" &&
-        block !== null &&
-        (block as { type?: unknown }).type === "tool_use" &&
-        typeof (block as { name?: unknown }).name === "string",
-    )
-    .map((block) => {
-      const target = toolTarget(block.input);
-      return target === undefined ? { name: block.name } : { name: block.name, target };
-    });
-}
-
-/**
- * Parse one line of `claude --output-format stream-json` output into zero or
- * more `ChatEvent`s. Returns `[]` for blank lines, unparseable JSON, and event
- * types we don't surface (hooks, rate-limit notices, etc.). A single assistant
- * line can carry both a text block and one or more tool calls, so the return
- * type is an array. The parser is deliberately tolerant so CLI version drift
- * degrades gracefully.
- */
-export function parseEvent(line: string): ChatEvent[] {
-  const trimmed = line.trim();
-  if (!trimmed) return [];
-
-  let obj: Record<string, unknown>;
-  try {
-    obj = JSON.parse(trimmed) as Record<string, unknown>;
-  } catch {
-    return [];
-  }
-
-  switch (obj.type) {
-    case "system": {
-      if (obj.subtype === "init" && typeof obj.session_id === "string") {
-        return [{ kind: "session", sessionId: obj.session_id }];
-      }
-      return [];
-    }
-    case "assistant": {
-      const events: ChatEvent[] = [];
-      const text = assistantText(obj.message);
-      const tools = toolUses(obj.message);
-      // Text that shares a message with a tool call is the agent narrating what
-      // it is about to do ("I'll read X"); a text-only message is the answer.
-      if (text) events.push(tools.length > 0 ? { kind: "progress", text } : { kind: "text", text });
-      for (const use of tools) {
-        events.push(
-          use.target === undefined
-            ? { kind: "tool", name: use.name }
-            : { kind: "tool", name: use.name, target: use.target },
-        );
-      }
-      return events;
-    }
-    case "result": {
-      const result = typeof obj.result === "string" ? obj.result : "";
-      return [{ kind: "done", result }];
-    }
-    default:
-      return [];
-  }
-}
-
 export type RunTurnArgs = {
   cwd: string;
   prompt: string;
   sessionId?: string;
   mode?: TurnMode;
-  /** Passed as `--model`; omitted = the CLI's configured default. */
+  /** Which CLI runs the turn; omitted = Claude Code. */
+  agent?: ChatAgent;
+  /** Passed as the CLI's model flag; omitted = the CLI's configured default. */
   model?: string;
-  /** Passed as `--effort`; omitted = the CLI's configured default. */
+  /** Passed as the CLI's effort setting; omitted = the CLI's configured default. */
   effort?: ChatEffort;
-  /** Aborting kills the claude subprocess; the turn ends without a result. */
+  /** Aborting kills the subprocess; the turn ends without a result. */
   signal?: AbortSignal;
 };
 
-const BASE_ARGS = ["--print", "--verbose", "--output-format", "stream-json"];
+/** Keep a failed CLI's stderr readable: the tail carries the actual error. */
+const STDERR_TAIL = 2000;
 
 /**
- * Permission profile per mode. `ask` is strictly read-only; `apply` lets the
- * agent edit files (Read/Edit/Write/Grep/Glob) but never run Bash.
- */
-const PROFILE_ARGS: Record<TurnMode, string[]> = {
-  ask: ["--permission-mode", "plan", "--disallowedTools", "Edit,Write,Bash"],
-  apply: ["--permission-mode", "acceptEdits", "--allowedTools", "Read,Edit,Write,Grep,Glob"],
-};
-
-/**
- * Assemble the full `claude` argument list for a turn (exported for tests).
- * `model`/`effort` are sent on every turn, resumed ones included, so a setting
- * changed mid-conversation takes effect from the next turn.
- */
-export function buildArgs(
-  mode: TurnMode,
-  sessionId?: string,
-  { model, effort }: ChatSettings = {},
-): string[] {
-  const args = [...BASE_ARGS, ...PROFILE_ARGS[mode]];
-  if (model) args.push("--model", model);
-  if (effort) args.push("--effort", effort);
-  if (sessionId) args.push("--resume", sessionId);
-  return args;
-}
-
-/**
- * Spawn `claude` for a single turn and yield `ChatEvent`s as its stream-json
- * output arrives. The prompt is fed via stdin (diffs can be large). When
- * `sessionId` is given, `--resume` continues the prior conversation.
+ * Spawn the agent CLI for a single turn and yield `ChatEvent`s as its
+ * streaming output arrives. The prompt is fed via stdin (diffs can be large).
+ * When `sessionId` is given, the CLI resumes the prior conversation.
  */
 export async function* runTurn({
   cwd,
   prompt,
   sessionId,
   mode = "ask",
+  agent = DEFAULT_CHAT_AGENT,
   model,
   effort,
   signal,
 }: RunTurnArgs): AsyncGenerator<ChatEvent> {
-  const args = buildArgs(mode, sessionId, { model, effort });
+  const backend = BACKENDS[agent];
+  const args = backend.buildArgs(mode, sessionId, { model, effort });
+  const parse = backend.createParser();
 
   let proc: Bun.Subprocess;
   try {
-    proc = Bun.spawn(["claude", ...args], {
+    proc = Bun.spawn([backend.command, ...args], {
       cwd,
+      // Resolve the CLI against the current PATH (not the one cached at startup).
+      env: process.env,
       stdin: new TextEncoder().encode(prompt),
       stdout: "pipe",
       stderr: "pipe",
     });
   } catch {
-    yield {
-      kind: "error",
-      message: "claude CLI not found — install Claude Code and run `claude` once to log in.",
-    };
+    yield { kind: "error", message: backend.notFoundMessage };
     return;
   }
 
@@ -266,13 +139,13 @@ export async function* runTurn({
       while ((nl = buf.indexOf("\n")) >= 0) {
         const line = buf.slice(0, nl);
         buf = buf.slice(nl + 1);
-        for (const event of parseEvent(line)) {
+        for (const event of parse(line)) {
           if (event.kind === "done") sawResult = true;
           yield event;
         }
       }
     }
-    for (const event of parseEvent(buf)) {
+    for (const event of parse(buf)) {
       if (event.kind === "done") sawResult = true;
       yield event;
     }
@@ -290,7 +163,9 @@ export async function* runTurn({
     const stderr = (await new Response(proc.stderr as ReadableStream<Uint8Array>).text()).trim();
     yield {
       kind: "error",
-      message: stderr || `claude exited with code ${exitCode} before producing a result.`,
+      message:
+        stderr.slice(-STDERR_TAIL) ||
+        `${backend.command} exited with code ${exitCode} before producing a result.`,
     };
   }
 }
