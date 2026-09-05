@@ -11,6 +11,8 @@ import { isClearableReviewComment } from "../shared/review";
 import type { LensId, ReviewFinding } from "../shared/review";
 import { sumTotals } from "./totals";
 import { useComments } from "./useComments";
+import { useResizablePanel } from "./useResizablePanel";
+import type { ResizablePanel } from "./useResizablePanel";
 import { useReview } from "./useReview";
 import type { DiffOutputFormat, FileDiff, ServerMode } from "./types";
 
@@ -46,6 +48,20 @@ export function App() {
   const [reloadKey, setReloadKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
+  const sidebarResize = useResizablePanel({
+    storageKey: "prv:sidebarWidth",
+    defaultWidth: 296,
+    minWidth: 180,
+    maxWidth: 640,
+    side: "left",
+  });
+  const chatResize = useResizablePanel({
+    storageKey: "prv:chatWidth",
+    defaultWidth: 380,
+    minWidth: 280,
+    maxWidth: 800,
+    side: "right",
+  });
   const [diffOutputFormat, setDiffOutputFormat] = useState<DiffOutputFormat>(
     readStoredDiffOutputFormat,
   );
@@ -214,15 +230,18 @@ export function App() {
 
       <div className="body">
         {sidebarOpen && (
-          <aside className="sidebar">
-            {files === null ? (
-              <div className="sidebar-empty">loading…</div>
-            ) : files.length === 0 ? (
-              <div className="sidebar-empty">no changes</div>
-            ) : (
-              <FileTree files={files} onSelect={onSelect} activePath={activePath} />
-            )}
-          </aside>
+          <>
+            <aside className="sidebar" style={{ width: sidebarResize.width }}>
+              {files === null ? (
+                <div className="sidebar-empty">loading…</div>
+              ) : files.length === 0 ? (
+                <div className="sidebar-empty">no changes</div>
+              ) : (
+                <FileTree files={files} onSelect={onSelect} activePath={activePath} />
+              )}
+            </aside>
+            <PanelResizer panel={sidebarResize} label="Resize file tree" />
+          </>
         )}
 
         <main className="main-col">
@@ -255,9 +274,23 @@ export function App() {
           ))}
         </main>
 
-        <ChatPanel files={files} open={chatOpen} />
+        {chatOpen && <PanelResizer panel={chatResize} label="Resize chat panel" />}
+        <ChatPanel files={files} open={chatOpen} width={chatResize.width} />
       </div>
     </div>
+  );
+}
+
+function PanelResizer({ panel, label }: { panel: ResizablePanel; label: string }) {
+  return (
+    <div
+      className={"panel-resizer" + (panel.dragging ? " is-dragging" : "")}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={label}
+      tabIndex={0}
+      {...panel.resizerProps}
+    />
   );
 }
 
