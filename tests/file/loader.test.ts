@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import { $ } from "bun";
-import { writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { loadFile } from "../../src/file/loader";
@@ -75,4 +76,23 @@ test("binary content is reported as kind=binary", async () => {
   const result = await loadFile(worktreeOf(repo), "img.bin", "new");
 
   expect(result).toEqual({ kind: "binary" });
+});
+
+test("files mode: new side reads the file from disk, old side is missing", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "prv-load-files-"));
+  writeFileSync(join(dir, "plan.md"), "# plan\n");
+  const mode = { kind: "files" as const, cwd: dir, paths: ["plan.md"] };
+
+  expect(await loadFile(mode, "plan.md", "new")).toEqual({ kind: "text", content: "# plan\n" });
+  expect(await loadFile(mode, "plan.md", "old")).toEqual({ kind: "missing" });
+});
+
+test("files mode: an absolute path outside cwd reads from that path", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "prv-load-files-"));
+  const elsewhere = mkdtempSync(join(tmpdir(), "prv-load-files-elsewhere-"));
+  writeFileSync(join(elsewhere, "plan.md"), "far\n");
+  const abs = join(elsewhere, "plan.md");
+  const mode = { kind: "files" as const, cwd: dir, paths: [abs] };
+
+  expect(await loadFile(mode, abs, "new")).toEqual({ kind: "text", content: "far\n" });
 });

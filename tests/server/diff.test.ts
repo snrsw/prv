@@ -73,3 +73,21 @@ test("GET /api/refs includes remote-tracking branches and excludes */HEAD", asyn
   const body = (await res.json()) as { branches: string[] };
   expect(body.branches.sort()).toEqual(["main", "origin/main", "origin/topic"]);
 });
+
+test("GET /api/diff?mode=files returns the file whole as an added FileDiff", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "prv-srv-files-"));
+  writeFileSync(join(dir, "plan.md"), "# plan\n");
+
+  const url = new URL("/api/diff", server.url);
+  url.searchParams.set("mode", "files");
+  url.searchParams.set("cwd", dir);
+  url.searchParams.append("path", "plan.md");
+
+  const res = await fetch(url);
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as FileDiff[];
+  expect(body).toHaveLength(1);
+  expect(body[0]?.path).toBe("plan.md");
+  expect(body[0]?.status).toBe("added");
+  expect(body[0]?.hunks[0]?.lines).toEqual(["+# plan"]);
+});

@@ -191,3 +191,56 @@ test("two bare paths without `diff` throws (use `diff` to compare two)", async (
 
   await expect(parseArgs([a, b], repo)).rejects.toThrow();
 });
+
+test("single file outside any git repository → files mode showing it whole", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "prv-cli-nogit-"));
+  const file = join(dir, "plan.md");
+  await Bun.write(file, "# plan\n");
+
+  const opts = await parseArgs([file], dir);
+
+  expect(opts.mode).toEqual({ kind: "files", cwd: dir, paths: [file] });
+});
+
+test("single file the repository ignores → files mode (git's diff can't show it)", async () => {
+  const repo = await mkTempRepo("prv-cli-ignored-");
+  writeFileSync(join(repo, ".gitignore"), ".claude/plans/\n");
+  await $`git -C ${repo} add .gitignore`.quiet();
+  await $`git -C ${repo} commit -q -m init`.quiet();
+  mkdirSync(join(repo, ".claude", "plans"), { recursive: true });
+  const file = join(repo, ".claude", "plans", "p.md");
+  writeFileSync(file, "# plan\n");
+
+  const opts = await parseArgs([file], repo);
+
+  expect(opts.mode).toEqual({ kind: "files", cwd: repo, paths: [file] });
+});
+
+test("single untracked-but-not-ignored file stays in git mode", async () => {
+  const repo = await mkTempRepo("prv-cli-untracked-");
+  await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
+  const file = join(repo, "new.md");
+  writeFileSync(file, "new\n");
+
+  const opts = await parseArgs([file], repo);
+
+  expect(opts.mode).toEqual({
+    kind: "git",
+    cwd: repo,
+    leftRef: "HEAD",
+    right: { kind: "worktree" },
+    paths: [file],
+  });
+});
+
+test("single file outside the repository's work tree → files mode", async () => {
+  const repo = await mkTempRepo("prv-cli-outside-");
+  await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
+  const elsewhere = mkdtempSync(join(tmpdir(), "prv-cli-elsewhere-"));
+  const file = join(elsewhere, "plan.md");
+  writeFileSync(file, "# plan\n");
+
+  const opts = await parseArgs([file], repo);
+
+  expect(opts.mode).toEqual({ kind: "files", cwd: repo, paths: [file] });
+});

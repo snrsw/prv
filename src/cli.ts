@@ -32,6 +32,20 @@ async function refDiffMode(cwd: string, a: string, b: string): Promise<DiffMode>
   return { kind: "git", cwd, leftRef: a, right: { kind: "ref", ref: b } };
 }
 
+/**
+ * Whether git's HEAD-vs-worktree diff can show `path`: it is tracked, or
+ * untracked but not ignored. False outside a repository, for an ignored
+ * path (`.claude/plans/` in many repos), and for a path outside the work tree.
+ */
+async function gitCanDiff(cwd: string, path: string): Promise<boolean> {
+  const tracked = await $`git -C ${cwd} ls-files --error-unmatch -- ${path}`.nothrow().quiet();
+  if (tracked.exitCode === 0) return true;
+  const untracked = await $`git -C ${cwd} ls-files --others --exclude-standard -- ${path}`
+    .nothrow()
+    .quiet();
+  return untracked.exitCode === 0 && untracked.stdout.toString().trim().length > 0;
+}
+
 export async function parseArgs(argv: string[], cwd: string): Promise<CLIOptions> {
   let mode: DiffMode = { kind: "git", cwd, leftRef: "HEAD", right: { kind: "worktree" } };
   let port = 0;
@@ -71,11 +85,14 @@ export async function parseArgs(argv: string[], cwd: string): Promise<CLIOptions
     }
   }
 
-  // `prv <file>`: HEAD vs working tree, scoped to a single path.
+  // `prv <path>`: HEAD vs working tree, scoped to that path. A path git cannot
+  // diff (outside a repository, or ignored) is shown whole instead.
   if (singlePath !== undefined) {
     if (usedDiff) throw new Error("prv: cannot combine a path argument with `diff`.");
     if (!(await pathExists(singlePath))) throw new Error(`prv: '${singlePath}' does not exist.`);
-    mode = { kind: "git", cwd, leftRef: "HEAD", right: { kind: "worktree" }, paths: [singlePath] };
+    mode = (await gitCanDiff(cwd, singlePath))
+      ? { kind: "git", cwd, leftRef: "HEAD", right: { kind: "worktree" }, paths: [singlePath] }
+      : { kind: "files", cwd, paths: [singlePath] };
   }
 
   return { mode, port, open, help, version };
@@ -85,7 +102,9 @@ const HELP = `prv — Pull-Request like View. Local GitHub-style diff viewer.
 
 Usage:
   prv                          Diff HEAD vs the working tree (default)
-  prv <file>                   Diff HEAD vs the working tree for one file
+  prv <path>                   Diff HEAD vs the working tree for one file or directory
+                               (a path git can't diff — outside a repository, or
+                               ignored, like ~/.claude/plans/x.md — is shown whole)
   prv diff <a> <b>             Diff two git refs (branch, tag, SHA, HEAD)
   prv --port <n>               Pin the server port (default: a free port)
   prv --no-open                Do not open a browser
