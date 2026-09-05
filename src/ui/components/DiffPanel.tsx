@@ -33,6 +33,7 @@ import {
   type LineRange,
 } from "../hunkExpand";
 import { fileTotals } from "../totals";
+import { fileMarks, type FileMarks } from "../fileMarks";
 import { CommentThread } from "./CommentThread";
 import { DiffStat } from "./DiffStat";
 import { CheckIcon, ChevronDown, ChevronRight } from "./icons";
@@ -79,6 +80,9 @@ export function DiffPanel({
   const [copied, setCopied] = useState(false);
   const [view, setView] = useState<View>("diff");
   const [content, setContent] = useState<FileContent | null>(null);
+  // Which side `content` came from, so the File view's gutter can be marked
+  // with the diff as it applies to that side.
+  const [contentSide, setContentSide] = useState<FileSide>("new");
   const [contentLoading, setContentLoading] = useState(false);
   const [contentError, setContentError] = useState<string | null>(null);
   const totals = fileTotals(file);
@@ -384,11 +388,16 @@ export function DiffPanel({
     (async () => {
       try {
         const primary: FileSide = file.status === "deleted" ? "old" : "new";
+        let side = primary;
         let result = await fetchFileContent(mode, file.path, primary, controller.signal);
         if (result.kind === "missing" && primary === "new") {
           const fallback = await fetchFileContent(mode, file.path, "old", controller.signal);
-          if (fallback.kind !== "missing") result = fallback;
+          if (fallback.kind !== "missing") {
+            result = fallback;
+            side = "old";
+          }
         }
+        setContentSide(side);
         setContent(result);
       } catch (e) {
         if (controller.signal.aborted) return;
@@ -399,6 +408,13 @@ export function DiffPanel({
     })();
     return () => controller.abort();
   }, [expanded, view, file.binary, file.path, file.status, mode]);
+
+  // The diff projected onto the side the File view shows: which of its lines
+  // the diff added or replaced, and where the other side's lines went.
+  const marks = useMemo(
+    () => (view === "file" ? fileMarks(file, contentSide) : null),
+    [view, file, contentSide],
+  );
 
   // After file content loads, restore scroll so the line that was at the
   // top of the diff is at the same screen Y in the file view.
@@ -572,6 +588,7 @@ export function DiffPanel({
           <FileContentView
             file={file}
             content={content}
+            marks={marks}
             loading={contentLoading}
             error={contentError}
           />
@@ -820,11 +837,13 @@ function anchorSplit(
 function FileContentView({
   file,
   content,
+  marks,
   loading,
   error,
 }: {
   file: FileDiff;
   content: FileContent | null;
+  marks: FileMarks | null;
   loading: boolean;
   error: string | null;
 }) {
@@ -839,9 +858,9 @@ function FileContentView({
     return <div className="binary-notice">Binary file</div>;
   }
   if (isMarkdownPath(file.path)) {
-    return <MarkdownFileView path={file.path} text={content.content} />;
+    return <MarkdownFileView path={file.path} text={content.content} marks={marks} />;
   }
-  return <FileContentCode path={file.path} text={content.content} />;
+  return <FileContentCode path={file.path} text={content.content} marks={marks} />;
 }
 
 /**
@@ -849,7 +868,15 @@ function FileContentView({
  * default since the main use case is reviewing agent-written plans; Source falls back
  * to the syntax-highlighted code view.
  */
-function MarkdownFileView({ path, text }: { path: string; text: string }) {
+function MarkdownFileView({
+  path,
+  text,
+  marks,
+}: {
+  path: string;
+  text: string;
+  marks: FileMarks | null;
+}) {
   const [md, setMd] = useState<"rendered" | "source">("rendered");
   return (
     <div className="markdown-file">
@@ -873,17 +900,26 @@ function MarkdownFileView({ path, text }: { path: string; text: string }) {
           Source
         </button>
       </div>
-      {md === "rendered" ? <Markdown source={text} /> : <FileContentCode path={path} text={text} />}
+      {md === "rendered" ? (
+        <Markdown source={text} />
+      ) : (
+        <FileContentCode path={path} text={text} marks={marks} />
+      )}
     </div>
   );
 }
 
-function FileContentCode({ path, text }: { path: string; text: string }) {
+function FileContentCode({
+  path,
+  text,
+  marks,
+}: {
+  path: string;
+  text: string;
+  marks: FileMarks | null;
+}) {
   const codeRef = useRef<HTMLElement>(null);
-  const lineNumbers = useMemo(() => {
-    const count = countLines(text);
-    return Array.from({ length: count }, (_, i) => i + 1).join("\n");
-  }, [text]);
+  const count = useMemo(() => countLines(text), [text]);
   // Paint plain text first, then highlight on the next idle frame so the
   // user isn't blocked on hljs parsing for large files.
   useEffect(() => {
@@ -912,14 +948,52 @@ function FileContentCode({ path, text }: { path: string; text: string }) {
   }, [text]);
   return (
     <div className="file-content-wrap">
-      <pre className="file-content-gutter" aria-hidden="true">
-        {lineNumbers}
-      </pre>
+      <FileGutter count={count} marks={marks} />
       <pre className="file-content-pre">
         <code ref={codeRef} className={`hljs language-${languageHint(path)}`}>
           {text}
         </code>
       </pre>
+    </div>
+  );
+}
+
+/**
+ * The File view's line-number column, tinted like the diff view's gutter:
+ * green for lines the diff added, blue for lines it replaced (red for every
+ * line of a deleted file), and a red edge where lines were removed — on the
+ * line that follows the removal, or the bottom of the last line at EOF.
+ */
+function FileGutter({ count, marks }: { count: number; marks: FileMarks | null }) {
+  const rows = useMemo(() => {
+    const out: React.ReactNode[] = [];
+    for (let n = 1; n <= count; n++) {
+      const change = marks?.lines.get(n);
+      const gapBefore = marks?.gaps.get(n) ?? 0;
+      const gapAfter = n === count ? (marks?.gaps.get(count + 1) ?? 0) : 0;
+      const cls = [
+        "file-line-num",
+        change ? `is-${change}` : "",
+        gapBefore ? "has-gap-before" : "",
+        gapAfter ? "has-gap-after" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const removed = gapBefore || gapAfter;
+      const title = removed
+        ? `${removed} line${removed === 1 ? "" : "s"} removed ${gapBefore ? "above" : "below"}`
+        : undefined;
+      out.push(
+        <span key={n} className={cls} title={title}>
+          {n}
+        </span>,
+      );
+    }
+    return out;
+  }, [count, marks]);
+  return (
+    <div className="file-content-gutter" aria-hidden="true">
+      {rows}
     </div>
   );
 }

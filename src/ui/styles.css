@@ -28,6 +28,7 @@
   --del-line-bg: #ffebe9;
   --gutter-add-bg: #aceebb;
   --gutter-del-bg: #ffaba8;
+  --gutter-mod-bg: #b6e3ff;
   --gutter-hunk-bg: #b6e3ff;
 
   /* Type scale */
@@ -868,7 +869,9 @@ html.prv-col-resize * {
 }
 .file-content-gutter {
   margin: 0;
-  padding: var(--sp-2) 6px;
+  /* Vertical padding only: each line paints its own row edge to edge, so a
+     tinted line fills the gutter's full width like the diff view's does. */
+  padding: var(--sp-2) 0;
   flex: 0 0 auto;
   width: 96px;
   font-family: var(--ff-mono);
@@ -883,6 +886,39 @@ html.prv-col-resize * {
   user-select: none;
   white-space: pre;
   box-sizing: border-box;
+}
+/* One row per line, the same height as its code line (var(--fs-code-lh)).
+   Tints mirror the diff view's gutter so a reader can carry the colours over. */
+.file-line-num {
+  display: block;
+  height: var(--fs-code-lh);
+  padding: 0 6px;
+}
+.file-line-num.is-add {
+  background: var(--gutter-add-bg);
+  color: var(--fg-default);
+}
+.file-line-num.is-mod {
+  background: var(--gutter-mod-bg);
+  color: var(--fg-default);
+}
+.file-line-num.is-del {
+  background: var(--gutter-del-bg);
+  color: var(--fg-default);
+}
+/* Lines removed from this side leave no row to tint, so mark the seam they
+   left behind: a red edge on the top of the next line (or the bottom of the
+   last one at EOF), like an editor's deletion marker. */
+.file-line-num.has-gap-before {
+  box-shadow: inset 0 2px 0 var(--danger-emphasis);
+}
+.file-line-num.has-gap-after {
+  box-shadow: inset 0 -2px 0 var(--danger-emphasis);
+}
+.file-line-num.has-gap-before.has-gap-after {
+  box-shadow:
+    inset 0 2px 0 var(--danger-emphasis),
+    inset 0 -2px 0 var(--danger-emphasis);
 }
 .file-content-pre {
   margin: 0;
