@@ -33,12 +33,17 @@ import {
   type LineRange,
 } from "../hunkExpand";
 import { fileTotals } from "../totals";
-import { fileMarks, type FileMarks } from "../fileMarks";
+import { describeBlock, fileMarks, type FileMarks } from "../fileMarks";
 import { CommentThread } from "./CommentThread";
 import { DiffStat } from "./DiffStat";
 import { CheckIcon, ChevronDown, ChevronRight } from "./icons";
 
 type View = "diff" | "file";
+/** The File view's sub-mode for Markdown files. */
+type MdView = "rendered" | "source";
+
+/** Gutter rows that carry a change, for next/previous navigation. */
+const MARKED_LINE = ".file-line-num.is-marked";
 
 /** A comment anchored under one diff line (its range's last line). */
 type Thread = { id: string; side: LineSide; endLine: number };
@@ -79,6 +84,9 @@ export function DiffPanel({
   const [viewed, setViewed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [view, setView] = useState<View>("diff");
+  // Rendered is the default since the main use case is reviewing agent-written
+  // plans; Source is the syntax-highlighted code view with the diff gutter.
+  const [mdView, setMdView] = useState<MdView>("rendered");
   const [content, setContent] = useState<FileContent | null>(null);
   // Which side `content` came from, so the File view's gutter can be marked
   // with the diff as it applies to that side.
@@ -415,6 +423,28 @@ export function DiffPanel({
     () => (view === "file" ? fileMarks(file, contentSide) : null),
     [view, file, contentSide],
   );
+  // The gutter with its marks is on screen: a code file, or a Markdown one in Source.
+  const marksVisible =
+    !!marks && marks.blocks.length > 0 && (!isMarkdownPath(file.path) || mdView === "source");
+
+  // Scroll to the next (or previous) change past the middle of the viewport,
+  // so the reader can hop between changes in a long file. Marked lines come
+  // in runs, one per change; only a run's first line is a stop, and it wraps.
+  const jumpToChange = (direction: 1 | -1) => {
+    const body = fileBodyRef.current;
+    if (!body) return;
+    const starts = Array.from(body.querySelectorAll<HTMLElement>(MARKED_LINE)).filter(
+      (r) => !r.previousElementSibling?.classList.contains("is-marked"),
+    );
+    if (starts.length === 0) return;
+    const mid = window.innerHeight / 2;
+    const isNext = (r: HTMLElement) => r.getBoundingClientRect().top > mid + FILE_LINE_HEIGHT;
+    const isPrev = (r: HTMLElement) => r.getBoundingClientRect().top < mid - FILE_LINE_HEIGHT;
+    const target = direction === 1 ? starts.find(isNext) : starts.slice().reverse().find(isPrev);
+    (target ?? (direction === 1 ? starts[0] : starts[starts.length - 1]))?.scrollIntoView({
+      block: "center",
+    });
+  };
 
   // After file content loads, restore scroll so the line that was at the
   // top of the diff is at the same screen Y in the file view.
@@ -510,6 +540,31 @@ export function DiffPanel({
             </button>
           </div>
         )}
+        {marksVisible && (
+          <span className="file-change-nav" aria-label="Changes in this file">
+            <button
+              type="button"
+              className="file-change-nav-btn"
+              title="Previous change"
+              aria-label="Previous change"
+              onClick={() => jumpToChange(-1)}
+            >
+              ↑
+            </button>
+            <span className="file-change-nav-count">
+              {marks!.blocks.length} change{marks!.blocks.length === 1 ? "" : "s"}
+            </span>
+            <button
+              type="button"
+              className="file-change-nav-btn"
+              title="Next change"
+              aria-label="Next change"
+              onClick={() => jumpToChange(1)}
+            >
+              ↓
+            </button>
+          </span>
+        )}
         <span className="file-card-spacer" />
         <span className="file-card-counts">
           {totals.adds > 0 && <span className="adds">+{totals.adds}</span>}
@@ -589,6 +644,8 @@ export function DiffPanel({
             file={file}
             content={content}
             marks={marks}
+            mdView={mdView}
+            setMdView={setMdView}
             loading={contentLoading}
             error={contentError}
           />
@@ -838,12 +895,16 @@ function FileContentView({
   file,
   content,
   marks,
+  mdView,
+  setMdView,
   loading,
   error,
 }: {
   file: FileDiff;
   content: FileContent | null;
   marks: FileMarks | null;
+  mdView: MdView;
+  setMdView: (v: MdView) => void;
   loading: boolean;
   error: string | null;
 }) {
@@ -858,47 +919,69 @@ function FileContentView({
     return <div className="binary-notice">Binary file</div>;
   }
   if (isMarkdownPath(file.path)) {
-    return <MarkdownFileView path={file.path} text={content.content} marks={marks} />;
+    return (
+      <MarkdownFileView
+        path={file.path}
+        text={content.content}
+        marks={marks}
+        md={mdView}
+        setMd={setMdView}
+      />
+    );
   }
   return <FileContentCode path={file.path} text={content.content} marks={marks} />;
 }
 
 /**
- * Markdown files get a Rendered/Source sub-toggle in the File view. Rendered is the
- * default since the main use case is reviewing agent-written plans; Source falls back
- * to the syntax-highlighted code view.
+ * Markdown files get a Rendered/Source sub-toggle in the File view. The
+ * rendered page has no gutter, so when the diff touched the file it says
+ * where the marks are rather than looking untouched.
  */
 function MarkdownFileView({
   path,
   text,
   marks,
+  md,
+  setMd,
 }: {
   path: string;
   text: string;
   marks: FileMarks | null;
+  md: MdView;
+  setMd: (v: MdView) => void;
 }) {
-  const [md, setMd] = useState<"rendered" | "source">("rendered");
+  const changes = marks?.blocks.length ?? 0;
   return (
     <div className="markdown-file">
-      <div className="md-view-toggle" role="tablist" aria-label="Markdown view mode">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={md === "rendered"}
-          className={`md-view-tab ${md === "rendered" ? "is-active" : ""}`}
-          onClick={() => setMd("rendered")}
-        >
-          Rendered
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={md === "source"}
-          className={`md-view-tab ${md === "source" ? "is-active" : ""}`}
-          onClick={() => setMd("source")}
-        >
-          Source
-        </button>
+      <div className="md-view-bar">
+        <div className="md-view-toggle" role="tablist" aria-label="Markdown view mode">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={md === "rendered"}
+            className={`md-view-tab ${md === "rendered" ? "is-active" : ""}`}
+            onClick={() => setMd("rendered")}
+          >
+            Rendered
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={md === "source"}
+            className={`md-view-tab ${md === "source" ? "is-active" : ""}`}
+            onClick={() => setMd("source")}
+          >
+            Source
+          </button>
+        </div>
+        {md === "rendered" && changes > 0 && (
+          <span className="md-view-note">
+            {changes} change{changes === 1 ? "" : "s"} in this file —{" "}
+            <button type="button" className="md-view-note-link" onClick={() => setMd("source")}>
+              see them in Source
+            </button>
+          </span>
+        )}
       </div>
       {md === "rendered" ? (
         <Markdown source={text} />
@@ -960,29 +1043,32 @@ function FileContentCode({
 
 /**
  * The File view's line-number column, tinted like the diff view's gutter:
- * green for lines the diff added, blue for lines it replaced (red for every
- * line of a deleted file), and a red edge where lines were removed — on the
- * line that follows the removal, or the bottom of the last line at EOF.
+ * green for lines the diff added, yellow for lines that replaced others (red
+ * for every line of a deleted file), each with a bar at the left edge whose
+ * pattern also tells them apart. Where lines were removed there is no row to
+ * tint, so a red wedge marks the seam: on the line that follows the removal,
+ * or the bottom of the last line at EOF. Every mark explains itself on hover.
  */
 function FileGutter({ count, marks }: { count: number; marks: FileMarks | null }) {
   const rows = useMemo(() => {
     const out: React.ReactNode[] = [];
     for (let n = 1; n <= count; n++) {
-      const change = marks?.lines.get(n);
-      const gapBefore = marks?.gaps.get(n) ?? 0;
-      const gapAfter = n === count ? (marks?.gaps.get(count + 1) ?? 0) : 0;
+      const block = marks?.lines.get(n);
+      const gapBefore = marks?.gaps.get(n);
+      const gapAfter = n === count ? marks?.gaps.get(count + 1) : undefined;
       const cls = [
         "file-line-num",
-        change ? `is-${change}` : "",
+        block || gapBefore || gapAfter ? "is-marked" : "",
+        block ? `is-${block.kind}` : "",
         gapBefore ? "has-gap-before" : "",
         gapAfter ? "has-gap-after" : "",
       ]
         .filter(Boolean)
         .join(" ");
-      const removed = gapBefore || gapAfter;
-      const title = removed
-        ? `${removed} line${removed === 1 ? "" : "s"} removed ${gapBefore ? "above" : "below"}`
-        : undefined;
+      // A line inside a replacement already describes the whole block, lost
+      // lines included; only a bare seam needs its own words.
+      const described = block ?? gapBefore ?? gapAfter;
+      const title = described && marks ? describeBlock(described, marks.side) : undefined;
       out.push(
         <span key={n} className={cls} title={title}>
           {n}

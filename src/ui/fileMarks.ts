@@ -1,24 +1,39 @@
 import type { FileDiff, FileSide } from "./types";
 
 /**
- * How the diff touched a line of the file as shown in the File view: it was
- * added, it replaced something ("mod": a block that both removed and added
- * lines), or — when the old side is shown — it was deleted.
+ * How one run of non-context diff lines shows up on the side of the file the
+ * File view displays. `here` lines exist on that side (`+` lines when the new
+ * side is shown, `-` lines on the old), `other` lines only on the other side.
+ *
+ * - "add"/"del": only this side's lines — an insertion (new side) or, on the
+ *   old side, a deletion.
+ * - "mod": lines on both sides — a replacement.
+ * - "gap": only the other side's lines — nothing to tint here, just a seam
+ *   where lines were removed (new side) or inserted (old side).
  */
-export type LineChange = "add" | "mod" | "del";
+export type BlockKind = "add" | "del" | "mod" | "gap";
 
-export type FileMarks = {
-  /** Changed lines of the shown side, by 1-based line number. */
-  lines: Map<number, LineChange>;
-  /**
-   * Lines the *other* side had that the shown side lacks (deletions when the
-   * new side is shown), keyed by the shown-side line they sit before, with
-   * their count. A key one past the last line means "at the end of the file".
-   */
-  gaps: Map<number, number>;
+export type ChangeBlock = {
+  kind: BlockKind;
+  /** First line of this side in the block; for a gap, the line it sits before. */
+  start: number;
+  here: number;
+  other: number;
 };
 
-const EMPTY: FileMarks = { lines: new Map(), gaps: new Map() };
+export type FileMarks = {
+  side: FileSide;
+  /** Change blocks in file order. */
+  blocks: ChangeBlock[];
+  /** This side's changed lines, by 1-based line number, to their block. */
+  lines: Map<number, ChangeBlock>;
+  /**
+   * Seams where the other side had lines this side lacks, keyed by the line
+   * they sit before — one past the last line means "at the end of the file".
+   * A replacement that shrank the file counts too, so its lost lines show.
+   */
+  gaps: Map<number, ChangeBlock>;
+};
 
 /**
  * Project a file's hunks onto one side of it, so the File view can colour its
@@ -29,35 +44,59 @@ const EMPTY: FileMarks = { lines: new Map(), gaps: new Map() };
  * with only the other side's lines a gap.
  */
 export function fileMarks(file: FileDiff, side: FileSide): FileMarks {
-  if (file.binary || file.hunks.length === 0) return EMPTY;
-  const here = side === "new" ? "+" : "-";
-  const lines = new Map<number, LineChange>();
-  const gaps = new Map<number, number>();
-  const present: LineChange = side === "new" ? "add" : "del";
+  const marks: FileMarks = { side, blocks: [], lines: new Map(), gaps: new Map() };
+  if (file.binary) return marks;
+  const hereMarker = side === "new" ? "+" : "-";
+  const presentKind: BlockKind = side === "new" ? "add" : "del";
 
   for (const hunk of file.hunks) {
     let n = side === "new" ? hunk.newStart : hunk.oldStart;
-    let block: number[] = [];
-    let missing = 0;
+    let start = n;
+    let here = 0;
+    let other = 0;
     const flush = () => {
-      if (block.length > 0 && missing > 0) for (const ln of block) lines.set(ln, "mod");
-      else if (block.length > 0) for (const ln of block) lines.set(ln, present);
-      else if (missing > 0) gaps.set(n, (gaps.get(n) ?? 0) + missing);
-      block = [];
-      missing = 0;
+      if (here === 0 && other === 0) return;
+      const kind: BlockKind = here === 0 ? "gap" : other === 0 ? presentKind : "mod";
+      const block: ChangeBlock = { kind, start, here, other };
+      marks.blocks.push(block);
+      for (let ln = start; ln < start + here; ln++) marks.lines.set(ln, block);
+      if (other > here) marks.gaps.set(start, block);
+      here = 0;
+      other = 0;
     };
     for (const raw of hunk.lines) {
       const marker = raw[0] ?? " ";
       if (marker === " ") {
         flush();
         n++;
-      } else if (marker === here) {
-        block.push(n++);
+        start = n;
+      } else if (marker === hereMarker) {
+        if (here === 0 && other === 0) start = n;
+        here++;
+        n++;
       } else {
-        missing++;
+        if (here === 0 && other === 0) start = n;
+        other++;
       }
     }
     flush();
   }
-  return { lines, gaps };
+  return marks;
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** What a block did, for the gutter tooltip; `side` says which text is shown. */
+export function describeBlock(block: ChangeBlock, side: FileSide): string {
+  const { kind, here, other } = block;
+  if (kind === "add") return `Added ${plural(here, "line")}`;
+  if (kind === "del") return `Deleted ${plural(here, "line")}`;
+  if (kind === "mod") {
+    return side === "new"
+      ? `Replaced ${plural(other, "line")} with ${here}`
+      : `${plural(here, "line")} replaced by ${other}`;
+  }
+  return side === "new"
+    ? `${plural(other, "line")} removed here`
+    : `${plural(other, "line")} inserted here`;
 }
