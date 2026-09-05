@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { isSubmitKey } from "../keys";
 import { useDiffChat } from "../useDiffChat";
 import { ChatMessageList } from "./ChatMessageList";
+import { ChatSettings } from "./ChatSettings";
 import type { FileDiff } from "../types";
 
 function assembleDiff(files: FileDiff[] | null): string {
@@ -76,14 +77,17 @@ export function ChatPanel({
             }
           }}
         />
-        <button
-          type="button"
-          className="chat-send"
-          onClick={onSend}
-          disabled={streaming || input.trim() === ""}
-        >
-          Send
-        </button>
+        <div className="chat-composer-bar">
+          <ChatSettings disabled={streaming} />
+          <button
+            type="button"
+            className="chat-send"
+            onClick={onSend}
+            disabled={streaming || input.trim() === ""}
+          >
+            Send
+          </button>
+        </div>
       </div>
     </aside>
   );

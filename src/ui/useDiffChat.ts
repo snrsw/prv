@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatAsk, ChatServerFrame } from "../shared/chat";
 import type { StoredMessage } from "../shared/comments";
+import { getChatSettings } from "./chatSettings";
 
 /**
  * A message shown in the live transcript. `user`/`assistant` carry text and are
@@ -124,7 +125,8 @@ export function toolIcon(name: string): string {
  * activity (tool + progress lines) is stripped before `onChange` so only
  * user/assistant text is saved.
  * The hook starts a fresh session per mount, so the first `send` after a reload
- * re-sends `firstTurnContext`; later turns rely on `--resume`.
+ * re-sends `firstTurnContext`; later turns rely on `--resume`. Every turn also
+ * carries the app-wide model/effort choice (see `chatSettings`).
  */
 export function useDiffChat(
   initial: ChatMessage[] = [],
@@ -203,7 +205,9 @@ export function useDiffChat(
       );
       setStreaming(true);
       const ws = ensureSocket();
-      const payload: ChatAsk = { type: "ask", question: q, diff, mode };
+      // The app-wide model/effort choice rides along on every turn so a change
+      // made mid-conversation applies from the next question.
+      const payload: ChatAsk = { type: "ask", question: q, diff, mode, ...getChatSettings() };
       const data = JSON.stringify(payload);
       if (ws.readyState === WebSocket.OPEN) ws.send(data);
       else ws.addEventListener("open", () => ws.send(data), { once: true });

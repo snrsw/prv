@@ -8,6 +8,7 @@ import { loadFile } from "./file/loader";
 import { annotateDiff } from "./review/annotate";
 import { LENSES } from "./review/lenses";
 import { runReviewPanel, type TurnRunner } from "./review/runner";
+import { sanitizeChatSettings } from "./shared/chat";
 import type { ChatAsk, ChatServerFrame, ChatWsData } from "./shared/chat";
 import type { ReviewServerFrame, ReviewStart, ReviewWsData } from "./shared/review";
 import { decodeMode } from "./shared/modeQuery";
@@ -136,6 +137,8 @@ async function handleChatMessage(
   data.busy = true;
   const isFirstTurn = !data.sessionId;
   const mode = msg.mode ?? "ask";
+  // The frame is untrusted input: keep only well-formed model/effort values.
+  const settings = sanitizeChatSettings(msg);
   const prompt = buildPrompt({
     diff: msg.diff ?? "",
     question: msg.question,
@@ -148,6 +151,7 @@ async function handleChatMessage(
       prompt,
       sessionId: data.sessionId ?? undefined,
       mode,
+      ...settings,
     })) {
       switch (event.kind) {
         case "session":
