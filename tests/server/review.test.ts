@@ -179,3 +179,34 @@ test("the /api/chat socket still works through the shared dispatcher", async () 
     { type: "done" },
   ]);
 });
+
+test("the /api/chat socket forwards model and effort to the turn runner", async () => {
+  const ws = await openSocket("/api/chat");
+  const before = seenTurns.length;
+  const framesPromise = collectFrames<ChatServerFrame>(ws);
+  ws.send(
+    JSON.stringify({ type: "ask", question: "q", diff: "d", model: "sonnet", effort: "high" }),
+  );
+  await framesPromise;
+  ws.close();
+
+  const turn = seenTurns[before];
+  expect(turn?.model).toBe("sonnet");
+  expect(turn?.effort).toBe("high");
+});
+
+test("the /api/chat socket drops malformed model/effort rather than failing", async () => {
+  const ws = await openSocket("/api/chat");
+  const before = seenTurns.length;
+  const framesPromise = collectFrames<ChatServerFrame>(ws);
+  ws.send(
+    JSON.stringify({ type: "ask", question: "q", diff: "d", model: "--bad", effort: "turbo" }),
+  );
+  const frames = await framesPromise;
+  ws.close();
+
+  expect(frames.at(-1)).toEqual({ type: "done" });
+  const turn = seenTurns[before];
+  expect(turn?.model).toBeUndefined();
+  expect(turn?.effort).toBeUndefined();
+});

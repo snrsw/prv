@@ -7,6 +7,8 @@
  * `--disallowedTools Edit,Write,Bash` (mutation tools removed entirely).
  */
 
+import type { ChatEffort, ChatSettings } from "../shared/chat";
+
 /** A simplified event produced from the CLI's stream-json output. */
 export type ChatEvent =
   | { kind: "session"; sessionId: string }
@@ -176,6 +178,10 @@ export type RunTurnArgs = {
   prompt: string;
   sessionId?: string;
   mode?: TurnMode;
+  /** Passed as `--model`; omitted = the CLI's configured default. */
+  model?: string;
+  /** Passed as `--effort`; omitted = the CLI's configured default. */
+  effort?: ChatEffort;
   /** Aborting kills the claude subprocess; the turn ends without a result. */
   signal?: AbortSignal;
 };
@@ -191,9 +197,19 @@ const PROFILE_ARGS: Record<TurnMode, string[]> = {
   apply: ["--permission-mode", "acceptEdits", "--allowedTools", "Read,Edit,Write,Grep,Glob"],
 };
 
-/** Assemble the full `claude` argument list for a turn (exported for tests). */
-export function buildArgs(mode: TurnMode, sessionId?: string): string[] {
+/**
+ * Assemble the full `claude` argument list for a turn (exported for tests).
+ * `model`/`effort` are sent on every turn, resumed ones included, so a setting
+ * changed mid-conversation takes effect from the next turn.
+ */
+export function buildArgs(
+  mode: TurnMode,
+  sessionId?: string,
+  { model, effort }: ChatSettings = {},
+): string[] {
   const args = [...BASE_ARGS, ...PROFILE_ARGS[mode]];
+  if (model) args.push("--model", model);
+  if (effort) args.push("--effort", effort);
   if (sessionId) args.push("--resume", sessionId);
   return args;
 }
@@ -208,9 +224,11 @@ export async function* runTurn({
   prompt,
   sessionId,
   mode = "ask",
+  model,
+  effort,
   signal,
 }: RunTurnArgs): AsyncGenerator<ChatEvent> {
-  const args = buildArgs(mode, sessionId);
+  const args = buildArgs(mode, sessionId, { model, effort });
 
   let proc: Bun.Subprocess;
   try {

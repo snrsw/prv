@@ -1868,3 +1868,65 @@ tr.prv-expand-clickable:hover .d2h-info {
 .prv-finding-body > :last-child {
   margin-bottom: 0;
 }
+
+/* ---- Chat composer: model / effort pickers next to Send ---- */
+
+.chat-composer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.chat-settings {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.chat-setting {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.chat-setting-label {
+  color: var(--fg-muted);
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.chat-select,
+.chat-setting-input {
+  font: inherit;
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-default);
+  background: var(--canvas-default);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  padding: 3px 6px;
+  outline: none;
+}
+.chat-select {
+  cursor: pointer;
+}
+.chat-select:hover:not(:disabled) {
+  background: var(--canvas-subtle);
+}
+.chat-select:disabled,
+.chat-setting-input:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.chat-setting-input {
+  width: 12em;
+  font-family: var(--ff-mono);
+}
+.chat-setting-input:focus {
+  border-color: var(--accent-emphasis);
+  box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
+}
+.chat-setting-input[aria-invalid="true"] {
+  border-color: var(--danger-fg);
+}

@@ -230,3 +230,27 @@ describe("relativizeTarget", () => {
     expect(relativizeTarget(undefined, "/repo")).toBeUndefined();
   });
 });
+
+describe("buildArgs model/effort", () => {
+  test("no settings → no --model/--effort flags (CLI defaults apply)", () => {
+    const args = buildArgs("ask");
+    expect(args).not.toContain("--model");
+    expect(args).not.toContain("--effort");
+  });
+
+  test("model and effort are passed as their own flags", () => {
+    const args = buildArgs("ask", undefined, { model: "opus", effort: "high" });
+    expect(args.join(" ")).toContain("--model opus");
+    expect(args.join(" ")).toContain("--effort high");
+  });
+
+  test("each flag is independent of the other", () => {
+    expect(buildArgs("apply", undefined, { model: "sonnet" })).not.toContain("--effort");
+    expect(buildArgs("apply", undefined, { effort: "low" })).not.toContain("--model");
+  });
+
+  test("settings are sent on resumed turns too", () => {
+    const args = buildArgs("ask", "sid-1", { model: "haiku", effort: "max" });
+    expect(args.join(" ")).toContain("--model haiku --effort max --resume sid-1");
+  });
+});

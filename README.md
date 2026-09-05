@@ -54,6 +54,10 @@ prv --no-open                      # don't auto-open browser
 
 prv compares git refs, so it runs inside a git repository. Both `diff` arguments are resolved as refs — a branch, tag, SHA, or `HEAD` — and a name that resolves to none of those is an error. Comparing plain directories is not supported.
 
+### Diff chat
+
+The **Chat** button opens a read-only conversation with your local Claude Code about the current diff. The **model** and **effort** pickers next to Send map to `claude --model` / `claude --effort`; leave either on `default` to use the CLI's own setting. The model list offers the CLI aliases (`fable`, `opus`, `sonnet`, `haiku`) and a custom entry for a full model name. The choice is remembered in the browser and also applies to inline comment threads, including "Apply with agent".
+
 ### Agent review
 
 The **Review** button in the topbar runs three read-only review agents in parallel over the current diff — correctness, silent failures, and test coverage. Their findings land as inline review comments, anchored to the diff lines they cite (with severity and lens badges). Each one is a normal comment thread: reply to discuss it with the agent, use "Apply with agent" to fix it, resolve or delete it. Re-running a review stacks new comments; "Clear agent comments" removes open ones no human has replied to. Stop cancels an in-flight run.
