@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { AGENT_LABELS } from "../../shared/chat";
+import { useChatSettings } from "../chatSettings";
 import { isSubmitKey } from "../keys";
 import { useDiffChat } from "../useDiffChat";
 import { ChatMessageList } from "./ChatMessageList";
@@ -19,6 +21,8 @@ export function ChatPanel({
   width: number;
 }) {
   const { messages, streaming, send, reset } = useDiffChat();
+  const [settings] = useChatSettings();
+  const agentLabel = AGENT_LABELS[settings.agent ?? "claude"];
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -49,7 +53,7 @@ export function ChatPanel({
       <div className="chat-messages">
         {messages.length === 0 && (
           <div className="chat-empty">
-            Ask questions about the changes — answers come from your local Claude Code, read-only.
+            Ask questions about the changes — answers come from your local {agentLabel}, read-only.
           </div>
         )}
         <ChatMessageList messages={messages} streaming={streaming} />

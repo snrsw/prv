@@ -210,3 +210,66 @@ test("the /api/chat socket drops malformed model/effort rather than failing", as
   expect(turn?.model).toBeUndefined();
   expect(turn?.effort).toBeUndefined();
 });
+
+test("the /api/chat socket forwards the agent choice and resumes only within one agent", async () => {
+  const ws = await openSocket("/api/chat");
+  const before = seenTurns.length;
+
+  // Turn 1 on Codex: a fresh session, so the diff-bearing first-turn prompt.
+  let framesPromise = collectFrames<ChatServerFrame>(ws);
+  ws.send(JSON.stringify({ type: "ask", question: "q1", diff: "d", agent: "codex" }));
+  await framesPromise;
+  // Turn 2, still Codex: resumes the session the fake runner reported.
+  framesPromise = collectFrames<ChatServerFrame>(ws);
+  ws.send(JSON.stringify({ type: "ask", question: "q2", diff: "d", agent: "codex" }));
+  await framesPromise;
+  // Turn 3 switches to Claude: the Codex session cannot be resumed, so a
+  // fresh first turn (with the diff) and no session id.
+  framesPromise = collectFrames<ChatServerFrame>(ws);
+  ws.send(JSON.stringify({ type: "ask", question: "q3", diff: "d", agent: "claude" }));
+  await framesPromise;
+  ws.close();
+
+  const [t1, t2, t3] = seenTurns.slice(before);
+  expect(t1).toMatchObject({ agent: "codex", sessionId: undefined });
+  expect(t1?.prompt).toContain("<diff>");
+  expect(t2).toMatchObject({ agent: "codex", sessionId: "s1", prompt: "q2" });
+  expect(t3).toMatchObject({ agent: "claude", sessionId: undefined });
+  expect(t3?.prompt).toContain("<diff>");
+});
+
+test("the /api/chat socket validates effort against the chosen agent", async () => {
+  const ws = await openSocket("/api/chat");
+  const before = seenTurns.length;
+  const framesPromise = collectFrames<ChatServerFrame>(ws);
+  ws.send(
+    JSON.stringify({ type: "ask", question: "q", diff: "d", agent: "codex", effort: "minimal" }),
+  );
+  await framesPromise;
+  ws.close();
+
+  expect(seenTurns[before]).toMatchObject({ agent: "codex", effort: "minimal" });
+});
+
+test("a review start forwards agent, model and effort to every lens turn", async () => {
+  const before = seenTurns.length;
+  const ws = await openSocket("/api/review");
+  const framesPromise = collectFrames<ReviewServerFrame>(ws);
+  ws.send(
+    JSON.stringify({
+      type: "start",
+      modeQuery: gitModeQuery(await dirtyRepo()),
+      agent: "codex",
+      model: "gpt-5.5",
+      effort: "high",
+    }),
+  );
+  await framesPromise;
+  ws.close();
+
+  const turns = seenTurns.slice(before);
+  expect(turns).toHaveLength(3);
+  for (const turn of turns) {
+    expect(turn).toMatchObject({ agent: "codex", model: "gpt-5.5", effort: "high", mode: "ask" });
+  }
+});

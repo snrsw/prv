@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { LensId, ReviewFinding, ReviewServerFrame } from "../shared/review";
+import type { LensId, ReviewFinding, ReviewServerFrame, ReviewStart } from "../shared/review";
+import { getChatSettings } from "./chatSettings";
 import type { ChatMessage } from "./useDiffChat";
 
 /**
@@ -151,9 +152,9 @@ export function useReview(
           r && r.running ? reduceReview(r, { type: "error", message: "connection closed" }) : r,
         );
       };
-      ws.addEventListener("open", () => ws.send(JSON.stringify({ type: "start", modeQuery })), {
-        once: true,
-      });
+      // The app-wide agent/model/effort choice decides which CLI reviews.
+      const start: ReviewStart = { type: "start", modeQuery, ...getChatSettings() };
+      ws.addEventListener("open", () => ws.send(JSON.stringify(start)), { once: true });
       wsRef.current = ws;
     },
     [handleFrame],
@@ -163,7 +164,7 @@ export function useReview(
     const ws = wsRef.current;
     if (!ws) return;
     // Null the ref first so onclose doesn't synthesize "connection closed";
-    // the server aborts the run's claude subprocesses when the socket closes.
+    // the server aborts the run's agent subprocesses when the socket closes.
     wsRef.current = null;
     ws.close();
     setRun((r) => (r && r.running ? reduceReview(r, { type: "error", message: "stopped" }) : r));

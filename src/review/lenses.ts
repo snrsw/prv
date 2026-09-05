@@ -1,5 +1,5 @@
 /**
- * Review lens definitions and their prompts. Each lens is one read-only claude
+ * Review lens definitions and their prompts. Each lens is one read-only agent
  * run over the same annotated diff, focused on a single class of problems; the
  * panel runs all lenses in parallel and tags each comment with its lens.
  */

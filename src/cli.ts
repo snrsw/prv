@@ -107,8 +107,9 @@ Review comments (headless, no browser — for agents and scripts):
   over file names — view a file named "comment" with \`prv ./comment\`.
 
 Notes:
-  The "chat about the diff" feature requires Claude Code (the \`claude\` CLI)
-  installed separately.`;
+  The "chat about the diff" and agent-review features require a local coding
+  agent installed separately: Claude Code (the \`claude\` CLI) or OpenAI Codex
+  (the \`codex\` CLI). Pick one in the chat panel.`;
 
 async function main() {
   const argv = Bun.argv.slice(2);
