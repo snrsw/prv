@@ -5,12 +5,14 @@ import { DiffPanel } from "./components/DiffPanel";
 import { DiffStat } from "./components/DiffStat";
 import { ModePicker } from "./components/ModePicker";
 import { ReviewPanel } from "./components/ReviewPanel";
+import { ShortcutHelp } from "./components/ShortcutHelp";
 import { findingsToComments } from "../review/transform";
 import { encodeMode } from "../shared/modeQuery";
 import type { ReviewSeverity } from "../shared/comments";
 import { isClearableReviewComment } from "../shared/review";
 import type { LensId, ReviewFinding } from "../shared/review";
 import { documentOrder, nextCommentTarget } from "./commentNav";
+import { isTypingTarget, shortcutFor } from "./keys";
 import { isOpenFinding, openCommentsByFile, openFindingsBySeverity, viewedCount } from "./progress";
 import { sumTotals } from "./totals";
 import { useComments } from "./useComments";
@@ -141,6 +143,9 @@ export function App() {
   const [reloadKey, setReloadKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  // Bumped by the `f` shortcut; the sidebar filter takes focus once it is rendered.
+  const [filterFocusTick, setFilterFocusTick] = useState(0);
   const sidebarResize = useResizablePanel({
     storageKey: "prv:sidebarWidth",
     defaultWidth: 296,
@@ -390,6 +395,60 @@ export function App() {
     [findingOrder, currentFindingId, focusComment],
   );
 
+  // Global shortcuts (#56). Single unmodified keys, so a keydown in a text
+  // field, an IME composition or a browser chord is never one (see keys.ts).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target instanceof HTMLElement ? e.target : null)) return;
+      if (e.key === "Escape" && helpOpen) {
+        setHelpOpen(false);
+        return;
+      }
+      const action = shortcutFor(e);
+      if (!action) return;
+      e.preventDefault();
+      switch (action) {
+        case "nextFile":
+        case "prevFile": {
+          // Same wrap-around stepping as the findings, over the file list.
+          const path = filePaths
+            ? nextCommentTarget(filePaths, activePath, action === "nextFile" ? 1 : -1)
+            : null;
+          if (path) onSelect(path);
+          return;
+        }
+        case "nextFinding":
+          return jumpToComment(1);
+        case "prevFinding":
+          return jumpToComment(-1);
+        case "toggleViewed":
+          if (activePath) setFileUi(activePath, { viewed: !fileUi[activePath]?.viewed });
+          return;
+        case "toggleCollapsed":
+          if (activePath) setFileUi(activePath, { collapsed: !fileUi[activePath]?.collapsed });
+          return;
+        case "focusFilter":
+          setSidebarOpen(true);
+          setFilterFocusTick((t) => t + 1);
+          return;
+        case "toggleSidebar":
+          return setSidebarOpen((s) => !s);
+        case "toggleChat":
+          return setChatOpen((c) => !c);
+        case "toggleHelp":
+          return setHelpOpen((h) => !h);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [helpOpen, filePaths, activePath, onSelect, jumpToComment, fileUi, setFileUi]);
+
+  // Runs after the render that opened the sidebar, so the input exists.
+  useEffect(() => {
+    if (filterFocusTick === 0) return;
+    document.querySelector<HTMLInputElement>(".sidebar-search input")?.focus();
+  }, [filterFocusTick]);
+
   const jumpToFirst = useCallback(() => {
     const target = findingOrder()[0];
     if (target) focusComment(target);
@@ -486,6 +545,16 @@ export function App() {
           >
             Chat
           </button>
+          <button
+            type="button"
+            className="help-btn"
+            aria-label="Keyboard shortcuts"
+            title="Keyboard shortcuts (?)"
+            aria-pressed={helpOpen}
+            onClick={() => setHelpOpen((h) => !h)}
+          >
+            ?
+          </button>
         </div>
       </header>
 
@@ -551,6 +620,8 @@ export function App() {
         {chatOpen && <PanelResizer panel={chatResize} label="Resize chat panel" />}
         <ChatPanel files={files} open={chatOpen} width={chatResize.width} />
       </div>
+
+      {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
 
       {lastRemoved && (
         <div className="undo-toast" role="status">

@@ -44,6 +44,8 @@
   --shadow-sm: 0 1px 2px rgba(31, 35, 40, 0.06);
   --shadow-md: 0 1px 3px rgba(31, 35, 40, 0.08);
   --shadow-lg: 0 8px 24px rgba(31, 35, 40, 0.12);
+  /* Dims the page behind a modal (the shortcut help). */
+  --overlay-backdrop: rgba(31, 35, 40, 0.4);
 
   --add-line-bg: #dafbe1;
   --del-line-bg: #ffebe9;
@@ -116,6 +118,7 @@
     --shadow-sm: 0 1px 2px rgba(1, 4, 9, 0.5);
     --shadow-md: 0 1px 3px rgba(1, 4, 9, 0.6);
     --shadow-lg: 0 8px 24px rgba(1, 4, 9, 0.8);
+    --overlay-backdrop: rgba(1, 4, 9, 0.6);
 
     --add-line-bg: rgba(46, 160, 67, 0.15);
     --del-line-bg: rgba(248, 81, 73, 0.15);
@@ -198,6 +201,24 @@ input:focus-visible {
   justify-content: center;
 }
 .sidebar-toggle:hover {
+  background: var(--canvas-subtle);
+  border-color: var(--border-muted);
+  color: var(--fg-default);
+}
+/* The discreet "?" at the right end of the topbar. */
+.help-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-muted);
+  font-weight: 600;
+  cursor: pointer;
+}
+.help-btn:hover,
+.help-btn[aria-pressed="true"] {
   background: var(--canvas-subtle);
   border-color: var(--border-muted);
   color: var(--fg-default);
@@ -1793,6 +1814,13 @@ tr.prv-expand-clickable:hover .d2h-info {
 .prv-dragging * {
   user-select: none;
 }
+/* Keyboard focus on a gutter line (#56). Drawn inside the cell, where the
+   row's own background (and no neighbour) sits under it. */
+.d2h-code-linenumber:focus-visible,
+.d2h-code-side-linenumber:focus-visible {
+  outline: 2px solid var(--accent-emphasis) !important;
+  outline-offset: -2px;
+}
 /* Lines covered by the in-progress range drag / by an open comment.
  * The class lives on the <tr>; selectors are specific enough (and cover the
  * inner content divs) to win over diff2html's add/delete background rules,
@@ -2186,6 +2214,93 @@ tr.prv-expand-clickable:hover .d2h-info {
 }
 .undo-toast-dismiss:hover {
   color: var(--fg-default);
+}
+
+/* ---- Keyboard shortcut help (#56) ---- */
+
+.shortcut-help-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay-backdrop);
+}
+.shortcut-help {
+  width: min(460px, calc(100vw - 2 * var(--sp-4)));
+  max-height: calc(100vh - 2 * var(--sp-4));
+  overflow: auto;
+  padding: var(--sp-4) var(--sp-5) var(--sp-5);
+  background: var(--canvas-default);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  color: var(--fg-default);
+  font-size: var(--fs-ui);
+  outline: none;
+}
+.shortcut-help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.shortcut-help h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.shortcut-help h3 {
+  margin: var(--sp-4) 0 var(--sp-1);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.shortcut-help-close {
+  background: none;
+  border: 0;
+  padding: 0 4px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--fg-muted);
+}
+.shortcut-help-close:hover {
+  color: var(--fg-default);
+}
+.shortcut-help-list {
+  margin: 0;
+}
+.shortcut-help-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 5px 0;
+  border-top: 1px solid var(--border-muted);
+}
+.shortcut-help-row dd {
+  margin: 0;
+  white-space: nowrap;
+}
+.shortcut-help-or {
+  color: var(--fg-subtle);
+}
+.shortcut-help kbd {
+  display: inline-block;
+  min-width: 20px;
+  padding: 3px 6px;
+  border: 1px solid var(--border-default);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--canvas-subtle);
+  color: var(--fg-default);
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  line-height: 1;
+  text-align: center;
 }
 
 /* ---- Chat composer: model / effort pickers next to Send ---- */
