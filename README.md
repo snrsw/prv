@@ -110,6 +110,9 @@ bun test
 bun run dev
 ```
 
+To run the source checkout against another repository, start it from that
+repository's directory: `PRV_DEV=1 bun --hot /path/to/prv/src/cli.ts`.
+
 ## Status
 
 Pre-alpha. See [plan](./plan.md) for the implementation roadmap.
