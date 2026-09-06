@@ -65,6 +65,8 @@ The **Chat** button opens a conversation with your local coding agent about the 
 
 With Codex, Read only runs `codex exec` in its `read-only` sandbox and Write in `workspace-write`; approvals are set to `never` because there is no one to answer them.
 
+Replies render as Markdown, and a ` ```mermaid ` fenced block renders as a diagram — in chat, in inline comment threads and review findings, and in the rendered view of Markdown files. A **Source** toggle under each diagram shows the Mermaid text; a block that fails to parse stays as code with the error underneath.
+
 ### Agent review
 
 The **Review** button in the topbar runs three read-only review agents in parallel over the current diff — correctness, silent failures, and test coverage. Their findings land as inline review comments, anchored to the diff lines they cite (with severity and lens badges). Each one is a normal comment thread: reply to discuss it with the agent, send in Write mode to have it fixed, resolve or delete it. Re-running a review stacks new comments; "Clear agent comments" removes open ones no human has replied to. Stop cancels an in-flight run.

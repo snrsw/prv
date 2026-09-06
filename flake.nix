@@ -38,7 +38,7 @@
         x86_64-linux = inputs.nixpkgs.lib.fakeHash;
         aarch64-linux = inputs.nixpkgs.lib.fakeHash;
         x86_64-darwin = inputs.nixpkgs.lib.fakeHash;
-        aarch64-darwin = "sha256-DAdVEbSR4jeotvBEI8/chX+ukfKHp75JsxAJCG9GwV4=";
+        aarch64-darwin = inputs.nixpkgs.lib.fakeHash;
       };
 
       # Bun 1.3.13 fixed the sandbox compile bug; fail eval if older.
@@ -101,7 +101,10 @@
               cp -R ${deps}/node_modules ./node_modules
               chmod -R u+w node_modules
               # KEEP IN SYNC with package.json "build" script (inlined for --define).
-              bun build --compile --target=bun \
+              # --splitting keeps the frontend's dynamic imports (the Mermaid
+              # renderer) in chunks the binary serves on demand instead of
+              # inlining them into the page's main script.
+              bun build --compile --splitting --target=bun \
                 --define PRV_VERSION='"${version}"' \
                 src/cli.ts --outfile dist/prv
               test -s dist/prv

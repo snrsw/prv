@@ -1398,6 +1398,71 @@ html.prv-col-resize * {
   max-width: 100%;
 }
 
+/* A ```mermaid fence rendered as a diagram (see components/Markdown.tsx). The
+   original <pre> stays inside the shell behind the Source toggle; on a render
+   failure it stays visible with the note under it. The SVG keeps mermaid's
+   drawn width so labels stay legible, and the holder scrolls when the diagram
+   is wider than the bubble or page. */
+.mermaid-diagram {
+  margin: 0 0 1em;
+  max-width: 100%;
+}
+.mermaid-diagram-svg {
+  overflow-x: auto;
+  text-align: center;
+  padding: var(--sp-2) 0;
+}
+/* Nothing to show while rendering or after a failure: no padding either. */
+.mermaid-diagram-svg:empty {
+  display: none;
+}
+.mermaid-diagram-svg svg {
+  display: inline-block;
+  height: auto;
+  vertical-align: top;
+}
+.mermaid-diagram[data-state="ok"] > pre {
+  display: none;
+}
+.mermaid-diagram.is-source > pre {
+  display: block;
+  margin: 0;
+}
+.mermaid-diagram.is-source > .mermaid-diagram-svg {
+  display: none;
+}
+.mermaid-diagram-bar {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 0;
+}
+.mermaid-diagram-bar:empty {
+  display: none;
+}
+.mermaid-diagram-toggle {
+  border: 0;
+  background: transparent;
+  padding: 0 var(--sp-1);
+  font: inherit;
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-subtle);
+  cursor: pointer;
+}
+.mermaid-diagram-toggle:hover {
+  color: var(--accent-fg);
+  text-decoration: underline;
+}
+.mermaid-diagram[data-state="error"] > pre {
+  margin-bottom: var(--sp-1);
+}
+.mermaid-diagram-error {
+  flex: 1;
+  font-size: var(--fs-ui-sm);
+  font-family: var(--ff-mono);
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+
 /* ---- diff2html overrides toward GitHub (line-by-line / unified) ---- */
 
 .d2h-wrapper {
@@ -1823,6 +1888,9 @@ tr.prv-expand-clickable:hover .d2h-info {
 }
 .chat-markdown pre code {
   border: 0;
+}
+.chat-markdown .mermaid-diagram {
+  margin: 0 0 0.6em;
 }
 .chat-activity {
   display: flex;
