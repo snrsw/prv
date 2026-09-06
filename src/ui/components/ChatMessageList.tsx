@@ -9,6 +9,8 @@ import { Markdown } from "./Markdown";
  *
  * Assistant replies render as Markdown, since that is what the agent writes.
  * User messages stay plain text so the bubble shows exactly what was typed.
+ * The reply still streaming in (the last message while `streaming`) renders
+ * `live`, which holds off Mermaid diagrams until its fences are closed.
  * `stalled` (no frame for a while) adds a hint under the "thinking…" bubble:
  * the usual cause is an agent CLI that is waiting on a login prompt.
  */
@@ -56,7 +58,11 @@ export function ChatMessageList({
         return (
           <div key={i} className={`chat-msg chat-msg-${m.role}`}>
             {m.role === "assistant" ? (
-              <Markdown source={m.text} className="chat-markdown" />
+              <Markdown
+                source={m.text}
+                className="chat-markdown"
+                live={streaming && i === messages.length - 1}
+              />
             ) : (
               m.text
             )}

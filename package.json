@@ -11,7 +11,7 @@
     "dev": "PRV_DEV=1 bun --hot src/cli.ts",
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit",
-    "build": "bun build --compile --target=bun src/cli.ts --outfile dist/prv",
+    "build": "bun build --compile --splitting --target=bun src/cli.ts --outfile dist/prv",
     "lint": "oxlint",
     "format": "oxfmt",
     "format:check": "oxfmt --check"
@@ -21,6 +21,7 @@
     "dompurify": "^3.4.11",
     "highlight.js": "^11.11.1",
     "marked": "^18.0.5",
+    "mermaid": "11.17.2",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"
   },
