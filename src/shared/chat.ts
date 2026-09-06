@@ -96,6 +96,12 @@ export type ChatAsk = ChatSettings & {
   mode?: "ask" | "apply";
 };
 
+/** Client → server: abort the in-flight turn. The socket (and its session)
+ * stays open, and the server still answers the aborted ask with `done`. */
+export type ChatStop = { type: "stop" };
+
+export type ChatClientFrame = ChatAsk | ChatStop;
+
 /** Server → client frames. */
 export type ChatServerFrame =
   | { type: "session"; sessionId: string }
@@ -110,10 +116,12 @@ export type ChatServerFrame =
  * websocket handler (Bun.serve has a single handler for all upgraded routes).
  * A session belongs to the agent that created it (`agent`): switching agents
  * mid-conversation starts a fresh session, since neither CLI can resume the
- * other's. */
+ * other's. `abort` kills the in-flight turn's agent subprocess on a `stop`
+ * frame or when the client disconnects. */
 export type ChatWsData = {
   kind: "chat";
   sessionId: string | null;
   agent: ChatAgent | null;
   busy: boolean;
+  abort?: AbortController;
 };

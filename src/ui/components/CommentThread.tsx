@@ -39,7 +39,7 @@ export function CommentThread({
   onApplied: () => void;
 }) {
   const persist = (messages: StoredMessage[]) => onUpdate((c) => ({ ...c, messages }));
-  const { messages, streaming, send } = useDiffChat(comment.messages, persist);
+  const { messages, streaming, stalled, send, stop } = useDiffChat(comment.messages, persist);
   const [input, setInput] = useState("");
   const [confirmingApply, setConfirmingApply] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
@@ -139,7 +139,7 @@ export function CommentThread({
           {body !== null && <Markdown source={body} className="prv-finding-body" />}
           {rest.length > 0 && (
             <div className="prv-thread-messages">
-              <ChatMessageList messages={rest} streaming={streaming} />
+              <ChatMessageList messages={rest} streaming={streaming} stalled={stalled} />
               <div ref={endRef} />
             </div>
           )}
@@ -194,14 +194,20 @@ export function CommentThread({
                 >
                   Apply with agent
                 </button>
-                <button
-                  type="button"
-                  className="chat-send"
-                  onClick={onSend}
-                  disabled={streaming || input.trim() === ""}
-                >
-                  Send
-                </button>
+                {streaming ? (
+                  <button type="button" className="chat-send" onClick={stop}>
+                    Stop
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="chat-send"
+                    onClick={onSend}
+                    disabled={input.trim() === ""}
+                  >
+                    Send
+                  </button>
+                )}
               </div>
             </div>
           )}

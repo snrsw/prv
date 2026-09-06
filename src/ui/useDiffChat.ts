@@ -4,6 +4,7 @@ import {
   type ChatAgent,
   type ChatAsk,
   type ChatServerFrame,
+  type ChatStop,
 } from "../shared/chat";
 import type { StoredMessage } from "../shared/comments";
 import { getChatSettings } from "./chatSettings";
@@ -87,11 +88,25 @@ export function appendProgress(messages: ChatMessage[], text: string): ChatMessa
 }
 
 /**
- * Drop the ephemeral activity lines (`tool` calls and `progress` narration) so
- * the persisted transcript keeps only the user's questions and the answers.
+ * Drop empty assistant messages: the "thinking…" placeholder `send` seeds is
+ * only meaningful while a turn is in flight. Applied at the persist boundary
+ * (a turn that never completes must not save an empty bubble) and to a
+ * persisted transcript on load (so stores that already hold one self-heal).
+ * Pure and exported for unit testing.
+ */
+export function dropEmptyAssistants<T extends ChatMessage>(messages: T[]): T[] {
+  return messages.filter((m) => !(m.role === "assistant" && m.text === ""));
+}
+
+/**
+ * Drop the ephemeral activity lines (`tool` calls and `progress` narration)
+ * and any empty assistant placeholder, so the persisted transcript keeps only
+ * the user's questions and the answers.
  */
 export function stripEphemeral(messages: ChatMessage[]): StoredMessage[] {
-  return messages.filter((m): m is StoredMessage => m.role !== "tool" && m.role !== "progress");
+  return dropEmptyAssistants(messages).filter(
+    (m): m is StoredMessage => m.role !== "tool" && m.role !== "progress",
+  );
 }
 
 /**
@@ -104,6 +119,45 @@ export function dropEmptyPlaceholder(messages: ChatMessage[]): ChatMessage[] {
   if (last && last.role === "assistant" && last.text === "") return messages.slice(0, -1);
   return messages;
 }
+
+/**
+ * End a turn the user stopped: drop the placeholder (the answer never came)
+ * and leave a muted "stopped" line so the transcript says why the turn has
+ * no answer. Pure and exported for unit testing.
+ */
+export function stopTurn(messages: ChatMessage[]): ChatMessage[] {
+  return [...dropEmptyPlaceholder(messages), { role: "progress", text: "stopped" }];
+}
+
+/**
+ * Fold one server frame into the transcript. Pure: the hook applies it inside
+ * a state updater, so it must not touch anything but its arguments (React
+ * may run updaters twice, and side effects there update other components
+ * mid-render).
+ */
+export function applyFrame(messages: ChatMessage[], frame: ChatServerFrame): ChatMessage[] {
+  switch (frame.type) {
+    case "chunk":
+      return appendChunk(messages, frame.text);
+    case "tool":
+      return appendTool(messages, { name: frame.name, target: frame.target });
+    case "progress":
+      return appendProgress(messages, frame.text);
+    case "error":
+      return appendChunk(messages, `⚠ ${frame.message}`);
+    case "done":
+      return dropEmptyPlaceholder(messages);
+    case "busy":
+      // The server is still finishing a stopped turn; the ask was not accepted
+      // and no `done` will follow it, so the turn must not hang on "thinking…".
+      return appendChunk(messages, "⚠ The agent is still busy — try again in a moment.");
+    case "session":
+      return messages;
+  }
+}
+
+/** How long a turn may go without a frame before the UI hints at a stuck CLI. */
+export const STALL_MS = 30_000;
 
 /** A compact, muted glyph shown next to a live-activity line for a tool name. */
 export function toolIcon(name: string): string {
@@ -130,67 +184,77 @@ export function toolIcon(name: string): string {
  *
  * Messages are seeded from `initial` (e.g. a persisted transcript) and every
  * change is reported through `onChange` so the caller can persist it. Ephemeral
- * activity (tool + progress lines) is stripped before `onChange` so only
- * user/assistant text is saved.
+ * activity (tool + progress lines, the empty placeholder) is stripped before
+ * `onChange` so only user/assistant text is saved. `onChange` runs from an
+ * effect, never from inside a state updater: updaters must stay pure, and
+ * persisting from one would update the caller's state mid-render.
  * The hook starts a fresh session per mount, so the first `send` after a reload
  * re-sends `firstTurnContext`; later turns resume the CLI's session. Every turn
  * also carries the app-wide agent/model/effort choice (see `chatSettings`);
  * switching the agent mid-conversation starts a new session (the other CLI
  * cannot resume it), so the diff is sent again.
+ *
+ * `stop` aborts the in-flight turn (the server keeps the session, so the next
+ * question still resumes it); `stalled` turns on after `STALL_MS` of streaming
+ * with no frame, for a "check the CLI" hint.
  */
 export function useDiffChat(
   initial: ChatMessage[] = [],
   onChange?: (messages: StoredMessage[]) => void,
 ) {
-  const [messages, setMessages] = useState<ChatMessage[]>(initial);
+  // Heal a persisted transcript that holds an empty placeholder (a turn that
+  // never completed before a reload) instead of rendering it as an empty bubble.
+  const [messages, setMessages] = useState<ChatMessage[]>(() => dropEmptyAssistants(initial));
   const [streaming, setStreaming] = useState(false);
+  const [stalled, setStalled] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const hasSessionRef = useRef(false);
   const sessionAgentRef = useRef<ChatAgent | null>(null);
+  // Frames that arrive after the user stopped a turn (a last buffered chunk,
+  // the server's `done`) must not reopen the transcript.
+  const turnActiveRef = useRef(false);
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
-  const commit = useCallback((next: ChatMessage[]) => {
-    onChangeRef.current?.(stripEphemeral(next));
-    return next;
+  // Persist every transcript change. The seeded state is skipped by identity
+  // (not by "first run"), so StrictMode's re-run of the effect and unrelated
+  // re-renders do not re-persist what was just loaded.
+  const lastPersistedRef = useRef(messages);
+  useEffect(() => {
+    if (messages === lastPersistedRef.current) return;
+    lastPersistedRef.current = messages;
+    onChangeRef.current?.(stripEphemeral(messages));
+  }, [messages]);
+
+  const clearStall = useCallback(() => {
+    if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+    stallTimerRef.current = null;
+    setStalled(false);
   }, []);
 
-  const appendToAssistant = useCallback(
-    (text: string) => {
-      setMessages((msgs) => commit(appendChunk(msgs, text)));
-    },
-    [commit],
-  );
+  // (Re)arm the stall hint: it fires only if nothing arrives for STALL_MS.
+  const armStall = useCallback(() => {
+    clearStall();
+    stallTimerRef.current = setTimeout(() => setStalled(true), STALL_MS);
+  }, [clearStall]);
+
+  const endTurn = useCallback(() => {
+    turnActiveRef.current = false;
+    setStreaming(false);
+    clearStall();
+  }, [clearStall]);
 
   const handleFrame = useCallback(
     (frame: ChatServerFrame) => {
-      switch (frame.type) {
-        case "session":
-          hasSessionRef.current = true;
-          break;
-        case "chunk":
-          appendToAssistant(frame.text);
-          break;
-        case "tool":
-          setMessages((m) => commit(appendTool(m, { name: frame.name, target: frame.target })));
-          break;
-        case "progress":
-          setMessages((m) => commit(appendProgress(m, frame.text)));
-          break;
-        case "error":
-          appendToAssistant(`⚠ ${frame.message}`);
-          setStreaming(false);
-          break;
-        case "done":
-          setMessages((m) => commit(dropEmptyPlaceholder(m)));
-          setStreaming(false);
-          break;
-        case "busy":
-          break;
-      }
+      if (frame.type === "session") hasSessionRef.current = true;
+      if (!turnActiveRef.current) return;
+      armStall();
+      setMessages((m) => applyFrame(m, frame));
+      if (frame.type === "error" || frame.type === "done" || frame.type === "busy") endTurn();
     },
-    [appendToAssistant, commit],
+    [armStall, endTurn],
   );
 
   const ensureSocket = useCallback((): WebSocket => {
@@ -215,10 +279,10 @@ export function useDiffChat(
       const resumes = hasSessionRef.current && sessionAgentRef.current === agent;
       const diff = resumes ? "" : firstTurnContext;
       sessionAgentRef.current = agent;
-      setMessages((m) =>
-        commit([...m, { role: "user", text: q }, { role: "assistant", text: "" }]),
-      );
+      setMessages((m) => [...m, { role: "user", text: q }, { role: "assistant", text: "" }]);
+      turnActiveRef.current = true;
       setStreaming(true);
+      armStall();
       const ws = ensureSocket();
       // The app-wide agent/model/effort choice rides along on every turn so a
       // change made mid-conversation applies from the next question.
@@ -227,19 +291,43 @@ export function useDiffChat(
       if (ws.readyState === WebSocket.OPEN) ws.send(data);
       else ws.addEventListener("open", () => ws.send(data), { once: true });
     },
-    [streaming, ensureSocket, commit],
+    [streaming, ensureSocket, armStall],
   );
+
+  const stop = useCallback(() => {
+    if (!turnActiveRef.current) return;
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      // The server aborts the turn but keeps the socket and its session.
+      const payload: ChatStop = { type: "stop" };
+      ws.send(JSON.stringify(payload));
+    } else {
+      // Not connected yet: dropping the socket cancels the queued ask, and the
+      // server-side session with it, so the next question starts over.
+      ws?.close();
+      wsRef.current = null;
+      hasSessionRef.current = false;
+    }
+    setMessages(stopTurn);
+    endTurn();
+  }, [endTurn]);
 
   const reset = useCallback(() => {
     wsRef.current?.close();
     wsRef.current = null;
     hasSessionRef.current = false;
     sessionAgentRef.current = null;
-    setMessages(commit([]));
-    setStreaming(false);
-  }, [commit]);
+    setMessages([]);
+    endTurn();
+  }, [endTurn]);
 
-  useEffect(() => () => wsRef.current?.close(), []);
+  useEffect(
+    () => () => {
+      wsRef.current?.close();
+      if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+    },
+    [],
+  );
 
-  return { messages, streaming, send, reset };
+  return { messages, streaming, stalled, send, stop, reset };
 }

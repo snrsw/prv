@@ -20,7 +20,7 @@ export function ChatPanel({
   open: boolean;
   width: number;
 }) {
-  const { messages, streaming, send, reset } = useDiffChat();
+  const { messages, streaming, stalled, send, stop, reset } = useDiffChat();
   const [settings] = useChatSettings();
   const agentLabel = AGENT_LABELS[settings.agent ?? "claude"];
   const [input, setInput] = useState("");
@@ -56,7 +56,7 @@ export function ChatPanel({
             Ask questions about the changes — answers come from your local {agentLabel}, read-only.
           </div>
         )}
-        <ChatMessageList messages={messages} streaming={streaming} />
+        <ChatMessageList messages={messages} streaming={streaming} stalled={stalled} />
         <div ref={endRef} />
       </div>
 
@@ -83,14 +83,20 @@ export function ChatPanel({
         />
         <div className="chat-composer-bar">
           <ChatSettings disabled={streaming} />
-          <button
-            type="button"
-            className="chat-send"
-            onClick={onSend}
-            disabled={streaming || input.trim() === ""}
-          >
-            Send
-          </button>
+          {streaming ? (
+            <button type="button" className="chat-send" onClick={stop}>
+              Stop
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="chat-send"
+              onClick={onSend}
+              disabled={input.trim() === ""}
+            >
+              Send
+            </button>
+          )}
         </div>
       </div>
     </aside>
