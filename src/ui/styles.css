@@ -1515,6 +1515,11 @@ tr.prv-expand-clickable:hover .d2h-info {
   color: var(--fg-subtle);
   font-style: italic;
 }
+.chat-stall-hint {
+  margin-top: var(--sp-1);
+  color: var(--fg-muted);
+  font-size: var(--fs-ui-sm);
+}
 /* Assistant replies render as markdown; strip the file-view padding and tighten
    block spacing so a short answer stays one bubble tall. `white-space: normal`
    undoes the `pre-wrap` of .chat-msg, which would otherwise double the gaps. */
@@ -1986,6 +1991,50 @@ tr.prv-expand-clickable:hover .d2h-info {
 }
 .prv-finding-body > :last-child {
   margin-bottom: 0;
+}
+
+/* ---- Undo toast (after deleting a comment thread) ---- */
+
+.undo-toast {
+  position: fixed;
+  left: 50%;
+  bottom: var(--sp-4);
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--canvas-default);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  color: var(--fg-default);
+  font-size: var(--fs-ui);
+}
+.undo-toast-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent-fg);
+}
+.undo-toast-btn:hover {
+  text-decoration: underline;
+}
+.undo-toast-dismiss {
+  background: none;
+  border: 0;
+  padding: 0 2px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--fg-muted);
+}
+.undo-toast-dismiss:hover {
+  color: var(--fg-default);
 }
 
 /* ---- Chat composer: model / effort pickers next to Send ---- */

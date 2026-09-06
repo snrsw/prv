@@ -9,13 +9,17 @@ import { Markdown } from "./Markdown";
  *
  * Assistant replies render as Markdown, since that is what the agent writes.
  * User messages stay plain text so the bubble shows exactly what was typed.
+ * `stalled` (no frame for a while) adds a hint under the "thinking…" bubble:
+ * the usual cause is an agent CLI that is waiting on a login prompt.
  */
 export function ChatMessageList({
   messages,
   streaming,
+  stalled = false,
 }: {
   messages: ChatMessage[];
   streaming: boolean;
+  stalled?: boolean;
 }) {
   return (
     <>
@@ -41,6 +45,11 @@ export function ChatMessageList({
           return (
             <div key={i} className={`chat-msg chat-msg-${m.role}`}>
               <span className="chat-thinking">thinking…</span>
+              {stalled && (
+                <div className="chat-stall-hint">
+                  No response yet — check that the agent CLI is logged in.
+                </div>
+              )}
             </div>
           );
         }

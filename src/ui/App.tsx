@@ -65,8 +65,16 @@ export function App() {
   const [diffOutputFormat, setDiffOutputFormat] = useState<DiffOutputFormat>(
     readStoredDiffOutputFormat,
   );
-  const { comments, addComment, updateComment, removeComment, removeWhere } =
-    useComments(bootstrapped);
+  const {
+    comments,
+    addComment,
+    updateComment,
+    removeComment,
+    removeWhere,
+    lastRemoved,
+    undoRemove,
+    dismissRemoved,
+  } = useComments(bootstrapped);
   const refreshDiff = useCallback(() => setReloadKey((k) => k + 1), []);
 
   // Findings anchor against the diff snapshot taken when Review was pressed,
@@ -288,6 +296,23 @@ export function App() {
         {chatOpen && <PanelResizer panel={chatResize} label="Resize chat panel" />}
         <ChatPanel files={files} open={chatOpen} width={chatResize.width} />
       </div>
+
+      {lastRemoved && (
+        <div className="undo-toast" role="status">
+          <span>Comment deleted</span>
+          <button type="button" className="undo-toast-btn" onClick={undoRemove}>
+            Undo
+          </button>
+          <button
+            type="button"
+            className="undo-toast-dismiss"
+            aria-label="Dismiss"
+            onClick={dismissRemoved}
+          >
+            ×
+          </button>
+        </div>
+      )}
     </div>
   );
 }

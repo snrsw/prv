@@ -9,7 +9,7 @@ import { annotateDiff } from "./review/annotate";
 import { LENSES } from "./review/lenses";
 import { runReviewPanel, type TurnRunner } from "./review/runner";
 import { DEFAULT_CHAT_AGENT, sanitizeChatSettings } from "./shared/chat";
-import type { ChatAsk, ChatServerFrame, ChatWsData } from "./shared/chat";
+import type { ChatClientFrame, ChatServerFrame, ChatWsData } from "./shared/chat";
 import type { ReviewServerFrame, ReviewStart, ReviewWsData } from "./shared/review";
 import { decodeMode } from "./shared/modeQuery";
 import index from "./ui/index.html";
@@ -112,8 +112,8 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
         return handleChatMessage(ws, data, raw, turnRunner);
       },
       close(ws) {
-        // A client that disconnects mid-review cancels it: kill the turns.
-        if (ws.data.kind === "review") ws.data.abort?.abort();
+        // A client that disconnects mid-turn cancels it: kill the agent subprocess(es).
+        ws.data.abort?.abort();
       },
     },
   });
@@ -123,7 +123,11 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** Handle one /api/chat message: run an agent turn and relay its events. */
+/**
+ * Handle one /api/chat message: run an agent turn and relay its events, or
+ * abort the in-flight turn on `stop`. Every accepted ask terminates with
+ * exactly one `done` (via finally), stopped or not; `busy` is a lone reply.
+ */
 async function handleChatMessage(
   ws: Bun.ServerWebSocket<WsData>,
   data: ChatWsData,
@@ -134,10 +138,15 @@ async function handleChatMessage(
     ws.send(JSON.stringify(frame));
   };
 
-  let msg: ChatAsk;
+  let msg: ChatClientFrame;
   try {
-    msg = JSON.parse(String(raw)) as ChatAsk;
+    msg = JSON.parse(String(raw)) as ChatClientFrame;
   } catch {
+    return;
+  }
+  if (msg.type === "stop") {
+    // The session survives a stop, so the next ask still resumes it.
+    data.abort?.abort();
     return;
   }
   if (msg.type !== "ask" || typeof msg.question !== "string") return;
@@ -147,6 +156,8 @@ async function handleChatMessage(
   }
 
   data.busy = true;
+  const abort = new AbortController();
+  data.abort = abort;
   const mode = msg.mode ?? "ask";
   // The frame is untrusted input: keep only well-formed agent/model/effort values.
   const settings = sanitizeChatSettings(msg);
@@ -171,6 +182,7 @@ async function handleChatMessage(
       sessionId: data.sessionId ?? undefined,
       mode,
       ...settings,
+      signal: abort.signal,
     })) {
       switch (event.kind) {
         case "session":
@@ -202,6 +214,7 @@ async function handleChatMessage(
     }
   } finally {
     data.busy = false;
+    data.abort = undefined;
     send({ type: "done" });
   }
 }
