@@ -57,6 +57,10 @@ prv compares git refs, so it runs inside a git repository. Both `diff` arguments
 
 The one exception is `prv <path>` on a path git's diff cannot show: a file outside any repository, or one the repository ignores (a plan under `.claude/plans/`, say). prv then shows the file whole, as an added file, so it can still be read, commented on, and reviewed or discussed with the agent. A directory shows every file under it.
 
+### Inline comments
+
+Click a line number (or drag over several) to open a comment thread on those lines, GitHub-style; the thread can ask the local agent about them or have it apply a change. This works in the **File** tab as well as the Diff tab — the line numbers in the file gutter take the same click, drag, or `Enter` from the keyboard — and a thread made in either tab shows in both, anchored to the same lines.
+
 ### Diff chat
 
 The **Chat** button opens a conversation with your local coding agent about the current diff. It is read-only by default: the Send button's mode menu (the chevron next to Send) offers **Read only** and **Write**. In Write mode the agent may edit files in your repo — you confirm once per conversation, the edits are git-tracked, and the diff refreshes when the turn finishes. Inline comment threads have the same Send menu, so a finding can be discussed in Read only and then fixed in Write; a Write send with an empty box repeats the thread's last request.

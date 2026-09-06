@@ -84,6 +84,16 @@ export function fileMarks(file: FileDiff, side: FileSide): FileMarks {
   return marks;
 }
 
+/**
+ * The gutter line each change starts on, in file order, for hopping between
+ * changes: a block's first line, or the line a gap sits before — clamped to
+ * the last line for a gap at the end of the file, which that line wears.
+ */
+export function changeStarts(marks: FileMarks, lineCount: number): number[] {
+  const starts = new Set(marks.blocks.map((b) => Math.min(b.start, lineCount)));
+  return [...starts].filter((n) => n >= 1).sort((a, b) => a - b);
+}
+
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** What a block did, for the gutter tooltip; `side` says which text is shown. */

@@ -33,8 +33,9 @@ export const GLOBAL_SHORTCUTS: Shortcut[] = [
 ];
 
 /**
- * Keys that act on a focused diff line (Tab into a card's gutter first). They
- * are handled by the card itself, so this list is documentation only.
+ * Keys that act on a focused line of the Diff or File tab (Tab into a card's
+ * gutter first). They are handled by the card itself, so this list is
+ * documentation only.
  */
 export const DIFF_SHORTCUTS: { keys: string[]; label: string }[] = [
   { keys: ["↑", "↓"], label: "Move between lines" },

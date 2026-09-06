@@ -1112,30 +1112,97 @@ html.prv-col-resize * {
   box-shadow: var(--shadow-sm);
 }
 
-.file-content-wrap {
-  display: flex;
-  align-items: stretch;
-  background: var(--canvas-default);
+/* The File view: one row per line, comment threads between them (like the
+   diff view's, but plain React rows rather than table rows). The hover "+"
+   is positioned against the outer wrap, which does not scroll. */
+.file-view-wrap {
+  position: relative;
 }
-.file-content-gutter {
-  margin: 0;
+.file-content-wrap {
+  overflow-x: auto;
+  background: var(--canvas-default);
+  /* Thread rows measure this box (`100cqw` below) so they are as wide as
+     the visible area while the lines behind them run as wide as the longest
+     line. */
+  container-type: inline-size;
+}
+.file-content-lines {
+  /* As wide as the longest line, never narrower than the card. */
+  width: max-content;
+  min-width: 100%;
   /* Vertical padding only: each line paints its own row edge to edge, so a
      tinted line fills the gutter's full width like the diff view's does. */
   padding: var(--sp-2) 0;
-  flex: 0 0 auto;
-  width: 96px;
   font-family: var(--ff-mono);
   font-size: var(--fs-code);
   line-height: var(--fs-code-lh);
+  /* Over the highlight.js theme's own page background. */
+  background: var(--canvas-default);
+}
+.file-line {
+  display: flex;
+  align-items: stretch;
+  min-height: var(--fs-code-lh);
+}
+/* The gutter stays put while long lines scroll under it, so it needs an
+   opaque background of its own; the line's tint sits on the cell inside. */
+.file-line-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  flex: 0 0 96px;
+  width: 96px;
   color: var(--fg-subtle);
-  background: var(--canvas-subtle);
+  background-color: var(--canvas-subtle);
   /* Inset shadow draws the divider without consuming layout width, so the
      file code aligns horizontally with the diff (which border-collapses). */
   box-shadow: inset -1px 0 0 var(--border-muted);
   text-align: right;
   user-select: none;
   white-space: pre;
-  box-sizing: border-box;
+}
+.file-line-code {
+  flex: 1 0 auto;
+  white-space: pre;
+  /* Align with diff: 1px d2h-cntx td padding + 8px line padding
+     + 1ch (+/− prefix slot) + 6px margin
+     + 1ch (whitespace between the two inline-block spans in d2h's markup). */
+  padding: 0 8px 0 calc(9px + 2ch + 6px);
+}
+/* Lines covered by the in-progress range drag / by an open comment, as in
+   the diff view. The gutter's tint is layered over its opaque background so
+   the translucent dark-theme colours never let scrolled code show through,
+   and a marked line's own colour gives way to it like the diff gutter's. */
+.file-line.prv-line-selected {
+  background: var(--accent-subtle);
+}
+.file-line.prv-line-selected .file-line-gutter {
+  background-image: linear-gradient(var(--accent-subtle), var(--accent-subtle));
+}
+.file-line.prv-line-commented {
+  background: var(--attention-subtle);
+}
+.file-line.prv-line-commented .file-line-gutter {
+  background-image: linear-gradient(var(--attention-subtle), var(--attention-subtle));
+  box-shadow:
+    inset 2px 0 0 var(--attention-emphasis),
+    inset -1px 0 0 var(--border-muted);
+}
+.file-line.prv-line-selected .file-line-num,
+.file-line.prv-line-commented .file-line-num {
+  background-color: transparent;
+}
+/* A thread row spans the visible width under its line; the rest of the row
+   (behind it, when lines are wider than the card) is the same grey as the
+   diff view's thread rows. */
+.file-thread-row {
+  background: var(--canvas-subtle);
+}
+.file-thread-cell {
+  position: sticky;
+  left: 0;
+  width: 100cqw;
+  max-width: 100%;
 }
 /* One row per line, the same height as its code line (var(--fs-code-lh)).
    Tints mirror the diff view's gutter so a reader can carry the colours over;
@@ -1148,6 +1215,13 @@ html.prv-col-resize * {
   padding: 0 6px;
   background-repeat: no-repeat;
   background-size: 3px 100%;
+  /* Where a comment starts: click, drag, or focus and Enter. */
+  cursor: pointer;
+}
+/* Keyboard focus on a line, drawn inside the cell like the diff gutter's. */
+.file-line-num:focus-visible {
+  outline: 2px solid var(--accent-emphasis);
+  outline-offset: -2px;
 }
 .file-line-num.is-marked {
   color: var(--fg-default);
@@ -1231,26 +1305,6 @@ html.prv-col-resize * {
   padding: 0 var(--sp-1);
   white-space: nowrap;
 }
-.file-content-pre {
-  margin: 0;
-  padding: 0;
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-x: auto;
-  font-family: var(--ff-mono);
-  font-size: var(--fs-code);
-  line-height: var(--fs-code-lh);
-  background: var(--canvas-default);
-}
-.file-content-pre code.hljs {
-  display: block;
-  /* Align with diff: 1px d2h-cntx td padding + 8px line padding
-     + 1ch (+/− prefix slot) + 6px margin
-     + 1ch (whitespace between the two inline-block spans in d2h's markup). */
-  padding: var(--sp-2) 8px var(--sp-2) calc(9px + 2ch + 6px);
-  background: var(--canvas-default);
-}
-
 .file-content-notice {
   padding: var(--sp-4);
   color: var(--fg-muted);
