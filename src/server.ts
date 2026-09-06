@@ -26,13 +26,30 @@ export type ServerOptions = {
 /** Every WebSocket route's per-connection state, discriminated by `kind`. */
 type WsData = ChatWsData | ReviewWsData;
 
+/**
+ * Whether prv runs from its source tree (`bun src/cli.ts`, `bun test`) rather
+ * than the compiled binary, whose modules live under Bun's virtual `$bunfs`
+ * root (`/$bunfs/…`; `B:\~BUN\…` on Windows).
+ */
+const runningFromSource = !/\$bunfs|~BUN/.test(import.meta.path);
+
 export function createServer(options: ServerOptions): Bun.Server<WsData> {
   const { defaultMode } = options;
   const turnRunner = options.turnRunner ?? runTurn;
 
   return Bun.serve({
     port: options.port,
-    development: options.development ? { hmr: true, console: true } : false,
+    // From source, the HTML import must go through Bun's HMR dev server: only
+    // it emits cwd-independent asset URLs (`/_bun/asset/…`). The production
+    // bundler writes them relative to `process.cwd()` at bundle time, and prv's
+    // cwd is the repository under review, so from any directory other than the
+    // prv checkout the page linked `/../../<cwd>/chunk-xxx.css` (#63). The
+    // compiled binary embeds a prebuilt manifest and is unaffected.
+    development: options.development
+      ? { hmr: true, console: true }
+      : runningFromSource
+        ? { hmr: true, console: false }
+        : false,
     routes: {
       "/": index,
       "/api/chat": (req, server) => {
