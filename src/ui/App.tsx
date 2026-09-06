@@ -11,6 +11,8 @@ import { isClearableReviewComment } from "../shared/review";
 import type { LensId, ReviewFinding } from "../shared/review";
 import { sumTotals } from "./totals";
 import { useComments } from "./useComments";
+import { useFileUiState } from "./useFileUiState";
+import type { FileUi } from "./useFileUiState";
 import { useResizablePanel } from "./useResizablePanel";
 import type { ResizablePanel } from "./useResizablePanel";
 import { useReview } from "./useReview";
@@ -28,6 +30,9 @@ function readStoredDiffOutputFormat(): DiffOutputFormat {
 
 type ServerConfig = { mode: ServerMode | null };
 
+/** Stable default so an untouched card gets the same props object each render. */
+const EMPTY_UI: FileUi = {};
+
 function pathToAnchor(path: string): string {
   return "file-" + path;
 }
@@ -39,10 +44,45 @@ function buildDiffUrl(mode: ServerMode | null): string {
   return url.pathname + url.search;
 }
 
+function sameMode(a: ServerMode | null, b: ServerMode | null): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** The top-most file card on screen and where its top edge sits in the viewport. */
+type ScrollAnchor = { path: string; top: number };
+
+function captureScrollAnchor(): ScrollAnchor | null {
+  for (const card of document.querySelectorAll<HTMLElement>(".file-card[data-path]")) {
+    const top = card.getBoundingClientRect().top;
+    if (top + card.offsetHeight > 0) return { path: card.dataset.path!, top };
+  }
+  return null;
+}
+
+/** Scroll so the anchored card sits where it was before the diff was swapped. */
+function restoreScrollAnchor(anchor: ScrollAnchor): void {
+  const card = document.getElementById(pathToAnchor(anchor.path));
+  if (!card) return;
+  const delta = card.getBoundingClientRect().top - anchor.top;
+  if (delta !== 0) window.scrollBy(0, delta);
+}
+
 export function App() {
   const [mode, setMode] = useState<ServerMode | null>(null);
   const [bootstrapped, setBootstrapped] = useState(false);
+  // `files` is null only until the first diff arrives; a reload keeps the
+  // previous list on screen (so every card stays mounted) until the new one
+  // lands, and `loading` is what the topbar shows in the meantime.
   const [files, setFiles] = useState<FileDiff[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  // The comparison `files` came from. A fetch that fails leaves it alone, and
+  // the picker is reverted to it (#50) so it never rests on a broken ref.
+  const [loadedMode, setLoadedMode] = useState<{ mode: ServerMode | null } | null>(null);
+  const loadedModeRef = useRef(loadedMode);
+  // Set when the mode was just reverted: that fetch must keep the error banner
+  // and, should it fail too, must not revert again (there is nowhere to go).
+  const revertRef = useRef(false);
+  const scrollAnchorRef = useRef<ScrollAnchor | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -76,6 +116,8 @@ export function App() {
     dismissRemoved,
   } = useComments(bootstrapped);
   const refreshDiff = useCallback(() => setReloadKey((k) => k + 1), []);
+  const filePaths = useMemo(() => files?.map((f) => f.path) ?? null, [files]);
+  const [fileUi, setFileUi] = useFileUiState(loadedMode?.mode ?? null, filePaths);
 
   // Findings anchor against the diff snapshot taken when Review was pressed,
   // so a mid-run refresh or mode switch can't shear the anchors (worst case
@@ -138,8 +180,11 @@ export function App() {
   useEffect(() => {
     if (!bootstrapped) return;
     let cancelled = false;
-    setFiles(null);
-    setError(null);
+    const isRevert = revertRef.current;
+    revertRef.current = false;
+    setLoading(true);
+    // A revert re-fetches the last good mode; the banner explaining why stays up.
+    if (!isRevert) setError(null);
     (async () => {
       try {
         const res = await fetch(buildDiffUrl(mode));
@@ -150,16 +195,45 @@ export function App() {
         }
         const data = (await res.json()) as FileDiff[];
         if (cancelled) return;
+        scrollAnchorRef.current = captureScrollAnchor();
         setFiles(data);
-        setActivePath(data[0]?.path ?? null);
+        if (!loadedModeRef.current || !sameMode(loadedModeRef.current.mode, mode)) {
+          loadedModeRef.current = { mode };
+          setLoadedMode(loadedModeRef.current);
+        }
+        setActivePath((prev) =>
+          prev !== null && data.some((f) => f.path === prev) ? prev : (data[0]?.path ?? null),
+        );
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : String(e));
+        // Fall back to the mode that last loaded, once: if that fails as well
+        // there is nothing better to show, so just leave the error up.
+        const good = loadedModeRef.current;
+        if (!isRevert && good && !sameMode(good.mode, mode)) {
+          revertRef.current = true;
+          setMode(good.mode);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [bootstrapped, mode, reloadKey]);
+
+  // The cards stay mounted across a reload, but diff2html rebuilds their DOM
+  // from the new diff (a child effect, so it has already run here); keep the
+  // card that was at the top of the viewport where it was. Deferred a frame
+  // so the expander rows the cards inject on their next render are counted.
+  useEffect(() => {
+    const anchor = scrollAnchorRef.current;
+    if (!anchor) return;
+    scrollAnchorRef.current = null;
+    const id = window.requestAnimationFrame(() => restoreScrollAnchor(anchor));
+    return () => window.cancelAnimationFrame(id);
+  }, [files]);
 
   const totals = useMemo(() => (files ? sumTotals(files) : { adds: 0, dels: 0 }), [files]);
 
@@ -221,8 +295,8 @@ export function App() {
               Split
             </button>
           </div>
-          <button type="button" className="refresh-btn" onClick={() => setReloadKey((k) => k + 1)}>
-            Refresh
+          <button type="button" className="refresh-btn" disabled={loading} onClick={refreshDiff}>
+            {loading ? "Refreshing…" : "Refresh"}
           </button>
           <button
             type="button"
@@ -289,6 +363,8 @@ export function App() {
               updateComment={updateComment}
               removeComment={removeComment}
               onApplied={refreshDiff}
+              ui={fileUi[file.path] ?? EMPTY_UI}
+              setUi={(patch) => setFileUi(file.path, patch)}
             />
           ))}
         </main>
