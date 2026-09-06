@@ -590,7 +590,7 @@ export function DiffPanel({
 
   useEffect(() => {
     if (!expanded || view !== "file" || file.binary || !mode) return;
-    // The diff text is part of the key: after "Apply with agent" refreshes
+    // The diff text is part of the key: after a Write-mode turn refreshes
     // the diff, the file shown (and the threads placed on it) must follow.
     const key = JSON.stringify({ p: file.path, s: file.status, m: mode, r: file.raw });
     if (lastFetchedKey.current === key) return;
