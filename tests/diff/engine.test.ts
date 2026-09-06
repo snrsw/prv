@@ -114,3 +114,14 @@ test("git ref vs ref: diffs two commits", async () => {
   expect(diffs[0]?.path).toBe("f.txt");
   expect(diffs[0]?.status).toBe("modified");
 });
+
+test("git HEAD vs worktree: an unknown ref rejects with git's message", async () => {
+  const repo = await mkTempRepo("prv-repo-");
+  writeFileSync(join(repo, "f.txt"), "x\n");
+  await $`git -C ${repo} add f.txt`.quiet();
+  await $`git -C ${repo} commit -q -m init`.quiet();
+
+  const mode = { ...worktreeOf(repo), leftRef: "does-not-exist" };
+
+  await expect(computeDiff(mode)).rejects.toThrow("does-not-exist");
+});

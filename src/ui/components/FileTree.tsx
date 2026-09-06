@@ -4,7 +4,7 @@ import { StatusIcon } from "./StatusIcon";
 import { ChevronDown, ChevronRight } from "./icons";
 
 type DirNode = { kind: "dir"; name: string; path: string; children: TreeNode[] };
-type FileNode = { kind: "file"; name: string; path: string; status: Status };
+type FileNode = { kind: "file"; name: string; path: string; oldPath?: string; status: Status };
 type TreeNode = DirNode | FileNode;
 
 function buildTree(files: FileDiff[]): TreeNode[] {
@@ -16,7 +16,13 @@ function buildTree(files: FileDiff[]): TreeNode[] {
       const name = parts[i]!;
       const isLast = i === parts.length - 1;
       if (isLast) {
-        cursor.push({ kind: "file", name, path: file.path, status: file.status });
+        cursor.push({
+          kind: "file",
+          name,
+          path: file.path,
+          ...(file.oldPath ? { oldPath: file.oldPath } : {}),
+          status: file.status,
+        });
         continue;
       }
       const existing = cursor.find((n) => n.kind === "dir" && n.name === name);
@@ -117,6 +123,7 @@ function TreeItem({
           type="button"
           className={`tree-row file ${active ? "active" : ""}`}
           style={{ paddingLeft: 8 + depth * 14 }}
+          title={node.oldPath ? `${node.oldPath} → ${node.path}` : node.path}
           onClick={() => onSelect(node.path)}
         >
           <span className="tree-chevron" aria-hidden="true" />

@@ -3,8 +3,8 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import { looksBinary } from "../file/loader";
 import type { FilesMode } from "./types";
 
-/** Directories never listed when a files-mode path is a directory. */
-const SKIPPED_DIRS = new Set([".git", ".prv"]);
+/** Directories never listed as changes: git's own store and prv's comment store. */
+export const SKIPPED_DIRS = new Set([".git", ".prv"]);
 
 /**
  * A unified diff that adds every file of `mode` from nothing, in the exact

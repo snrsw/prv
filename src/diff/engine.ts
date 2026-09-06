@@ -1,6 +1,6 @@
 import { $ } from "bun";
 import { realpathSync } from "node:fs";
-import { rawFilesDiff } from "./files";
+import { SKIPPED_DIRS, rawFilesDiff } from "./files";
 import type { DiffMode, FileDiff, Hunk, Status } from "./types";
 
 export type { DiffMode, FileDiff, FilesMode, GitMode, GitRight, Hunk, Status } from "./types";
@@ -14,13 +14,25 @@ async function computeRawDiff(mode: DiffMode): Promise<string> {
       await $`git -C ${mode.cwd} diff --no-color ${mode.leftRef} ${mode.right.ref} -- ${paths}`
         .nothrow()
         .quiet();
-    return r.stdout.toString();
+    return stdoutOrThrow(r);
   }
   const tracked = await $`git -C ${mode.cwd} diff --no-color ${mode.leftRef} -- ${paths}`
     .nothrow()
     .quiet();
   const untracked = await rawUntrackedDiffs(mode.cwd, paths);
-  return [tracked.stdout.toString(), untracked].filter((s) => s.length > 0).join("");
+  return [stdoutOrThrow(tracked), untracked].filter((s) => s.length > 0).join("");
+}
+
+/**
+ * A failed `git diff` (unknown ref, not a repo) must not read as "no
+ * changes": surface git's own message so the caller can show it.
+ */
+function stdoutOrThrow(r: Bun.$.ShellOutput): string {
+  if (r.exitCode !== 0) {
+    const stderr = r.stderr.toString().trim();
+    throw new Error(stderr.length > 0 ? stderr : `git diff failed (exit ${r.exitCode})`);
+  }
+  return r.stdout.toString();
 }
 
 async function rawUntrackedDiffs(cwd: string, paths: string[]): Promise<string> {
@@ -28,7 +40,12 @@ async function rawUntrackedDiffs(cwd: string, paths: string[]): Promise<string> 
   const list = await $`git -C ${cwd} ls-files --others --exclude-standard -- ${paths}`
     .nothrow()
     .quiet();
-  const files = list.stdout.toString().split("\n").filter(Boolean);
+  const files = list.stdout
+    .toString()
+    .split("\n")
+    .filter(Boolean)
+    // prv's own `.prv/` store is untracked but is not a change under review.
+    .filter((file) => !SKIPPED_DIRS.has(file.split("/")[0]!));
   const diffs = await Promise.all(
     files.map(async (file) => {
       // `--` stops git parsing a filename like `--output=x` as an option.
@@ -59,10 +76,16 @@ function parseFileSection(section: string): FileDiff {
   let oldHeader = "";
   let newHeader = "";
   let binary = false;
+  // A 100%-similarity rename has no `---`/`+++` pair: its paths only appear
+  // in `rename from`/`rename to` (git prints these unprefixed).
+  let renameFrom: string | undefined;
+  let renameTo: string | undefined;
+  let copy = false;
   let i = 1;
 
   for (; i < lines.length; i++) {
     const line = lines[i]!;
+    const move = /^(rename|copy) (from|to) (.+)$/.exec(line);
     if (line.startsWith("--- ")) {
       oldHeader = line.slice(4);
     } else if (line.startsWith("+++ ")) {
@@ -72,11 +95,17 @@ function parseFileSection(section: string): FileDiff {
     } else if (line.startsWith("Binary files ")) {
       binary = true;
       break;
+    } else if (move) {
+      if (move[1] === "copy") copy = true;
+      if (move[2] === "from") renameFrom = move[3];
+      else renameTo = move[3];
     }
   }
 
-  const status = computeStatus(oldHeader, newHeader);
-  const path = computePath({ binary, headerMatch, oldHeader, newHeader, status });
+  // A copy leaves the source in place, so the new file is an addition that
+  // merely knows where it came from.
+  const status = renameFrom && !copy ? "renamed" : computeStatus(oldHeader, newHeader);
+  const path = renameTo ?? computePath({ binary, headerMatch, oldHeader, newHeader, status });
 
   const hunks: Hunk[] = [];
   let current: Hunk | null = null;
@@ -101,7 +130,14 @@ function parseFileSection(section: string): FileDiff {
   }
   if (current) hunks.push(current);
 
-  return { path, status, hunks, binary, raw: section };
+  return {
+    path,
+    ...(renameFrom ? { oldPath: renameFrom } : {}),
+    status,
+    hunks,
+    binary,
+    raw: section,
+  };
 }
 
 function computeStatus(oldHeader: string, newHeader: string): Status {
