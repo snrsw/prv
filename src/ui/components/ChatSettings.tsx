@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AGENT_LABELS,
   CHAT_AGENTS,
@@ -10,7 +10,8 @@ import {
   isChatModel,
   type ChatEffort,
 } from "../../shared/chat";
-import { useChatSettings } from "../chatSettings";
+import { summarizeChatSettings, useChatSettings } from "../chatSettings";
+import { GearIcon } from "./icons";
 
 const CUSTOM = "__custom__";
 
@@ -132,6 +133,85 @@ export function ChatSettings({ disabled }: { disabled: boolean }) {
           ))}
         </select>
       </label>
+    </div>
+  );
+}
+
+/**
+ * The agent / model / effort pickers behind one compact gear button. The
+ * settings are app-wide (one store, see `chatSettings`), so the same menu
+ * sits in the topbar, the chat composer and every inline thread: wherever a
+ * conversation happens, the agent it runs with is one press away, and the
+ * popover says so. Opens above the button by default (composers sit at the
+ * bottom of their panel) or below with `placement="below"`; `align="end"`
+ * hangs it from the button's right edge for buttons near the viewport's right
+ * side. Closes on an outside press or Escape, the way the topbar's
+ * `SidePicker` does.
+ */
+export function ChatSettingsMenu({
+  disabled = false,
+  placement = "above",
+  align = "start",
+}: {
+  /** Greyed while a turn streams; a change would only apply from the next turn anyway. */
+  disabled?: boolean;
+  placement?: "above" | "below";
+  align?: "start" | "end";
+}) {
+  const [settings] = useChatSettings();
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const summary = summarizeChatSettings(settings);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocPointerDown = (e: PointerEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDocPointerDown);
+    return () => document.removeEventListener("pointerdown", onDocPointerDown);
+  }, [open]);
+
+  return (
+    <div
+      className="chat-settings-menu"
+      ref={containerRef}
+      onKeyDown={(e) => {
+        if (e.key !== "Escape" || !open) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setOpen(false);
+        buttonRef.current?.focus();
+      }}
+    >
+      <button
+        ref={buttonRef}
+        type="button"
+        className={"chat-settings-btn" + (open ? " is-active" : "")}
+        aria-label="Agent settings"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        title={`Agent settings: ${summary}`}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <GearIcon />
+        <span className="chat-settings-summary">{summary}</span>
+      </button>
+      {open && (
+        <div
+          className={
+            "mode-picker-popover chat-settings-popover" +
+            (placement === "below" ? " is-below" : "") +
+            (align === "end" ? " is-end" : "")
+          }
+          role="dialog"
+          aria-label="Agent settings"
+        >
+          <ChatSettings disabled={disabled} />
+          <p className="chat-settings-note">Applies to chat, inline comments, and Review.</p>
+        </div>
+      )}
     </div>
   );
 }

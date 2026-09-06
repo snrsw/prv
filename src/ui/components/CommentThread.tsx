@@ -4,7 +4,11 @@ import { useDiffChat } from "../useDiffChat";
 import { isSubmitKey } from "../keys";
 import { buildThreadContext } from "../lineContext";
 import { splitFindingBody } from "../reviewComments";
+import { canSend, resolveInstruction } from "../sendMode";
+import { useSendMode } from "../useSendMode";
 import { ChatMessageList } from "./ChatMessageList";
+import { ChatSettingsMenu } from "./ChatSettings";
+import { SendButton, WriteConfirm } from "./SendButton";
 import type { Comment, StoredMessage } from "../../shared/comments";
 import type { FileDiff } from "../types";
 
@@ -13,9 +17,10 @@ export type ThreadPlacement = "anchored" | "moved" | "file-level";
 
 /**
  * An inline GitHub-style comment thread for a (possibly multi-line, mixed +/-)
- * diff range, backed by a persisted Comment. Read-only Q&A by default; "Apply
- * with agent" (after confirmation) lets the agent edit files, then refreshes
- * the diff. `label` and `context` are computed by the parent from the diff.
+ * diff range, backed by a persisted Comment. Read-only Q&A by default; the
+ * Send menu's Write mode (confirmed once per thread) lets the agent edit
+ * files, then refreshes the diff. `label` and `context` are computed by the
+ * parent from the diff.
  * Agent-review comments additionally render a badge row and their finding
  * body as markdown.
  */
@@ -44,9 +49,8 @@ export function CommentThread({
   const persist = (messages: StoredMessage[]) => onUpdate((c) => ({ ...c, messages }));
   const { messages, streaming, stalled, send, stop } = useDiffChat(comment.messages, persist);
   const [input, setInput] = useState("");
-  const [confirmingApply, setConfirmingApply] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
-  const applyPendingRef = useRef(false);
+  const sendMode = useSendMode(streaming, onApplied);
 
   const resolved = comment.status === "resolved";
   const isReview = comment.source === "review";
@@ -57,31 +61,18 @@ export function CommentThread({
   const { body, rest } = isReview ? splitFindingBody(messages) : { body: null, rest: messages };
 
   const onSend = () => {
-    if (input.trim() === "" || streaming) return;
-    send(input, threadContext, "ask");
-    setInput("");
+    if (streaming) return;
+    // A Write send with an empty box repeats what the thread already asked for.
+    const instruction = resolveInstruction(sendMode.mode, input, [
+      ...comment.messages,
+      ...messages,
+    ]);
+    if (instruction === null) return;
+    sendMode.submit(() => {
+      send(instruction, threadContext, sendMode.mode);
+      setInput("");
+    });
   };
-
-  const runApply = () => {
-    setConfirmingApply(false);
-    const lastUser = [...comment.messages, ...messages]
-      .filter((m): m is StoredMessage => m.role === "user")
-      .pop();
-    const instruction = input.trim() || lastUser?.text || "Make the change discussed above.";
-    applyPendingRef.current = true;
-    send(instruction, threadContext, "apply");
-    setInput("");
-  };
-
-  // When an apply turn finishes, refresh the diff so the edits show.
-  const wasStreaming = useRef(false);
-  useEffect(() => {
-    if (wasStreaming.current && !streaming && applyPendingRef.current) {
-      applyPendingRef.current = false;
-      onApplied();
-    }
-    wasStreaming.current = streaming;
-  }, [streaming, onApplied]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "nearest" });
@@ -150,25 +141,8 @@ export function CommentThread({
             </div>
           )}
 
-          {confirmingApply ? (
-            <div className="prv-thread-confirm">
-              <span>
-                The agent will edit files in your repo. Changes are git-tracked and shown as a diff
-                to review. Continue?
-              </span>
-              <div className="prv-thread-confirm-actions">
-                <button type="button" className="chat-send" onClick={runApply}>
-                  Yes, apply
-                </button>
-                <button
-                  type="button"
-                  className="prv-thread-btn"
-                  onClick={() => setConfirmingApply(false)}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
+          {sendMode.confirming ? (
+            <WriteConfirm onConfirm={sendMode.confirm} onCancel={sendMode.cancel} />
           ) : (
             <div className="chat-input-row prv-thread-input">
               <textarea
@@ -192,28 +166,15 @@ export function CommentThread({
                 }}
               />
               <div className="prv-thread-send-row">
-                <button
-                  type="button"
-                  className="prv-thread-btn"
-                  disabled={streaming}
-                  onClick={() => setConfirmingApply(true)}
-                >
-                  Apply with agent
-                </button>
-                {streaming ? (
-                  <button type="button" className="chat-send" onClick={stop}>
-                    Stop
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="chat-send"
-                    onClick={onSend}
-                    disabled={input.trim() === ""}
-                  >
-                    Send
-                  </button>
-                )}
+                <ChatSettingsMenu disabled={streaming} />
+                <SendButton
+                  mode={sendMode.mode}
+                  onModeChange={sendMode.setMode}
+                  onSend={onSend}
+                  onStop={stop}
+                  streaming={streaming}
+                  disabled={!canSend(sendMode.mode, input)}
+                />
               </div>
             </div>
           )}

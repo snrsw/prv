@@ -5,7 +5,7 @@ import type { ServerMode } from "./types";
 /**
  * Per-file card state the reader sets by hand (Viewed, collapsed, Diff/File
  * tab, Markdown Rendered/Source). It lives in App keyed by path rather than
- * inside each DiffPanel so a Refresh — including the one "Apply with agent"
+ * inside each DiffPanel so a Refresh — including the one a Write send
  * triggers when it finishes — does not throw it away, and it is persisted per
  * comparison so reopening the same diff picks up where the reader left off.
  */

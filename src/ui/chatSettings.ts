@@ -7,10 +7,10 @@ import {
 } from "../shared/chat";
 
 /**
- * The model/effort the agent runs with, chosen in the chat panel and shared by
- * every conversation (the diff chat and inline comment threads, including
- * "Apply with agent"). One app-wide value, persisted in localStorage, exposed
- * as a tiny external store so any component can read or change it without
+ * The agent/model/effort every conversation runs with — the diff chat, inline
+ * comment threads (Read only and Write alike) and agent reviews. One app-wide
+ * value, persisted in localStorage, exposed as a tiny external store so the
+ * settings menu can sit in the topbar and in every composer without
  * prop-drilling through the diff tree.
  */
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileTree } from "./components/FileTree";
 import { ChatPanel } from "./components/ChatPanel";
+import { ChatSettingsMenu } from "./components/ChatSettings";
 import { DiffPanel } from "./components/DiffPanel";
 import { DiffStat } from "./components/DiffStat";
 import { ModePicker } from "./components/ModePicker";
@@ -589,6 +590,9 @@ export function App() {
           <button type="button" className="refresh-btn" disabled={loading} onClick={refreshDiff}>
             {loading ? "Refreshing…" : "Refresh"}
           </button>
+          {/* App-wide agent settings, reachable without opening Chat; they
+              also govern inline threads and Review. */}
+          <ChatSettingsMenu placement="below" align="end" />
           <button
             type="button"
             className={"refresh-btn" + (reviewRunning ? " is-active" : "")}
@@ -693,7 +697,13 @@ export function App() {
         {compact && chatOpen && (
           <div className="drawer-scrim" aria-hidden="true" onClick={toggleChat} />
         )}
-        <ChatPanel files={files} open={chatOpen} width={chatResize.width} drawer={compact} />
+        <ChatPanel
+          files={files}
+          open={chatOpen}
+          width={chatResize.width}
+          drawer={compact}
+          onApplied={refreshDiff}
+        />
       </div>
 
       {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}

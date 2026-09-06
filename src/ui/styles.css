@@ -1909,6 +1909,91 @@ tr.prv-expand-clickable:hover .d2h-info {
   cursor: default;
 }
 
+/* ---- Send split button: Send (or Stop) + a mode toggle (Read only / Write) ---- */
+
+.send-split {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  flex: 0 0 auto;
+}
+.send-split .chat-send {
+  align-self: stretch;
+}
+.send-split-main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right-width: 0;
+  white-space: nowrap;
+}
+/* Write is the mode that touches the repo: a warmer button says so at a glance. */
+.send-split.is-write .chat-send {
+  background: var(--attention-emphasis);
+}
+.send-split-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 6px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  /* A hairline seam between the two halves, on any button colour. */
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.25);
+}
+.send-split-toggle.is-active {
+  filter: brightness(0.9);
+}
+.send-split-toggle svg {
+  display: block;
+}
+.send-mode-menu {
+  top: auto;
+  bottom: calc(100% + 4px);
+  left: auto;
+  right: 0;
+  width: 240px;
+  max-width: calc(100vw - 2 * var(--sp-3));
+  padding: 4px;
+}
+.send-mode-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-default);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+.send-mode-item.is-active,
+.send-mode-item:focus-visible {
+  background: var(--canvas-subtle);
+  outline: none;
+}
+.send-mode-item[aria-checked="true"] .send-mode-item-label {
+  font-weight: 600;
+}
+.send-mode-item-check {
+  flex: 0 0 12px;
+  width: 12px;
+  padding-top: 3px;
+  color: var(--fg-default);
+}
+.send-mode-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.send-mode-item-hint {
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-muted);
+}
+
 /* ---- Inline line-comment threads ---- */
 
 .prv-diff-wrap {
@@ -2418,9 +2503,25 @@ tr.prv-expand-clickable:hover .d2h-info {
   gap: var(--sp-2);
   min-width: 0;
 }
-.chat-composer-bar .chat-send {
+.chat-composer-bar .send-split {
   margin-left: auto;
-  flex: 0 0 auto;
+}
+/* Same row shape in an inline thread: settings left, Send controls right. */
+.prv-thread-send-row .chat-settings-menu {
+  margin-right: auto;
+}
+/* The topbar copy sits among 28px buttons; keep the summary from crowding
+   the Review/Chat buttons on narrower windows. */
+.topbar-meta .chat-settings-btn {
+  padding: 5px 8px;
+}
+.topbar-meta .chat-settings-summary {
+  max-width: 18ch;
+}
+@media (max-width: 1000px) {
+  .topbar-meta .chat-settings-summary {
+    display: none;
+  }
 }
 .chat-settings-menu {
   position: relative;
@@ -2464,9 +2565,27 @@ tr.prv-expand-clickable:hover .d2h-info {
   max-width: calc(100vw - 2 * var(--sp-3));
   padding: 10px;
 }
+/* The topbar copy hangs below its button and from its right edge, so it
+   cannot run off the viewport next to the Review/Chat buttons. */
+.chat-settings-popover.is-below {
+  top: calc(100% + 4px);
+  bottom: auto;
+}
+.chat-settings-popover.is-end {
+  left: auto;
+  right: 0;
+}
 .chat-settings-popover .chat-settings {
   flex-direction: column;
   align-items: stretch;
+}
+/* "Applies to chat, inline comments, and Review." — says the setting is global. */
+.chat-settings-note {
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-muted);
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-muted);
 }
 .chat-settings-popover .chat-setting {
   justify-content: space-between;
