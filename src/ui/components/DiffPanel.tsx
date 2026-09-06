@@ -6,6 +6,7 @@ import hljs from "highlight.js";
 import { isMarkdownPath } from "../markdown";
 import { Markdown } from "./Markdown";
 import type { DiffOutputFormat, FileContent, FileDiff, FileSide, ServerMode } from "../types";
+import type { FileUi } from "../useFileUiState";
 import { encodeMode } from "../../shared/modeQuery";
 import type { Comment, LineKey } from "../../shared/comments";
 import {
@@ -38,9 +39,8 @@ import { CommentThread } from "./CommentThread";
 import { DiffStat } from "./DiffStat";
 import { CheckIcon, ChevronDown, ChevronRight } from "./icons";
 
-type View = "diff" | "file";
 /** The File view's sub-mode for Markdown files. */
-type MdView = "rendered" | "source";
+type MdView = NonNullable<FileUi["mdView"]>;
 
 /** Gutter rows that carry a change, for next/previous navigation. */
 const MARKED_LINE = ".file-line-num.is-marked";
@@ -68,6 +68,8 @@ export function DiffPanel({
   updateComment,
   removeComment,
   onApplied,
+  ui,
+  setUi,
 }: {
   file: FileDiff;
   mode: ServerMode | null;
@@ -78,15 +80,18 @@ export function DiffPanel({
   updateComment: (id: string, updater: (c: Comment) => Comment) => void;
   removeComment: (id: string) => void;
   onApplied: () => void;
+  /** Viewed / collapsed / tab state, owned by App so it outlives a Refresh. */
+  ui: FileUi;
+  setUi: (patch: FileUi) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [expanded, setExpanded] = useState(true);
-  const [viewed, setViewed] = useState(false);
+  const expanded = !ui.collapsed;
+  const viewed = ui.viewed ?? false;
   const [copied, setCopied] = useState(false);
-  const [view, setView] = useState<View>("diff");
+  const view = ui.view ?? "diff";
   // Rendered is the default since the main use case is reviewing agent-written
   // plans; Source is the syntax-highlighted code view with the diff gutter.
-  const [mdView, setMdView] = useState<MdView>("rendered");
+  const mdView = ui.mdView ?? "rendered";
   const [content, setContent] = useState<FileContent | null>(null);
   // Which side `content` came from, so the File view's gutter can be marked
   // with the diff as it applies to that side.
@@ -487,7 +492,7 @@ export function DiffPanel({
 
   const switchToFile = () => {
     if (view !== "file") captureScrollHintFromDiff();
-    setView("file");
+    setUi({ view: "file" });
   };
 
   const onCopyPath = async () => {
@@ -501,14 +506,14 @@ export function DiffPanel({
   };
 
   return (
-    <section id={anchorId} className={`file-card ${viewed ? "viewed" : ""}`}>
+    <section id={anchorId} data-path={file.path} className={`file-card ${viewed ? "viewed" : ""}`}>
       <header className="file-card-header">
         <button
           type="button"
           className="card-chevron"
           aria-label={expanded ? "Collapse file" : "Expand file"}
           aria-expanded={expanded}
-          onClick={() => setExpanded((e) => !e)}
+          onClick={() => setUi({ collapsed: expanded })}
         >
           {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </button>
@@ -535,7 +540,7 @@ export function DiffPanel({
               role="tab"
               aria-selected={view === "diff"}
               className={`file-card-view-tab ${view === "diff" ? "is-active" : ""}`}
-              onClick={() => setView("diff")}
+              onClick={() => setUi({ view: "diff" })}
             >
               Diff
             </button>
@@ -582,7 +587,11 @@ export function DiffPanel({
           <DiffStat totals={totals} />
         </span>
         <label className="viewed-toggle">
-          <input type="checkbox" checked={viewed} onChange={(e) => setViewed(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={viewed}
+            onChange={(e) => setUi({ viewed: e.target.checked })}
+          />
           <span>Viewed</span>
         </label>
       </header>
@@ -655,7 +664,7 @@ export function DiffPanel({
             content={content}
             marks={marks}
             mdView={mdView}
-            setMdView={setMdView}
+            setMdView={(v) => setUi({ mdView: v })}
             loading={contentLoading}
             error={contentError}
           />

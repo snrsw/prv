@@ -465,8 +465,12 @@ input:focus-visible {
   color: var(--fg-default);
   font-weight: 500;
 }
-.refresh-btn:hover {
+.refresh-btn:hover:not(:disabled) {
   background: var(--canvas-subtle);
+}
+.refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .body {
