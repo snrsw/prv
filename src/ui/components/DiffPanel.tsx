@@ -35,6 +35,7 @@ import {
 } from "../hunkExpand";
 import { fileTotals } from "../totals";
 import { describeBlock, fileMarks, type FileMarks } from "../fileMarks";
+import { gutterKeyAction, moveSelection, type GutterSel } from "../gutterKeys";
 import { CommentThread } from "./CommentThread";
 import { DiffStat } from "./DiffStat";
 import { CheckIcon, ChevronDown, ChevronRight } from "./icons";
@@ -53,6 +54,33 @@ type HoverPlus = { gi: number; top: number };
 
 /** In-progress gutter drag, as a span over the global diff-line index. */
 type DragSel = { startGi: number; endGi: number };
+
+/** The gutter cells a keyboard can land on (split view's blank fillers are not lines). */
+const GUTTER_CELL = ".d2h-code-linenumber, .d2h-code-side-linenumber";
+const GUTTER_FILLER = ["d2h-code-side-emptyplaceholder", "d2h-emptyplaceholder"];
+
+function gutterCells(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(GUTTER_CELL)).filter(
+    (cell) => !GUTTER_FILLER.some((cls) => cell.classList.contains(cls)),
+  );
+}
+
+function gutterCellOf(el: EventTarget | null): HTMLElement | null {
+  return el instanceof HTMLElement ? el.closest<HTMLElement>(GUTTER_CELL) : null;
+}
+
+/**
+ * Focus a gutter cell and keep it clear of the sticky topbar: `focus()`'s own
+ * minimal scroll would leave a line stepped up to under the bar.
+ */
+function focusCell(cell: HTMLElement): void {
+  cell.focus({ preventScroll: true });
+  cell.scrollIntoView({ block: "nearest" });
+  const bar = document.querySelector<HTMLElement>(".topbar");
+  const min = (bar?.offsetHeight ?? 0) + 8;
+  const top = cell.getBoundingClientRect().top;
+  if (top < min) window.scrollBy(0, top - min);
+}
 
 // Must match .file-content-pre code.hljs vertical padding and var(--fs-code-lh) in styles.css.
 const FILE_CODE_PADDING_TOP = 8;
@@ -204,6 +232,25 @@ export function DiffPanel({
   // mouseup listener without stale closures); `dragViz` mirrors it for render.
   const dragRef = useRef<DragSel | null>(null);
   const [dragViz, setDragViz] = useState<DragSel | null>(null);
+  // Keyboard range (#56): Shift+↑/↓ from a focused gutter cell. Mirrored in
+  // a ref so the keydown handler never reads a stale range.
+  const keySelRef = useRef<GutterSel | null>(null);
+  const [keySel, setKeySel] = useState<GutterSel | null>(null);
+  const setSel = (sel: GutterSel | null) => {
+    keySelRef.current = sel;
+    setKeySel(sel);
+  };
+  // The line whose gutter cell is the card's Tab stop (tabindex="0"), by
+  // global index; null until the reader has focused a line here.
+  const rovingGiRef = useRef<number | null>(null);
+  // Where focus should go once the diff DOM settles: back to the gutter
+  // after Enter rebuilt it (hunk expand), or into a thread just opened. The
+  // gutter case waits for the rebuild (a new `renderTick`): the anchoring
+  // effect also runs on the commit that changes `shown`, when the old cells
+  // are still on screen and about to be thrown away.
+  const pendingFocusRef = useRef<
+    { kind: "gutter"; tick: number } | { kind: "thread"; id: string } | null
+  >(null);
 
   // Flatten the diff into a single global-index (gi) line list, so a range can
   // span deleted and added lines (and, in split, both columns).
@@ -219,14 +266,16 @@ export function DiffPanel({
     return c;
   };
 
+  /** Open (or re-open) a thread on the range; returns its comment id. */
   const openThread = useCallback(
-    (giA: number, giB: number) => {
+    (giA: number, giB: number): string => {
       const lo = Math.min(giA, giB);
       const hi = Math.max(giA, giB);
       const start = keyOfRow(rows[lo]!);
       const end = keyOfRow(rows[hi]!);
+      const id = commentId(start, end);
       addComment({
-        id: commentId(start, end),
+        id,
         file: file.path,
         start,
         end,
@@ -235,6 +284,7 @@ export function DiffPanel({
         messages: [],
       });
       setHoverPlus(null);
+      return id;
     },
     [file, addComment, rows],
   );
@@ -344,14 +394,11 @@ export function DiffPanel({
     for (const { loc, comment } of anchored) {
       if (comment.status === "open") mark(loc.lo, loc.hi, "prv-line-commented");
     }
-    if (dragViz) {
-      mark(
-        Math.min(dragViz.startGi, dragViz.endGi),
-        Math.max(dragViz.startGi, dragViz.endGi),
-        "prv-line-selected",
-      );
+    const sel = dragViz ?? keySel;
+    if (sel) {
+      mark(Math.min(sel.startGi, sel.endGi), Math.max(sel.startGi, sel.endGi), "prv-line-selected");
     }
-  }, [dragViz, anchored, renderTick, view, giFromCell]);
+  }, [dragViz, keySel, anchored, renderTick, view, giFromCell]);
 
   // Re-anchor threads into the diff DOM after every render / comment change.
   useLayoutEffect(() => {
@@ -378,8 +425,92 @@ export function DiffPanel({
       if (outputFormat === "split") anchorSplit(root, thread, container, observersRef.current);
       else anchorUnified(root, thread, container);
     }
+
+    // Roving tabindex (#56): one Tab stop per card — the line last focused,
+    // else the first — and every other gutter cell reachable by ↑/↓ only.
+    // diff2html rebuilt the cells on this tick, so the attributes are re-set
+    // here, after the thread rows are back in place.
+    const cells = gutterCells(root);
+    const rovingGi = rovingGiRef.current;
+    const stop =
+      (rovingGi === null ? undefined : cells.find((c) => giFromCell(c) === rovingGi)) ?? cells[0];
+    for (const cell of cells) cell.tabIndex = cell === stop ? 0 : -1;
+    const pending = pendingFocusRef.current;
+    if (pending?.kind === "gutter" && pending.tick !== renderTick) {
+      pendingFocusRef.current = null;
+      stop?.focus();
+    } else if (pending?.kind === "thread") {
+      const input = containersRef.current.get(pending.id)?.querySelector("textarea");
+      if (input) {
+        pendingFocusRef.current = null;
+        input.focus();
+      }
+    }
     return () => observersRef.current.forEach((o) => o.disconnect());
-  }, [renderTick, anchored, outputFormat, view]);
+  }, [renderTick, anchored, outputFormat, view, giFromCell]);
+
+  // A gutter cell taking focus becomes the card's Tab stop, so leaving the
+  // card and coming back lands on the same line.
+  const onDiffFocus = (e: React.FocusEvent) => {
+    const root = ref.current;
+    const cell = gutterCellOf(e.target);
+    if (!root || !cell) return;
+    for (const other of root.querySelectorAll<HTMLElement>(GUTTER_CELL)) {
+      if (other.tabIndex === 0) other.tabIndex = -1;
+    }
+    cell.tabIndex = 0;
+    const gi = giFromCell(cell);
+    if (gi != null) rovingGiRef.current = gi;
+  };
+
+  // A selection only means something while the gutter has focus.
+  const onDiffBlur = (e: React.FocusEvent) => {
+    if (keySelRef.current && !gutterCellOf(e.relatedTarget)) setSel(null);
+  };
+
+  const onDiffKeyDown = (e: React.KeyboardEvent) => {
+    const root = ref.current;
+    const cell = gutterCellOf(e.target);
+    if (!root || !cell) return;
+    const action = gutterKeyAction(e);
+    if (!action) return;
+    const gi = giFromCell(cell);
+    if (action.kind === "move") {
+      e.preventDefault();
+      const cells = gutterCells(root);
+      const next = cells[cells.indexOf(cell) + action.delta];
+      if (!next) return;
+      setSel(moveSelection(keySelRef.current, gi, giFromCell(next), action.extend));
+      focusCell(next);
+      return;
+    }
+    if (action.kind === "clear") {
+      if (keySelRef.current) {
+        e.preventDefault();
+        setSel(null);
+      }
+      return;
+    }
+    if (gi == null) {
+      // A hunk header offering a single expand action: Enter is its click.
+      const expanders = cell.querySelectorAll<HTMLButtonElement>(".prv-expander");
+      if (e.key === "Enter" && expanders.length === 1) {
+        e.preventDefault();
+        pendingFocusRef.current = { kind: "gutter", tick: renderTick };
+        expanders[0]!.click();
+      }
+      return;
+    }
+    e.preventDefault();
+    const sel = keySelRef.current;
+    const id = sel ? openThread(sel.startGi, sel.endGi) : openThread(gi, gi);
+    setSel(null);
+    // A thread that already exists on this range is on screen now; a new one
+    // is rendered and anchored on the next commit.
+    const existing = containersRef.current.get(id);
+    if (existing?.isConnected) existing.querySelector("textarea")?.focus();
+    else pendingFocusRef.current = { kind: "thread", id };
+  };
 
   const onDiffMouseOver = (e: React.MouseEvent) => {
     if (dragRef.current) return; // an active drag is handled by the pointer handlers
@@ -607,6 +738,9 @@ export function DiffPanel({
           onPointerUp={onDiffPointerUp}
           onMouseOver={onDiffMouseOver}
           onMouseLeave={() => setHoverPlus(null)}
+          onFocus={onDiffFocus}
+          onBlur={onDiffBlur}
+          onKeyDown={onDiffKeyDown}
         >
           <div className="file-card-body" ref={ref} />
           {hoverPlus && !file.binary && (
@@ -749,6 +883,9 @@ function expanderButton(
   button.textContent = action.glyph;
   button.title = action.title;
   button.setAttribute("aria-label", action.title);
+  // Tab moves between cards, not expanders: the gutter cell they sit in is
+  // the keyboard's way in (↑/↓ to the header row, then Enter).
+  button.tabIndex = -1;
   // The gutter is also the comment-selection surface; keep clicks out of it.
   button.addEventListener("pointerdown", (e) => e.stopPropagation());
   button.addEventListener("click", (e) => {
@@ -794,6 +931,9 @@ function trailingExpandRow(
   row.className = "prv-expand-row";
   const gutter = document.createElement("td");
   gutter.className = `${split ? "d2h-code-side-linenumber" : "d2h-code-linenumber"} d2h-info`;
+  // Reachable by ↑/↓ like the other gutter cells even when this row is
+  // rebuilt between diff renders (the roving-tabindex pass only runs on those).
+  gutter.tabIndex = -1;
   const code = document.createElement("td");
   code.className = "d2h-info";
   const line = document.createElement("div");
