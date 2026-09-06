@@ -14,6 +14,7 @@ import type { LensId, ReviewFinding } from "../shared/review";
 import { documentOrder, nextCommentTarget } from "./commentNav";
 import { isTypingTarget, shortcutFor } from "./keys";
 import { drawerWidth, useLayout } from "./layout";
+import { isMarkdownPath } from "./markdown";
 import { isOpenFinding, openCommentsByFile, openFindingsBySeverity, viewedCount } from "./progress";
 import { titleFor } from "./title";
 import { sumTotals } from "./totals";
@@ -403,7 +404,7 @@ export function App() {
   }, [filePaths, comments]);
 
   // Scroll a thread to the centre once it is on screen. A thread in a
-  // collapsed, viewed or File-view card is not rendered until the card's
+  // collapsed, viewed or Markdown-Rendered card is not rendered until the card's
   // UI state changes and its diff is rebuilt, so retry over a few frames.
   const scrollToThread = useCallback((id: string, attempts = THREAD_RENDER_FRAMES) => {
     const el = visibleThread(id);
@@ -419,9 +420,15 @@ export function App() {
       const comment = comments.find((c) => c.id === id);
       if (!comment) return;
       const ui = fileUi[comment.file];
-      if (ui?.collapsed || ui?.viewed || ui?.view === "file") {
-        setFileUi(comment.file, { collapsed: false, viewed: false, view: "diff" });
+      const patch: FileUi = {};
+      if (ui?.collapsed) patch.collapsed = false;
+      if (ui?.viewed) patch.viewed = false;
+      // A thread renders in either tab, except on a Markdown file's Rendered
+      // page, which has no lines to hang it on: show its Source instead.
+      if (ui?.view === "file" && isMarkdownPath(comment.file) && ui.mdView !== "source") {
+        patch.mdView = "source";
       }
+      if (Object.keys(patch).length > 0) setFileUi(comment.file, patch);
       setCurrentFindingId(id);
       setFocusedCommentId(id);
       window.clearTimeout(focusTimerRef.current);

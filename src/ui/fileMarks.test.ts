@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { describeBlock, fileMarks, type ChangeBlock } from "./fileMarks";
+import { changeStarts, describeBlock, fileMarks, type ChangeBlock } from "./fileMarks";
 import type { FileDiff, Hunk } from "./types";
 
 function hunk(text: string): Hunk {
@@ -126,5 +126,26 @@ describe("describeBlock", () => {
     expect(describeBlock(block("mod", 3, 1), "old")).toBe("3 lines replaced by 1");
     expect(describeBlock(block("gap", 0, 2), "new")).toBe("2 lines removed here");
     expect(describeBlock(block("gap", 0, 1), "old")).toBe("1 line inserted here");
+  });
+});
+
+describe("changeStarts", () => {
+  test("one stop per block: its first line, or the line a gap sits before", () => {
+    const file = fileOf([
+      hunk(["@@ -1,5 +1,5 @@", " a", "+b", " c", "-d", " e", "-f", "+g"].join("\n")),
+    ]);
+    // New side: an addition at 2, a gap before 4 (d removed), a replacement at 5 (f → g).
+    expect(changeStarts(fileMarks(file, "new"), 5)).toEqual([2, 4, 5]);
+  });
+
+  test("a gap at the end of the file lands on its last line", () => {
+    const file = fileOf([hunk(["@@ -1,2 +1,1 @@", " a", "-b"].join("\n"))]);
+    const marks = fileMarks(file, "new");
+    expect([...marks.gaps.keys()]).toEqual([2]);
+    expect(changeStarts(marks, 1)).toEqual([1]);
+  });
+
+  test("an untouched file has no stops", () => {
+    expect(changeStarts(fileMarks(fileOf([]), "new"), 10)).toEqual([]);
   });
 });

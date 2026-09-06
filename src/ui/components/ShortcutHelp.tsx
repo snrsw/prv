@@ -40,7 +40,10 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
           </button>
         </header>
         <ShortcutList title="Anywhere" rows={GLOBAL_SHORTCUTS} />
-        <ShortcutList title="On a diff line (Tab into the line numbers)" rows={DIFF_SHORTCUTS} />
+        <ShortcutList
+          title="On a line of the Diff or File tab (Tab into the line numbers)"
+          rows={DIFF_SHORTCUTS}
+        />
       </div>
     </div>
   );

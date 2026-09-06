@@ -1,6 +1,13 @@
 import type { FileDiff } from "./types";
 import type { Comment, StoredMessage } from "../shared/comments";
-import { anchorTextOf, flattenDiff, keyGi, lineMaps, type DiffRow } from "../shared/diffLines";
+import {
+  anchorTextOf,
+  flattenDiff,
+  keyGi,
+  lineMaps,
+  type DiffRow,
+  type LineMaps,
+} from "../shared/diffLines";
 import type { LineSide } from "../shared/diffLines";
 
 // The pure diff-row helpers (incl. commentId) live in shared/ — the server
@@ -29,9 +36,16 @@ export type Located = {
  * thread placement), or null if the lines changed ("orphaned").
  */
 export function relocateComment(file: FileDiff, comment: Comment): Located | null {
-  if (!comment.start || !comment.end || !Array.isArray(comment.anchorText)) return null;
   const rows = flattenDiff(file);
-  const maps = lineMaps(rows);
+  return relocateInRows(rows, lineMaps(rows), comment);
+}
+
+/**
+ * `relocateComment` over rows already flattened — the File view places
+ * every comment of a file against the same rows, so it flattens once.
+ */
+export function relocateInRows(rows: DiffRow[], maps: LineMaps, comment: Comment): Located | null {
+  if (!comment.start || !comment.end || !Array.isArray(comment.anchorText)) return null;
   const a = keyGi(maps, comment.start);
   const b = keyGi(maps, comment.end);
   if (a == null || b == null) return null;
