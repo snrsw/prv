@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AGENT_LABELS } from "../../shared/chat";
 import { summarizeChatSettings, useChatSettings } from "../chatSettings";
 import { isSubmitKey } from "../keys";
+import { drawerWidth } from "../layout";
 import { useDiffChat } from "../useDiffChat";
 import { ChatMessageList } from "./ChatMessageList";
 import { ChatSettings } from "./ChatSettings";
@@ -16,10 +17,13 @@ export function ChatPanel({
   files,
   open,
   width,
+  drawer,
 }: {
   files: FileDiff[] | null;
   open: boolean;
   width: number;
+  /** Compact layout (#60): the panel floats over the diff instead of beside it. */
+  drawer: boolean;
 }) {
   const { messages, streaming, stalled, send, stop, reset } = useDiffChat();
   const [settings] = useChatSettings();
@@ -38,7 +42,14 @@ export function ChatPanel({
   }, [messages]);
 
   return (
-    <aside className="chat-panel" style={{ display: open ? "flex" : "none", flexBasis: width }}>
+    <aside
+      className={"chat-panel" + (drawer ? " is-drawer" : "")}
+      style={
+        drawer
+          ? { display: open ? "flex" : "none", width: drawerWidth(width) }
+          : { display: open ? "flex" : "none", flexBasis: width }
+      }
+    >
       <div className="chat-header">
         <span className="chat-title">Ask about this diff</span>
         <button

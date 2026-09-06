@@ -13,6 +13,7 @@ import { isClearableReviewComment } from "../shared/review";
 import type { LensId, ReviewFinding } from "../shared/review";
 import { documentOrder, nextCommentTarget } from "./commentNav";
 import { isTypingTarget, shortcutFor } from "./keys";
+import { drawerWidth, useLayout } from "./layout";
 import { isOpenFinding, openCommentsByFile, openFindingsBySeverity, viewedCount } from "./progress";
 import { titleFor } from "./title";
 import { sumTotals } from "./totals";
@@ -54,6 +55,9 @@ const FINDING_FOCUS_MS = 1200;
 
 /** Frames to wait for a thread that was hidden (collapsed / viewed card) to render. */
 const THREAD_RENDER_FRAMES = 10;
+
+/** Viewport width a side panel must leave to the diff column when resized (#60). */
+const PANEL_RESERVE_PX = 320;
 
 function pathToAnchor(path: string): string {
   return "file-" + path;
@@ -142,16 +146,24 @@ export function App() {
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
   const focusTimerRef = useRef(0);
   const [reloadKey, setReloadKey] = useState(0);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Below the breakpoint (#60) both side panels are overlay drawers: closed
+  // to start with, one at a time, dismissed by their scrim or a tree click.
+  const layout = useLayout();
+  const compact = layout === "compact";
+  const [sidebarOpen, setSidebarOpen] = useState(!compact);
   const [chatOpen, setChatOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   // Bumped by the `f` shortcut; the sidebar filter takes focus once it is rendered.
   const [filterFocusTick, setFilterFocusTick] = useState(0);
+  // The drawers are capped by CSS, so the viewport clamp only applies while
+  // the panels sit inline (and the resizers, their only other source, exist).
+  const viewportReserve = compact ? 0 : PANEL_RESERVE_PX;
   const sidebarResize = useResizablePanel({
     storageKey: "prv:sidebarWidth",
     defaultWidth: 296,
     minWidth: 180,
     maxWidth: 640,
+    viewportReserve,
     side: "left",
   });
   const chatResize = useResizablePanel({
@@ -159,8 +171,30 @@ export function App() {
     defaultWidth: 380,
     minWidth: 280,
     maxWidth: 800,
+    viewportReserve,
     side: "right",
   });
+
+  // Crossing the breakpoint resets the panels to that layout's default: the
+  // tree comes back inline in wide mode, the drawers start closed in compact.
+  // Toggles after that are the user's and are kept.
+  useEffect(() => {
+    setSidebarOpen(!compact);
+    if (compact) setChatOpen(false);
+  }, [compact]);
+
+  // Only one drawer fits at a time: opening one closes the other.
+  const toggleSidebar = useCallback(
+    (open = !sidebarOpen) => {
+      setSidebarOpen(open);
+      if (open && compact) setChatOpen(false);
+    },
+    [sidebarOpen, compact],
+  );
+  const toggleChat = useCallback(() => {
+    setChatOpen(!chatOpen);
+    if (!chatOpen && compact) setSidebarOpen(false);
+  }, [chatOpen, compact]);
   const [diffOutputFormat, setDiffOutputFormat] = useState<DiffOutputFormat>(
     readStoredDiffOutputFormat,
   );
@@ -310,13 +344,18 @@ export function App() {
 
   const totals = useMemo(() => (files ? sumTotals(files) : { adds: 0, dels: 0 }), [files]);
 
-  const onSelect = useCallback((path: string) => {
-    setActivePath(path);
-    spyMutedUntilRef.current = performance.now() + SPY_MUTE_MS;
-    document
-      .getElementById(pathToAnchor(path))
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, []);
+  const onSelect = useCallback(
+    (path: string) => {
+      setActivePath(path);
+      // The drawer covers the card it just selected; get out of the way.
+      if (compact) setSidebarOpen(false);
+      spyMutedUntilRef.current = performance.now() + SPY_MUTE_MS;
+      document
+        .getElementById(pathToAnchor(path))
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    },
+    [compact],
+  );
 
   // Scroll-spy (#55): the tree selection follows the viewport. One
   // evaluation per frame at most; a tree click mutes it while its smooth
@@ -411,6 +450,11 @@ export function App() {
         setHelpOpen(false);
         return;
       }
+      if (e.key === "Escape" && compact && (sidebarOpen || chatOpen)) {
+        setSidebarOpen(false);
+        setChatOpen(false);
+        return;
+      }
       const action = shortcutFor(e);
       if (!action) return;
       e.preventDefault();
@@ -435,20 +479,33 @@ export function App() {
           if (activePath) setFileUi(activePath, { collapsed: !fileUi[activePath]?.collapsed });
           return;
         case "focusFilter":
-          setSidebarOpen(true);
+          toggleSidebar(true);
           setFilterFocusTick((t) => t + 1);
           return;
         case "toggleSidebar":
-          return setSidebarOpen((s) => !s);
+          return toggleSidebar();
         case "toggleChat":
-          return setChatOpen((c) => !c);
+          return toggleChat();
         case "toggleHelp":
           return setHelpOpen((h) => !h);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [helpOpen, filePaths, activePath, onSelect, jumpToComment, fileUi, setFileUi]);
+  }, [
+    helpOpen,
+    compact,
+    sidebarOpen,
+    chatOpen,
+    filePaths,
+    activePath,
+    onSelect,
+    jumpToComment,
+    fileUi,
+    setFileUi,
+    toggleSidebar,
+    toggleChat,
+  ]);
 
   // Runs after the render that opened the sidebar, so the input exists.
   useEffect(() => {
@@ -471,14 +528,14 @@ export function App() {
   );
 
   return (
-    <div className="layout">
+    <div className={"layout" + (compact ? " is-compact" : "")}>
       <header className="topbar">
         <div className="topbar-title">
           <button
             type="button"
             className="sidebar-toggle"
             aria-label={sidebarOpen ? "Hide file tree" : "Show file tree"}
-            onClick={() => setSidebarOpen((s) => !s)}
+            onClick={() => toggleSidebar()}
           >
             <SidebarIcon />
           </button>
@@ -548,7 +605,7 @@ export function App() {
             type="button"
             className={"refresh-btn" + (chatOpen ? " is-active" : "")}
             aria-pressed={chatOpen}
-            onClick={() => setChatOpen((c) => !c)}
+            onClick={toggleChat}
           >
             Chat
           </button>
@@ -566,9 +623,17 @@ export function App() {
       </header>
 
       <div className="body">
+        {compact && sidebarOpen && (
+          <div className="drawer-scrim" aria-hidden="true" onClick={() => toggleSidebar(false)} />
+        )}
         {sidebarOpen && (
           <>
-            <aside className="sidebar" style={{ width: sidebarResize.width }}>
+            <aside
+              className={"sidebar" + (compact ? " is-drawer" : "")}
+              style={{
+                width: compact ? drawerWidth(sidebarResize.width) : sidebarResize.width,
+              }}
+            >
               {files === null ? (
                 <div className="sidebar-empty">loading…</div>
               ) : files.length === 0 ? (
@@ -583,7 +648,7 @@ export function App() {
                 />
               )}
             </aside>
-            <PanelResizer panel={sidebarResize} label="Resize file tree" />
+            {!compact && <PanelResizer panel={sidebarResize} label="Resize file tree" />}
           </>
         )}
 
@@ -624,8 +689,11 @@ export function App() {
           ))}
         </main>
 
-        {chatOpen && <PanelResizer panel={chatResize} label="Resize chat panel" />}
-        <ChatPanel files={files} open={chatOpen} width={chatResize.width} />
+        {chatOpen && !compact && <PanelResizer panel={chatResize} label="Resize chat panel" />}
+        {compact && chatOpen && (
+          <div className="drawer-scrim" aria-hidden="true" onClick={toggleChat} />
+        )}
+        <ChatPanel files={files} open={chatOpen} width={chatResize.width} drawer={compact} />
       </div>
 
       {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
