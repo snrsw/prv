@@ -1,5 +1,10 @@
 import { useSyncExternalStore } from "react";
-import { sanitizeChatSettings, type ChatSettings } from "../shared/chat";
+import {
+  AGENT_SHORT_LABELS,
+  DEFAULT_CHAT_AGENT,
+  sanitizeChatSettings,
+  type ChatSettings,
+} from "../shared/chat";
 
 /**
  * The model/effort the agent runs with, chosen in the chat panel and shared by
@@ -54,4 +59,14 @@ function subscribe(listener: () => void): () => void {
 export function useChatSettings(): [ChatSettings, (next: ChatSettings) => void] {
   const settings = useSyncExternalStore(subscribe, getChatSettings, getChatSettings);
   return [settings, setChatSettings];
+}
+
+/** What the composer's settings button shows: `Claude · default`, `Codex · gpt-5 · high`. Pure. */
+export function summarizeChatSettings(settings: ChatSettings): string {
+  const parts = [
+    AGENT_SHORT_LABELS[settings.agent ?? DEFAULT_CHAT_AGENT],
+    settings.model ?? "default",
+  ];
+  if (settings.effort) parts.push(settings.effort);
+  return parts.join(" · ");
 }

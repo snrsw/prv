@@ -1,5 +1,10 @@
 import { test, expect, describe } from "bun:test";
-import { getChatSettings, parseStoredChatSettings, setChatSettings } from "./chatSettings";
+import {
+  getChatSettings,
+  parseStoredChatSettings,
+  setChatSettings,
+  summarizeChatSettings,
+} from "./chatSettings";
 
 describe("parseStoredChatSettings", () => {
   test("missing entry means CLI defaults", () => {
@@ -30,5 +35,19 @@ describe("store", () => {
     expect(getChatSettings()).toEqual({ effort: "high" });
     setChatSettings({});
     expect(getChatSettings()).toEqual({});
+  });
+});
+
+describe("summarizeChatSettings", () => {
+  test("defaults read as Claude with the CLI default model", () => {
+    expect(summarizeChatSettings({})).toBe("Claude · default");
+  });
+
+  test("names the agent, model and effort that are set", () => {
+    expect(summarizeChatSettings({ model: "opus" })).toBe("Claude · opus");
+    expect(summarizeChatSettings({ agent: "codex", model: "gpt-5", effort: "high" })).toBe(
+      "Codex · gpt-5 · high",
+    );
+    expect(summarizeChatSettings({ agent: "codex", effort: "low" })).toBe("Codex · default · low");
   });
 });

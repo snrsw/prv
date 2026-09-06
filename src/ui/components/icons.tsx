@@ -23,3 +23,22 @@ export function CheckIcon({ size = 12 }: IconProps = {}) {
     </svg>
   );
 }
+
+export function GearIcon({ size = 14 }: IconProps = {}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <circle cx="8" cy="8" r="2.25" />
+      <circle cx="8" cy="8" r="5" />
+      <path d="M8 1.25V3m0 10v1.75M1.25 8H3m10 0h1.75M3.23 3.23l1.24 1.24m6.06 6.06 1.24 1.24M3.23 12.77l1.24-1.24m6.06-6.06 1.24-1.24" />
+    </svg>
+  );
+}

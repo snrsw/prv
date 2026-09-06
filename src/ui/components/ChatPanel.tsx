@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { AGENT_LABELS } from "../../shared/chat";
-import { useChatSettings } from "../chatSettings";
+import { summarizeChatSettings, useChatSettings } from "../chatSettings";
 import { isSubmitKey } from "../keys";
 import { useDiffChat } from "../useDiffChat";
 import { ChatMessageList } from "./ChatMessageList";
 import { ChatSettings } from "./ChatSettings";
+import { GearIcon } from "./icons";
 import type { FileDiff } from "../types";
 
 function assembleDiff(files: FileDiff[] | null): string {
@@ -82,7 +83,7 @@ export function ChatPanel({
           }}
         />
         <div className="chat-composer-bar">
-          <ChatSettings disabled={streaming} />
+          <ChatSettingsMenu disabled={streaming} />
           {streaming ? (
             <button type="button" className="chat-send" onClick={stop}>
               Stop
@@ -100,5 +101,64 @@ export function ChatPanel({
         </div>
       </div>
     </aside>
+  );
+}
+
+/**
+ * The agent / model / effort pickers behind one compact button (#62): the
+ * inline row wrapped at the panel's default width and stranded Send. Opens a
+ * popover above the button that closes on an outside press or Escape, the
+ * way the topbar's `SidePicker` does.
+ */
+function ChatSettingsMenu({ disabled }: { disabled: boolean }) {
+  const [settings] = useChatSettings();
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const summary = summarizeChatSettings(settings);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocPointerDown = (e: PointerEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDocPointerDown);
+    return () => document.removeEventListener("pointerdown", onDocPointerDown);
+  }, [open]);
+
+  return (
+    <div
+      className="chat-settings-menu"
+      ref={containerRef}
+      onKeyDown={(e) => {
+        if (e.key !== "Escape" || !open) return;
+        e.preventDefault();
+        setOpen(false);
+        buttonRef.current?.focus();
+      }}
+    >
+      <button
+        ref={buttonRef}
+        type="button"
+        className={"chat-settings-btn" + (open ? " is-active" : "")}
+        aria-label="Agent settings"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        title={`Agent settings: ${summary}`}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <GearIcon />
+        <span className="chat-settings-summary">{summary}</span>
+      </button>
+      {open && (
+        <div
+          className="mode-picker-popover chat-settings-popover"
+          role="dialog"
+          aria-label="Agent settings"
+        >
+          <ChatSettings disabled={disabled} />
+        </div>
+      )}
+    </div>
   );
 }

@@ -33,6 +33,7 @@ import {
   type Gap,
   type LineRange,
 } from "../hunkExpand";
+import { splitPath } from "../paths";
 import { fileTotals } from "../totals";
 import { describeBlock, fileMarks, type FileMarks } from "../fileMarks";
 import { gutterKeyAction, moveSelection, type GutterSel } from "../gutterKeys";
@@ -80,6 +81,25 @@ function focusCell(cell: HTMLElement): void {
   const min = (bar?.offsetHeight ?? 0) + 8;
   const top = cell.getBoundingClientRect().top;
   if (top < min) window.scrollBy(0, top - min);
+}
+
+/**
+ * A path as a directory part that may be squeezed (from its left, so the
+ * segments nearest the file survive) and a file name that never is. The
+ * `<bdi>` keeps the slashes in reading order inside the RTL-overflow trick.
+ */
+function PathParts({ path }: { path: string }) {
+  const { dir, name } = splitPath(path);
+  return (
+    <>
+      {dir && (
+        <span className="file-card-dir">
+          <bdi>{dir}</bdi>
+        </span>
+      )}
+      <span className="file-card-name">{name}</span>
+    </>
+  );
 }
 
 // Must match .file-content-pre code.hljs vertical padding and var(--fs-code-lh) in styles.css.
@@ -655,8 +675,12 @@ export function DiffPanel({
           className="file-card-path"
           title={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
         >
-          {file.oldPath && <span className="file-card-renamed">{file.oldPath} → </span>}
-          {file.path}
+          {file.oldPath && (
+            <span className="file-card-renamed">
+              <PathParts path={file.oldPath} /> →{" "}
+            </span>
+          )}
+          <PathParts path={file.path} />
         </span>
         <button
           type="button"
