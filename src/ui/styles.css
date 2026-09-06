@@ -526,6 +526,12 @@ input:focus-visible {
   padding: 1px 6px;
   border-radius: 4px;
 }
+/* Review progress (#55): "3/8 viewed", "2 open". Small so the bar stays as wide as before. */
+.meta-item.meta-progress {
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
 
 .refresh-btn {
   background: var(--canvas-default);
@@ -712,6 +718,51 @@ html.prv-col-resize * {
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1 1 auto;
+}
+
+/* Right side of a row: open-comment badge, compact diffstat, Viewed check.
+   Fixed-size so the name ellipsises around it rather than being pushed out. */
+.tree-row-meta {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-left: var(--sp-1);
+}
+.tree-row .diffstat {
+  gap: 1px;
+}
+.tree-row .diffstat-block {
+  width: 6px;
+  height: 6px;
+}
+.tree-badge {
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent-subtle);
+  color: var(--accent-fg);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+.tree-badge-dir {
+  background: var(--canvas-subtle);
+  color: var(--fg-muted);
+}
+.tree-row.file.viewed {
+  color: var(--fg-muted);
+}
+.tree-row.file.viewed .tree-name,
+.tree-row.file.viewed .status-icon,
+.tree-row.file.viewed .diffstat {
+  opacity: 0.6;
+}
+.tree-viewed {
+  display: inline-flex;
+  align-items: center;
+  color: var(--success-fg);
 }
 
 /* ---- Status icon (GitHub diff-status octicons) ---- */
@@ -1854,6 +1905,11 @@ tr.prv-expand-clickable:hover .d2h-info {
 .prv-thread-resolved {
   opacity: 0.75;
 }
+/* Flash the thread a finding jump landed on, so the eye finds it after the scroll. */
+.prv-thread-focus {
+  border-color: var(--accent-emphasis);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
 .prv-thread-banner {
   font-size: var(--fs-ui-sm);
   color: var(--attention-fg);
@@ -1938,9 +1994,25 @@ tr.prv-expand-clickable:hover .d2h-info {
 .review-card-count {
   background: var(--accent-subtle);
   color: var(--accent-fg);
+  border: 0;
   border-radius: 999px;
   padding: 1px 8px;
   font-size: var(--fs-ui-sm);
+  font-family: inherit;
+  cursor: pointer;
+}
+/* Severity chips reuse the thread badge look; as buttons they need the reset. */
+.review-severity-chip {
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+.review-card-count:hover,
+.review-severity-chip:hover {
+  filter: brightness(0.92);
+}
+.review-card-header .file-change-nav {
+  margin-left: 0;
 }
 .review-card-spacer {
   flex: 1;

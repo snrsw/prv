@@ -7,8 +7,11 @@ import { ModePicker } from "./components/ModePicker";
 import { ReviewPanel } from "./components/ReviewPanel";
 import { findingsToComments } from "../review/transform";
 import { encodeMode } from "../shared/modeQuery";
+import type { ReviewSeverity } from "../shared/comments";
 import { isClearableReviewComment } from "../shared/review";
 import type { LensId, ReviewFinding } from "../shared/review";
+import { documentOrder, nextCommentTarget } from "./commentNav";
+import { isOpenFinding, openCommentsByFile, openFindingsBySeverity, viewedCount } from "./progress";
 import { sumTotals } from "./totals";
 import { useComments } from "./useComments";
 import { useFileUiState } from "./useFileUiState";
@@ -32,6 +35,22 @@ type ServerConfig = { mode: ServerMode | null };
 
 /** Stable default so an untouched card gets the same props object each render. */
 const EMPTY_UI: FileUi = {};
+
+/**
+ * A tree click keeps scroll-spy quiet while the smooth scroll it starts is in
+ * flight, so the cards flying past cannot flip the selection. The scroll's
+ * `scrollend` lifts the mute (after a short settle, since the final scroll
+ * event's frame is still pending); this cap covers browsers without it and
+ * clicks that scroll nowhere.
+ */
+const SPY_MUTE_MS = 1000;
+const SPY_SETTLE_MS = 100;
+
+/** How long a jumped-to finding stays highlighted. */
+const FINDING_FOCUS_MS = 1200;
+
+/** Frames to wait for a thread that was hidden (collapsed / viewed card) to render. */
+const THREAD_RENDER_FRAMES = 10;
 
 function pathToAnchor(path: string): string {
   return "file-" + path;
@@ -67,6 +86,34 @@ function restoreScrollAnchor(anchor: ScrollAnchor): void {
   if (delta !== 0) window.scrollBy(0, delta);
 }
 
+/**
+ * The card the reader is "in": the one straddling a line just under the
+ * sticky topbar (where a clicked card comes to rest, so the spy agrees with
+ * the click once the scroll settles). In the gap between two cards the one
+ * above still counts; above the first card (the review panel) the first one.
+ */
+function cardAtSpyLine(): string | null {
+  const bar = document.querySelector<HTMLElement>(".topbar");
+  const line = (bar?.offsetHeight ?? 0) + 8;
+  const cards = document.querySelectorAll<HTMLElement>(".file-card[data-path]");
+  let above: string | null = null;
+  for (const card of cards) {
+    const rect = card.getBoundingClientRect();
+    if (rect.top > line) break; // cards are in document order
+    above = card.dataset.path!;
+    if (rect.bottom > line) return above;
+  }
+  return above ?? cards[0]?.dataset.path ?? null;
+}
+
+/** The rendered thread for a comment, when it is on screen (not in a hidden card body). */
+function visibleThread(id: string): HTMLElement | null {
+  const el = document.querySelector<HTMLElement>(
+    `.prv-thread[data-comment-id="${CSS.escape(id)}"]`,
+  );
+  return el && el.offsetParent !== null ? el : null;
+}
+
 export function App() {
   const [mode, setMode] = useState<ServerMode | null>(null);
   const [bootstrapped, setBootstrapped] = useState(false);
@@ -85,6 +132,12 @@ export function App() {
   const scrollAnchorRef = useRef<ScrollAnchor | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activePath, setActivePath] = useState<string | null>(null);
+  // Scroll-spy stays quiet until this time after a tree click (see SPY_MUTE_MS).
+  const spyMutedUntilRef = useRef(0);
+  // The finding ↑/↓ step from, and the one flashing after a jump.
+  const [currentFindingId, setCurrentFindingId] = useState<string | null>(null);
+  const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
+  const focusTimerRef = useRef(0);
   const [reloadKey, setReloadKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
@@ -148,9 +201,17 @@ export function App() {
 
   const hasAgentComments = comments.some((c) => c.source === "review");
   const clearableCount = comments.filter(isClearableReviewComment).length;
-  const openAgentCount = comments.filter(
-    (c) => c.source === "review" && c.status === "open",
-  ).length;
+  const openAgentCount = comments.filter(isOpenFinding).length;
+  const bySeverity = useMemo(() => openFindingsBySeverity(comments), [comments]);
+  const openByFile = useMemo(() => openCommentsByFile(comments), [comments]);
+  const openTotal = useMemo(
+    () => Object.values(openByFile).reduce((a, b) => a + b, 0),
+    [openByFile],
+  );
+  const viewedTotal = useMemo(
+    () => (filePaths ? viewedCount(filePaths, fileUi) : 0),
+    [filePaths, fileUi],
+  );
   const clearAgentComments = useCallback(
     () => removeWhere(isClearableReviewComment),
     [removeWhere],
@@ -239,10 +300,109 @@ export function App() {
 
   const onSelect = useCallback((path: string) => {
     setActivePath(path);
+    spyMutedUntilRef.current = performance.now() + SPY_MUTE_MS;
     document
       .getElementById(pathToAnchor(path))
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
+
+  // Scroll-spy (#55): the tree selection follows the viewport. One
+  // evaluation per frame at most; a tree click mutes it while its smooth
+  // scroll is in flight so the clicked row is never overridden mid-way.
+  useEffect(() => {
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      if (performance.now() < spyMutedUntilRef.current) return;
+      const path = cardAtSpyLine();
+      if (path) setActivePath((prev) => (prev === path ? prev : path));
+    };
+    const schedule = () => {
+      if (!frame) frame = window.requestAnimationFrame(update);
+    };
+    // Only ever shortens the mute: a scrollend while unmuted keeps it at 0.
+    const settle = () => {
+      spyMutedUntilRef.current = Math.min(
+        spyMutedUntilRef.current,
+        performance.now() + SPY_SETTLE_MS,
+      );
+    };
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("scrollend", settle);
+    window.addEventListener("resize", schedule);
+    return () => {
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("scrollend", settle);
+      window.removeEventListener("resize", schedule);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  useEffect(() => () => window.clearTimeout(focusTimerRef.current), []);
+
+  // Open review comments in reading order. The DOM is the authority for
+  // threads that are rendered (relocation may reorder them within a card);
+  // the pure helper slots in the ones hidden by a collapsed card.
+  const findingOrder = useCallback((): string[] => {
+    const domIds = Array.from(
+      document.querySelectorAll<HTMLElement>(".prv-thread[data-comment-id]"),
+      (el) => el.dataset.commentId!,
+    );
+    return documentOrder(filePaths ?? [], comments.filter(isOpenFinding), domIds);
+  }, [filePaths, comments]);
+
+  // Scroll a thread to the centre once it is on screen. A thread in a
+  // collapsed, viewed or File-view card is not rendered until the card's
+  // UI state changes and its diff is rebuilt, so retry over a few frames.
+  const scrollToThread = useCallback((id: string, attempts = THREAD_RENDER_FRAMES) => {
+    const el = visibleThread(id);
+    if (el) {
+      el.scrollIntoView({ block: "center" });
+      return;
+    }
+    if (attempts > 0) window.requestAnimationFrame(() => scrollToThread(id, attempts - 1));
+  }, []);
+
+  const focusComment = useCallback(
+    (id: string) => {
+      const comment = comments.find((c) => c.id === id);
+      if (!comment) return;
+      const ui = fileUi[comment.file];
+      if (ui?.collapsed || ui?.viewed || ui?.view === "file") {
+        setFileUi(comment.file, { collapsed: false, viewed: false, view: "diff" });
+      }
+      setCurrentFindingId(id);
+      setFocusedCommentId(id);
+      window.clearTimeout(focusTimerRef.current);
+      focusTimerRef.current = window.setTimeout(() => setFocusedCommentId(null), FINDING_FOCUS_MS);
+      scrollToThread(id);
+    },
+    [comments, fileUi, setFileUi, scrollToThread],
+  );
+
+  // Step to the next / previous open finding across files (wrapping). Kept
+  // as a callback so a keyboard shortcut can reuse it later.
+  const jumpToComment = useCallback(
+    (direction: 1 | -1) => {
+      const target = nextCommentTarget(findingOrder(), currentFindingId, direction);
+      if (target) focusComment(target);
+    },
+    [findingOrder, currentFindingId, focusComment],
+  );
+
+  const jumpToFirst = useCallback(() => {
+    const target = findingOrder()[0];
+    if (target) focusComment(target);
+  }, [findingOrder, focusComment]);
+
+  const jumpToSeverity = useCallback(
+    (severity: ReviewSeverity) => {
+      const severityOf = new Map(comments.map((c) => [c.id, c.severity ?? "info"]));
+      const target = findingOrder().find((id) => severityOf.get(id) === severity);
+      if (target) focusComment(target);
+    },
+    [comments, findingOrder, focusComment],
+  );
 
   return (
     <div className="layout">
@@ -273,6 +433,14 @@ export function App() {
               <span className="meta-item adds">+{totals.adds}</span>
               <span className="meta-item dels">−{totals.dels}</span>
               <DiffStat totals={totals} />
+              <span className="meta-item meta-progress" title="Files marked Viewed">
+                {viewedTotal}/{files.length} viewed
+              </span>
+              {openTotal > 0 && (
+                <span className="meta-item meta-progress" title="Open comments">
+                  {openTotal} open
+                </span>
+              )}
             </>
           )}
           <div className="mode-kind-toggle" role="tablist" aria-label="Diff layout">
@@ -330,7 +498,13 @@ export function App() {
               ) : files.length === 0 ? (
                 <div className="sidebar-empty">no changes</div>
               ) : (
-                <FileTree files={files} onSelect={onSelect} activePath={activePath} />
+                <FileTree
+                  files={files}
+                  onSelect={onSelect}
+                  activePath={activePath}
+                  openByFile={openByFile}
+                  ui={fileUi}
+                />
               )}
             </aside>
             <PanelResizer panel={sidebarResize} label="Resize file tree" />
@@ -342,8 +516,12 @@ export function App() {
             <ReviewPanel
               run={review.run}
               openAgentCount={openAgentCount}
+              bySeverity={bySeverity}
               clearableCount={clearableCount}
               onClear={clearAgentComments}
+              onJump={jumpToComment}
+              onJumpToSeverity={jumpToSeverity}
+              onJumpToFirst={jumpToFirst}
             />
           )}
           {error && <div className="error">Error: {error}</div>}
@@ -365,6 +543,7 @@ export function App() {
               onApplied={refreshDiff}
               ui={fileUi[file.path] ?? EMPTY_UI}
               setUi={(patch) => setFileUi(file.path, patch)}
+              focusedCommentId={focusedCommentId}
             />
           ))}
         </main>
