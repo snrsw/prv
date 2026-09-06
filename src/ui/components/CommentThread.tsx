@@ -28,6 +28,7 @@ export function CommentThread({
   onUpdate,
   onRemove,
   onApplied,
+  focused = false,
 }: {
   file: FileDiff;
   comment: Comment;
@@ -37,6 +38,8 @@ export function CommentThread({
   onUpdate: (updater: (c: Comment) => Comment) => void;
   onRemove: () => void;
   onApplied: () => void;
+  /** Briefly true after a finding jump landed here, for the highlight flash. */
+  focused?: boolean;
 }) {
   const persist = (messages: StoredMessage[]) => onUpdate((c) => ({ ...c, messages }));
   const { messages, streaming, stalled, send, stop } = useDiffChat(comment.messages, persist);
@@ -87,7 +90,10 @@ export function CommentThread({
   const setStatus = (status: Comment["status"]) => onUpdate((c) => ({ ...c, status }));
 
   return (
-    <div className={`prv-thread ${resolved ? "prv-thread-resolved" : ""}`}>
+    <div
+      className={`prv-thread ${resolved ? "prv-thread-resolved" : ""} ${focused ? "prv-thread-focus" : ""}`}
+      data-comment-id={comment.id}
+    >
       <div className="prv-thread-head">
         <span className="prv-thread-title">
           <span className="prv-thread-loc">

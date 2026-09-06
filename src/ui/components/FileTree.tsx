@@ -1,7 +1,11 @@
-import { useMemo, useState } from "react";
-import type { FileDiff, Status } from "../types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { FileDiff, FileTotals, Status } from "../types";
+import type { FileUiState } from "../useFileUiState";
+import { subtreeOpenCount } from "../progress";
+import { fileTotals } from "../totals";
 import { StatusIcon } from "./StatusIcon";
-import { ChevronDown, ChevronRight } from "./icons";
+import { DiffStat } from "./DiffStat";
+import { CheckIcon, ChevronDown, ChevronRight } from "./icons";
 
 type DirNode = { kind: "dir"; name: string; path: string; children: TreeNode[] };
 type FileNode = { kind: "file"; name: string; path: string; oldPath?: string; status: Status };
@@ -60,14 +64,26 @@ function collapseSingleChildDirs(node: TreeNode): TreeNode {
   return { ...node, children };
 }
 
+/** Per-row review progress: the diffstat, open comments, and the Viewed mark. */
+type RowMeta = {
+  totals: Record<string, FileTotals>;
+  openByFile: Record<string, number>;
+  ui: FileUiState;
+};
+
 export function FileTree({
   files,
   onSelect,
   activePath,
+  openByFile,
+  ui,
 }: {
   files: FileDiff[];
   onSelect: (path: string) => void;
   activePath: string | null;
+  /** Open comment count per file path (any source). */
+  openByFile: Record<string, number>;
+  ui: FileUiState;
 }) {
   const [filter, setFilter] = useState("");
   const filtered = useMemo(() => {
@@ -76,6 +92,11 @@ export function FileTree({
     return files.filter((f) => f.path.toLowerCase().includes(q));
   }, [files, filter]);
   const tree = useMemo(() => buildTree(filtered), [filtered]);
+  const totals = useMemo(
+    () => Object.fromEntries(files.map((f) => [f.path, fileTotals(f)])),
+    [files],
+  );
+  const meta: RowMeta = useMemo(() => ({ totals, openByFile, ui }), [totals, openByFile, ui]);
 
   return (
     <>
@@ -95,6 +116,7 @@ export function FileTree({
             onSelect={onSelect}
             activePath={activePath}
             depth={0}
+            meta={meta}
           />
         ))}
       </ul>
@@ -107,33 +129,29 @@ function TreeItem({
   onSelect,
   activePath,
   depth,
+  meta,
 }: {
   node: TreeNode;
   onSelect: (path: string) => void;
   activePath: string | null;
   depth: number;
+  meta: RowMeta;
 }) {
   const [expanded, setExpanded] = useState(true);
 
   if (node.kind === "file") {
-    const active = activePath === node.path;
     return (
-      <li>
-        <button
-          type="button"
-          className={`tree-row file ${active ? "active" : ""}`}
-          style={{ paddingLeft: 8 + depth * 14 }}
-          title={node.oldPath ? `${node.oldPath} → ${node.path}` : node.path}
-          onClick={() => onSelect(node.path)}
-        >
-          <span className="tree-chevron" aria-hidden="true" />
-          <StatusIcon status={node.status} size={16} />
-          <span className="tree-name">{node.name}</span>
-        </button>
-      </li>
+      <FileRow
+        node={node}
+        active={activePath === node.path}
+        depth={depth}
+        meta={meta}
+        onSelect={onSelect}
+      />
     );
   }
 
+  const open = subtreeOpenCount(meta.openByFile, node.path);
   return (
     <li>
       <button
@@ -148,6 +166,13 @@ function TreeItem({
         </span>
         <FolderIcon />
         <span className="tree-name">{node.name}</span>
+        {open > 0 && (
+          <span className="tree-row-meta">
+            <span className="tree-badge tree-badge-dir" title={openTitle(open)}>
+              {open}
+            </span>
+          </span>
+        )}
       </button>
       {expanded && (
         <ul>
@@ -158,10 +183,71 @@ function TreeItem({
               onSelect={onSelect}
               activePath={activePath}
               depth={depth + 1}
+              meta={meta}
             />
           ))}
         </ul>
       )}
+    </li>
+  );
+}
+
+function openTitle(n: number): string {
+  return `${n} open comment${n === 1 ? "" : "s"}`;
+}
+
+function FileRow({
+  node,
+  active,
+  depth,
+  meta,
+  onSelect,
+}: {
+  node: FileNode;
+  active: boolean;
+  depth: number;
+  meta: RowMeta;
+  onSelect: (path: string) => void;
+}) {
+  const rowRef = useRef<HTMLButtonElement>(null);
+  const open = meta.openByFile[node.path] ?? 0;
+  const viewed = meta.ui[node.path]?.viewed === true;
+  const totals = meta.totals[node.path];
+
+  // Scroll-spy moves the selection while the reader is far from the sidebar;
+  // keep the row in view there. After a click the row is already visible,
+  // so "nearest" makes this a no-op.
+  useEffect(() => {
+    if (active) rowRef.current?.scrollIntoView({ block: "nearest" });
+  }, [active]);
+
+  return (
+    <li>
+      <button
+        ref={rowRef}
+        type="button"
+        className={`tree-row file ${active ? "active" : ""} ${viewed ? "viewed" : ""}`}
+        style={{ paddingLeft: 8 + depth * 14 }}
+        title={node.oldPath ? `${node.oldPath} → ${node.path}` : node.path}
+        onClick={() => onSelect(node.path)}
+      >
+        <span className="tree-chevron" aria-hidden="true" />
+        <StatusIcon status={node.status} size={16} />
+        <span className="tree-name">{node.name}</span>
+        <span className="tree-row-meta">
+          {open > 0 && (
+            <span className="tree-badge" title={openTitle(open)}>
+              {open}
+            </span>
+          )}
+          {totals && <DiffStat totals={totals} />}
+          {viewed && (
+            <span className="tree-viewed" title="Viewed">
+              <CheckIcon size={12} />
+            </span>
+          )}
+        </span>
+      </button>
     </li>
   );
 }

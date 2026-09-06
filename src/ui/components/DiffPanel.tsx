@@ -70,6 +70,7 @@ export function DiffPanel({
   onApplied,
   ui,
   setUi,
+  focusedCommentId,
 }: {
   file: FileDiff;
   mode: ServerMode | null;
@@ -83,6 +84,8 @@ export function DiffPanel({
   /** Viewed / collapsed / tab state, owned by App so it outlives a Refresh. */
   ui: FileUi;
   setUi: (patch: FileUi) => void;
+  /** The finding a jump just landed on (App flashes it), if it is in this file. */
+  focusedCommentId: string | null;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const expanded = !ui.collapsed;
@@ -628,6 +631,7 @@ export function DiffPanel({
                 onUpdate={(updater) => updateComment(comment.id, updater)}
                 onRemove={() => removeComment(comment.id)}
                 onApplied={onApplied}
+                focused={comment.id === focusedCommentId}
               />,
               getContainer(comment.id),
             ),
@@ -650,6 +654,7 @@ export function DiffPanel({
                     onUpdate={(updater) => updateComment(comment.id, updater)}
                     onRemove={() => removeComment(comment.id)}
                     onApplied={onApplied}
+                    focused={comment.id === focusedCommentId}
                   />
                 );
               })}
