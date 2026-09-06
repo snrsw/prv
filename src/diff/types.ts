@@ -11,6 +11,8 @@ export type Hunk = {
 
 export type FileDiff = {
   path: string;
+  /** The path before a rename (or copy); `path` is then the new one. */
+  oldPath?: string;
   status: Status;
   hunks: Hunk[];
   binary: boolean;

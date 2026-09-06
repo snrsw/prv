@@ -134,7 +134,13 @@ export function App() {
     setError(null);
     (async () => {
       try {
-        const data = (await fetch(buildDiffUrl(mode)).then((r) => r.json())) as FileDiff[];
+        const res = await fetch(buildDiffUrl(mode));
+        if (!res.ok) {
+          // The server answers a bad mode (unknown ref, …) with `{ error }`.
+          const body = (await res.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(body?.error ?? `HTTP ${res.status}`);
+        }
+        const data = (await res.json()) as FileDiff[];
         if (cancelled) return;
         setFiles(data);
         setActivePath(data[0]?.path ?? null);

@@ -8,6 +8,7 @@ export function encodeMode(mode: DiffMode, params: URLSearchParams): void {
     return;
   }
   params.set("leftRef", mode.leftRef);
+  for (const p of mode.paths ?? []) params.append("path", p);
   if (mode.right.kind === "ref") {
     params.set("right", "ref");
     params.set("rightRef", mode.right.ref);
@@ -28,11 +29,14 @@ export function decodeMode(params: URLSearchParams): DiffMode | null {
     const leftRef = params.get("leftRef");
     const right = params.get("right");
     if (!leftRef || !right) return null;
-    if (right === "worktree") return { kind, cwd, leftRef, right: { kind: "worktree" } };
+    // `paths` is omitted (not `[]`) when absent so an unscoped mode round-trips as-is.
+    const paths = params.getAll("path");
+    const scope = paths.length > 0 ? { paths } : {};
+    if (right === "worktree") return { kind, cwd, leftRef, right: { kind: "worktree" }, ...scope };
     if (right === "ref") {
       const rightRef = params.get("rightRef");
       if (!rightRef) return null;
-      return { kind, cwd, leftRef, right: { kind: "ref", ref: rightRef } };
+      return { kind, cwd, leftRef, right: { kind: "ref", ref: rightRef }, ...scope };
     }
   }
   return null;

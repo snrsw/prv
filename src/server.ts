@@ -50,7 +50,11 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
         GET: async (req) => {
           const mode = decodeMode(new URL(req.url).searchParams) ?? defaultMode;
           if (!mode) return Response.json({ error: "no mode" }, { status: 400 });
-          return Response.json(await computeDiff(mode));
+          try {
+            return Response.json(await computeDiff(mode));
+          } catch (err) {
+            return Response.json({ error: errorMessage(err) }, { status: 400 });
+          }
         },
       },
       "/api/file": {
@@ -64,7 +68,11 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
           if (side !== "new" && side !== "old") {
             return Response.json({ error: "side must be 'new' or 'old'" }, { status: 400 });
           }
-          return Response.json(await loadFile(mode, file, side));
+          try {
+            return Response.json(await loadFile(mode, file, side));
+          } catch (err) {
+            return Response.json({ error: errorMessage(err) }, { status: 400 });
+          }
         },
       },
       "/api/refs": {
@@ -109,6 +117,10 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
       },
     },
   });
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 /** Handle one /api/chat message: run an agent turn and relay its events. */
@@ -248,7 +260,7 @@ async function handleReviewMessage(
       turnRunner,
     });
   } catch (err) {
-    send({ type: "error", message: err instanceof Error ? err.message : String(err) });
+    send({ type: "error", message: errorMessage(err) });
   } finally {
     data.busy = false;
     data.abort = undefined;

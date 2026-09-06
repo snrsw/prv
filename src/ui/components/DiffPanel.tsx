@@ -134,18 +134,24 @@ export function DiffPanel({
     setReveals((prev) => (prev.length === 0 ? prev : []));
   }, [file.raw, modeKey]);
 
+  // A renamed file's old side is read from where it used to live.
+  const pathOn = useCallback(
+    (side: FileSide): string => (side === "old" ? (file.oldPath ?? file.path) : file.path),
+    [file.path, file.oldPath],
+  );
+
   const loadSource = useCallback(async (): Promise<string[] | null> => {
     if (!mode) return null;
     if (!sourceRef.current) {
       const side: FileSide = file.status === "deleted" ? "old" : "new";
-      sourceRef.current = fetchFileContent(mode, file.path, side)
+      sourceRef.current = fetchFileContent(mode, pathOn(side), side)
         .then((res) => (res.kind === "text" ? splitLines(res.content) : null))
         .catch(() => null);
     }
     const lines = await sourceRef.current;
     if (lines) setSource(lines);
     return lines;
-  }, [mode, file.path, file.status]);
+  }, [mode, pathOn, file.status]);
 
   const onExpand = useCallback(
     async (gap: Gap, direction: ExpandDirection) => {
@@ -397,9 +403,9 @@ export function DiffPanel({
       try {
         const primary: FileSide = file.status === "deleted" ? "old" : "new";
         let side = primary;
-        let result = await fetchFileContent(mode, file.path, primary, controller.signal);
+        let result = await fetchFileContent(mode, pathOn(primary), primary, controller.signal);
         if (result.kind === "missing" && primary === "new") {
-          const fallback = await fetchFileContent(mode, file.path, "old", controller.signal);
+          const fallback = await fetchFileContent(mode, pathOn("old"), "old", controller.signal);
           if (fallback.kind !== "missing") {
             result = fallback;
             side = "old";
@@ -415,7 +421,7 @@ export function DiffPanel({
       }
     })();
     return () => controller.abort();
-  }, [expanded, view, file.binary, file.path, file.status, mode]);
+  }, [expanded, view, file.binary, file.path, file.status, pathOn, mode]);
 
   // The diff projected onto the side the File view shows: which of its lines
   // the diff added or replaced, and where the other side's lines went.
@@ -506,7 +512,11 @@ export function DiffPanel({
         >
           {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </button>
-        <span className="file-card-path" title={file.path}>
+        <span
+          className="file-card-path"
+          title={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
+        >
+          {file.oldPath && <span className="file-card-renamed">{file.oldPath} → </span>}
           {file.path}
         </span>
         <button

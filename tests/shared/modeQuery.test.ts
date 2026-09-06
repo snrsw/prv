@@ -28,6 +28,17 @@ test("git mode against a ref round-trips through encode/decode", () => {
   expect(roundTrip(mode)).toEqual(mode);
 });
 
+test("git mode scoped to paths round-trips through encode/decode, keeping path order", () => {
+  const mode: DiffMode = {
+    kind: "git",
+    cwd: "/repo",
+    leftRef: "HEAD",
+    right: { kind: "worktree" },
+    paths: ["src/b.ts", "docs"],
+  };
+  expect(roundTrip(mode)).toEqual(mode);
+});
+
 test("decode returns null when a required param is absent", () => {
   const params = new URLSearchParams({ mode: "git", leftRef: "HEAD", right: "worktree" });
   expect(decodeMode(params)).toBeNull();
