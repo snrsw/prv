@@ -1,8 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 
-export function clampWidth(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, Math.round(value)));
+/**
+ * Clamp a panel width to its own range and to the viewport (#60): the panel
+ * may take at most `viewport - reserve`, so the column next to it keeps at
+ * least `reserve`. `min` still wins on a viewport too small for both.
+ */
+export function clampWidth(
+  value: number,
+  min: number,
+  max: number,
+  viewport: number,
+  reserve: number,
+): number {
+  const cap = Math.min(max, viewport - reserve);
+  return Math.max(min, Math.min(cap, Math.round(value)));
 }
 
 export function parseStoredWidth(
@@ -10,10 +22,11 @@ export function parseStoredWidth(
   defaultWidth: number,
   min: number,
   max: number,
+  viewport: number,
+  reserve: number,
 ): number {
-  if (raw === null) return defaultWidth;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isNaN(parsed) ? defaultWidth : clampWidth(parsed, min, max);
+  const parsed = raw === null ? Number.NaN : Number.parseInt(raw, 10);
+  return clampWidth(Number.isNaN(parsed) ? defaultWidth : parsed, min, max, viewport, reserve);
 }
 
 const KEYBOARD_STEP = 16;
@@ -23,6 +36,8 @@ type Options = {
   defaultWidth: number;
   minWidth: number;
   maxWidth: number;
+  /** Viewport width the panel must leave for the rest of the page. */
+  viewportReserve: number;
   /** Which viewport edge the panel hugs; decides how pointer x maps to width. */
   side: "left" | "right";
 };
@@ -45,6 +60,7 @@ export function useResizablePanel({
   defaultWidth,
   minWidth,
   maxWidth,
+  viewportReserve,
   side,
 }: Options): ResizablePanel {
   const [width, setWidth] = useState(() => {
@@ -54,11 +70,17 @@ export function useResizablePanel({
         defaultWidth,
         minWidth,
         maxWidth,
+        window.innerWidth,
+        viewportReserve,
       );
     } catch {
       return defaultWidth;
     }
   });
+  const clamp = useCallback(
+    (value: number) => clampWidth(value, minWidth, maxWidth, window.innerWidth, viewportReserve),
+    [minWidth, maxWidth, viewportReserve],
+  );
   const [dragging, setDragging] = useState(false);
   const draggingRef = useRef(false);
 
@@ -87,9 +109,9 @@ export function useResizablePanel({
     (e: ReactPointerEvent<HTMLElement>) => {
       if (!draggingRef.current) return;
       const raw = side === "left" ? e.clientX : window.innerWidth - e.clientX;
-      setWidth(clampWidth(raw, minWidth, maxWidth));
+      setWidth(clamp(raw));
     },
-    [side, minWidth, maxWidth],
+    [side, clamp],
   );
 
   const endDrag = useCallback((e: ReactPointerEvent<HTMLElement>) => {
@@ -109,9 +131,9 @@ export function useResizablePanel({
       // shrinks the other depending on which viewport edge the panel hugs.
       const edgeDelta = e.key === "ArrowRight" ? KEYBOARD_STEP : -KEYBOARD_STEP;
       const delta = side === "left" ? edgeDelta : -edgeDelta;
-      setWidth((w) => clampWidth(w + delta, minWidth, maxWidth));
+      setWidth((w) => clamp(w + delta));
     },
-    [side, minWidth, maxWidth],
+    [side, clamp],
   );
 
   return {

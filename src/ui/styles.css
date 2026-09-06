@@ -228,6 +228,7 @@ input:focus-visible {
   font-weight: 600;
   font-size: 15px;
   color: var(--fg-default);
+  flex-shrink: 0;
 }
 
 .mode-chip {
@@ -271,19 +272,25 @@ input:focus-visible {
   box-shadow: var(--shadow-sm);
 }
 
+/* The picker is the one topbar item allowed to shrink (#60): every wrapper
+   down to the ref name gives up its content-sized minimum so the name can
+   ellipsise instead of the row overflowing into the meta. */
 .mode-picker {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);
+  min-width: 0;
 }
 .mode-picker-side {
   position: relative;
   display: inline-flex;
+  min-width: 0;
 }
 .mode-picker-trigger {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   background: var(--canvas-subtle);
   border: 1px solid var(--border-muted);
   border-radius: 6px;
@@ -667,6 +674,80 @@ html.prv-col-resize * {
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
+}
+
+/* ---- Compact layout (#60) ----
+   Below the breakpoint (COMPACT_MAX in layout.ts) the tree and the chat are
+   drawers over the diff: fixed under the topbar, one at a time, dismissed by
+   the scrim. The topbar keeps only what the reader acts on. */
+
+.drawer-scrim {
+  position: fixed;
+  top: var(--topbar-h);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 8;
+  background: var(--overlay-backdrop);
+}
+/* Both keep their inline `height: calc(100vh - topbar)`: with `bottom: 0` and
+   an auto height instead, the inline `align-self: flex-start` would make the
+   fixed box shrink to its content (CSS abspos self-alignment). */
+.sidebar.is-drawer,
+.chat-panel.is-drawer {
+  position: fixed;
+  top: var(--topbar-h);
+  z-index: 9;
+  box-shadow: var(--shadow-lg);
+}
+.sidebar.is-drawer {
+  left: 0;
+}
+.chat-panel.is-drawer {
+  right: 0;
+  /* The inline `width` rules; the flex basis is for the inline panel. */
+  flex-basis: auto;
+}
+
+@media (max-width: 1000px) {
+  .main-col {
+    padding: var(--sp-2);
+  }
+  .topbar-meta .meta-item.adds,
+  .topbar-meta .meta-item.dels,
+  .topbar-meta .diffstat,
+  .topbar-meta .meta-progress {
+    display: none;
+  }
+  .mode-picker-value {
+    max-width: 10ch;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    padding: 0 var(--sp-3);
+    gap: var(--sp-3);
+  }
+  .topbar-title,
+  .topbar-meta {
+    gap: var(--sp-2);
+  }
+  .topbar-meta .mode-kind-toggle,
+  .mode-picker-label {
+    display: none;
+  }
+  .mode-picker-trigger {
+    padding: 7px 8px;
+  }
+  /* Flex shrinks both refs in proportion, which would cut a short one like
+     "HEAD" first; keep a readable head of each and let the long one give. */
+  .mode-picker-value {
+    min-width: 4ch;
+  }
+  .mode-chip {
+    max-width: none;
+  }
 }
 
 .placeholder,
@@ -1191,6 +1272,11 @@ html.prv-col-resize * {
 .md-view-note {
   font-size: var(--fs-ui-sm);
   color: var(--fg-muted);
+  /* One line, ellipsised, in a narrow card: never one word per line (#60). */
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .md-view-note-link {
   background: none;
