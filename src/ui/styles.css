@@ -900,11 +900,26 @@ html.prv-col-resize * {
   font-size: var(--fs-path);
   font-weight: 400;
   color: var(--fg-default);
+  display: flex;
+  align-items: baseline;
   flex: 0 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+/* A deep path gives way from its left, so the file name always shows (#62):
+   the directory part overflows as RTL text (ellipsis at the start), while the
+   <bdi> inside keeps the segments themselves in reading order. */
+.file-card-dir {
+  color: var(--fg-muted);
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+.file-card-name {
+  flex: 0 0 auto;
 }
 
 .copy-path-btn {
@@ -935,7 +950,11 @@ html.prv-col-resize * {
   font-size: 12px;
   color: var(--fg-muted);
   font-style: italic;
-  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: baseline;
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: pre;
 }
 
 .file-card-counts {
@@ -2303,14 +2322,77 @@ tr.prv-expand-clickable:hover .d2h-info {
   text-align: center;
 }
 
-/* ---- Chat composer: model / effort pickers next to Send ---- */
+/* ---- Chat composer: settings button + popover next to Send ---- */
 
+/* One row, never wrapping: the settings button gives way (its summary
+   ellipsises) so Send stays pinned right down to the panel's 280px minimum. */
 .chat-composer-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--sp-2);
   min-width: 0;
+}
+.chat-composer-bar .chat-send {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.chat-settings-menu {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.chat-settings-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-muted);
+}
+.chat-settings-btn:hover,
+.chat-settings-btn.is-active {
+  background: var(--canvas-subtle);
+  border-color: var(--border-muted);
+  color: var(--fg-default);
+}
+.chat-settings-btn svg {
+  flex: 0 0 auto;
+}
+.chat-settings-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-settings-popover {
+  top: auto;
+  bottom: calc(100% + 4px);
+  width: 240px;
+  max-width: calc(100vw - 2 * var(--sp-3));
+  padding: 10px;
+}
+.chat-settings-popover .chat-settings {
+  flex-direction: column;
+  align-items: stretch;
+}
+.chat-settings-popover .chat-setting {
+  justify-content: space-between;
+}
+.chat-settings-popover .chat-select,
+.chat-settings-popover .chat-setting-input {
+  width: 60%;
+  min-width: 0;
+}
+/* The custom-model field has no label; line it up under the model picker. */
+.chat-settings-popover .chat-setting-input {
+  align-self: flex-end;
 }
 .chat-settings {
   display: flex;

@@ -10,6 +10,8 @@ export const DEFAULT_CHAT_AGENT: ChatAgent = "claude";
 
 /** Human names for the picker and UI copy. */
 export const AGENT_LABELS: Record<ChatAgent, string> = { claude: "Claude Code", codex: "Codex" };
+/** One-word names for tight spots (the composer's settings button). */
+export const AGENT_SHORT_LABELS: Record<ChatAgent, string> = { claude: "Claude", codex: "Codex" };
 
 /** Effort levels per agent, lowest to highest: `claude --effort` and Codex's
  * `model_reasoning_effort` config value. */

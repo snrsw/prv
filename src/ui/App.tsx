@@ -14,6 +14,7 @@ import type { LensId, ReviewFinding } from "../shared/review";
 import { documentOrder, nextCommentTarget } from "./commentNav";
 import { isTypingTarget, shortcutFor } from "./keys";
 import { isOpenFinding, openCommentsByFile, openFindingsBySeverity, viewedCount } from "./progress";
+import { titleFor } from "./title";
 import { sumTotals } from "./totals";
 import { useComments } from "./useComments";
 import { useFileUiState } from "./useFileUiState";
@@ -288,6 +289,12 @@ export function App() {
       cancelled = true;
     };
   }, [bootstrapped, mode, reloadKey]);
+
+  // The tab is named after the comparison that actually loaded (#62), so a
+  // rejected ref (reverted, see above) never gets into the title.
+  useEffect(() => {
+    document.title = titleFor(loadedMode?.mode ?? null);
+  }, [loadedMode]);
 
   // The cards stay mounted across a reload, but diff2html rebuilds their DOM
   // from the new diff (a child effect, so it has already run here); keep the
