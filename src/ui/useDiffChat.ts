@@ -312,6 +312,20 @@ export function useDiffChat(
     endTurn();
   }, [endTurn]);
 
+  /**
+   * Adopt `next` as the transcript without persisting it back. The caller uses
+   * this to show what the store already holds (a comment saved without the
+   * agent, a "Finish review" reply that landed on this thread), so echoing it
+   * through `onChange` would be a pointless write — and could race the writer
+   * it came from. Marking it as "last persisted" is exactly how the seeded
+   * initial state avoids being written back on mount.
+   */
+  const seed = useCallback((next: ChatMessage[]) => {
+    const healed = dropEmptyAssistants(next);
+    lastPersistedRef.current = healed;
+    setMessages(healed);
+  }, []);
+
   const reset = useCallback(() => {
     wsRef.current?.close();
     wsRef.current = null;
@@ -329,5 +343,5 @@ export function useDiffChat(
     [],
   );
 
-  return { messages, streaming, stalled, send, stop, reset };
+  return { messages, streaming, stalled, send, stop, reset, seed };
 }

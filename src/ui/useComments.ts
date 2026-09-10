@@ -97,6 +97,13 @@ export function useComments(ready: boolean) {
     (pred: (c: Comment) => boolean) => mutate((prev) => prev.filter((c) => !pred(c))),
     [mutate],
   );
+  /**
+   * Rewrite the whole store in one mutation (one debounced PUT), for changes
+   * that touch many threads at once — folding a "Finish review" batch's
+   * results in, where per-thread `updateComment` calls would each queue their
+   * own save and the last one written would win.
+   */
+  const mutateAll = mutate;
 
   return {
     comments,
@@ -104,6 +111,7 @@ export function useComments(ready: boolean) {
     updateComment,
     removeComment,
     removeWhere,
+    mutateAll,
     lastRemoved,
     undoRemove,
     dismissRemoved,

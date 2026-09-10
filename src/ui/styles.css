@@ -2035,6 +2035,10 @@ tr.prv-expand-clickable:hover .d2h-info {
   color: var(--success-fg);
   font-weight: 600;
 }
+/* A thread the agent has yet to answer — what "Finish review" will send. */
+.prv-thread-badge-pending {
+  color: var(--attention-fg);
+}
 .prv-thread-resolved {
   opacity: 0.75;
 }
@@ -2203,6 +2207,93 @@ tr.prv-expand-clickable:hover .d2h-info {
   color: var(--danger-fg);
   font-size: var(--fs-ui-sm);
   padding: 2px var(--sp-2);
+}
+
+/* ---- Finish review (batch) card ---- */
+
+.batch-card-count {
+  color: var(--fg-muted);
+  font-size: var(--fs-ui-sm);
+}
+.batch-empty,
+.batch-note {
+  color: var(--fg-muted);
+  font-size: var(--fs-ui-sm);
+}
+.batch-empty {
+  padding: var(--sp-3);
+}
+/* The pending threads, one per row: location, then the ask. */
+.batch-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.batch-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3);
+}
+.batch-item + .batch-item {
+  border-top: 1px solid var(--border-muted);
+}
+.batch-item-loc {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--ff-mono);
+  font-size: var(--fs-ui-sm);
+  color: var(--accent-fg);
+}
+.batch-item-loc:hover {
+  text-decoration: underline;
+}
+/* min-width lets the ellipsis work inside the flex row. */
+.batch-item-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-default);
+}
+.batch-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-top: 1px solid var(--border-muted);
+}
+.batch-label {
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-muted);
+}
+.batch-activity {
+  padding: var(--sp-2) var(--sp-3);
+  max-height: 200px;
+  overflow-y: auto;
+}
+.batch-actions,
+.batch-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-top: 1px solid var(--border-muted);
+  font-size: var(--fs-ui-sm);
+}
+.batch-summary-error {
+  color: var(--danger-fg);
 }
 
 /* ---- Review comment chips + finding body ---- */

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileTree } from "./components/FileTree";
 import { ChatPanel } from "./components/ChatPanel";
 import { DiffPanel } from "./components/DiffPanel";
+import { BatchPanel } from "./components/BatchPanel";
 import { DiffStat } from "./components/DiffStat";
 import { ModePicker } from "./components/ModePicker";
 import { ReviewPanel } from "./components/ReviewPanel";
@@ -11,6 +12,9 @@ import { encodeMode } from "../shared/modeQuery";
 import type { ReviewSeverity } from "../shared/comments";
 import { isClearableReviewComment } from "../shared/review";
 import type { LensId, ReviewFinding } from "../shared/review";
+import type { BatchResult } from "../shared/batch";
+import type { Comment } from "../shared/comments";
+import { applyBatchResults, pendingComments } from "./batchComments";
 import { documentOrder, nextCommentTarget } from "./commentNav";
 import { isTypingTarget, shortcutFor } from "./keys";
 import { drawerWidth, useLayout } from "./layout";
@@ -22,6 +26,7 @@ import { useFileUiState } from "./useFileUiState";
 import type { FileUi } from "./useFileUiState";
 import { useResizablePanel } from "./useResizablePanel";
 import type { ResizablePanel } from "./useResizablePanel";
+import { useBatch } from "./useBatch";
 import { useReview } from "./useReview";
 import type { DiffOutputFormat, FileDiff, ServerMode } from "./types";
 
@@ -153,6 +158,8 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(!compact);
   const [chatOpen, setChatOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [batchInstructions, setBatchInstructions] = useState("");
   // Bumped by the `f` shortcut; the sidebar filter takes focus once it is rendered.
   const [filterFocusTick, setFilterFocusTick] = useState(0);
   // The drawers are capped by CSS, so the viewport clamp only applies while
@@ -204,6 +211,7 @@ export function App() {
     updateComment,
     removeComment,
     removeWhere,
+    mutateAll,
     lastRemoved,
     undoRemove,
     dismissRemoved,
@@ -238,6 +246,32 @@ export function App() {
     if (mode) encodeMode(mode, params);
     startReviewRun(params.toString()); // empty query → the server's default mode
   }, [reviewRunning, files, mode, startReviewRun]);
+
+  // "Finish review": every thread still waiting for the agent goes out in one
+  // apply-mode turn. The list is snapshotted when Send is pressed — folding the
+  // results in resolves those threads, so `pending` empties under the card
+  // while the run is still on screen.
+  const pending = useMemo(() => pendingComments(comments), [comments]);
+  const batchSentRef = useRef<Comment[]>([]);
+  const handleBatchResults = useCallback(
+    (results: BatchResult[]) => mutateAll((prev) => applyBatchResults(prev, results)),
+    [mutateAll],
+  );
+  const batch = useBatch(handleBatchResults, refreshDiff);
+  const { start: startBatchRun, stop: stopBatch, clear: clearBatch, running: batchRunning } = batch;
+
+  const startBatch = useCallback(() => {
+    if (batchRunning || pending.length === 0) return;
+    batchSentRef.current = pending;
+    startBatchRun(pending, batchInstructions);
+  }, [batchRunning, pending, batchInstructions, startBatchRun]);
+
+  // Closing only dismisses the card; a run still in flight keeps going (and
+  // still folds its results in) until Stop.
+  const closeBatch = useCallback(() => {
+    setBatchOpen(false);
+    clearBatch();
+  }, [clearBatch]);
 
   const hasAgentComments = comments.some((c) => c.source === "review");
   const clearableCount = comments.filter(isClearableReviewComment).length;
@@ -603,6 +637,18 @@ export function App() {
           </button>
           <button
             type="button"
+            className={"refresh-btn" + (batchOpen || batchRunning ? " is-active" : "")}
+            aria-pressed={batchOpen}
+            title="Send every pending comment to the agent in one turn"
+            /* A run in flight keeps the button live even with nothing left
+               pending, so a card closed mid-run can be reopened to stop it. */
+            disabled={!batchOpen && !batchRunning && pending.length === 0}
+            onClick={() => (batchOpen ? closeBatch() : setBatchOpen(true))}
+          >
+            Finish review ({batchRunning ? (batch.run?.count ?? 0) : pending.length})
+          </button>
+          <button
+            type="button"
             className={"refresh-btn" + (chatOpen ? " is-active" : "")}
             aria-pressed={chatOpen}
             onClick={toggleChat}
@@ -665,6 +711,18 @@ export function App() {
               onJumpToFirst={jumpToFirst}
             />
           )}
+          {batchOpen && (
+            <BatchPanel
+              pending={batchRunning ? batchSentRef.current : pending}
+              run={batch.run}
+              instructions={batchInstructions}
+              onInstructionsChange={setBatchInstructions}
+              onSend={startBatch}
+              onStop={stopBatch}
+              onClose={closeBatch}
+              onJumpTo={focusComment}
+            />
+          )}
           {error && <div className="error">Error: {error}</div>}
           {files === null && !error && <div className="placeholder">loading…</div>}
           {files !== null && files.length === 0 && !error && (
@@ -685,6 +743,7 @@ export function App() {
               ui={fileUi[file.path] ?? EMPTY_UI}
               setUi={(patch) => setFileUi(file.path, patch)}
               focusedCommentId={focusedCommentId}
+              batchRunning={batchRunning}
             />
           ))}
         </main>
