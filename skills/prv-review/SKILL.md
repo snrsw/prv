@@ -28,6 +28,10 @@ One comment = one thread anchored to a range of diff lines:
    prv comments list --unresolved --json
    ```
 
+   `--pending` narrows that to threads whose last message is the human's (a
+   new comment, or a reply to an earlier answer) — the same set the UI's
+   "Finish review" button sends; use it to skip threads already answered.
+
 2. For each comment: read `file`, the line range, and `messages`; make the
    requested change in the code.
 
