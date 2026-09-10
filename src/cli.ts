@@ -112,7 +112,9 @@ Usage:
   prv --help, -h               Print this help and exit
 
 Review comments (headless, no browser — for agents and scripts):
-  prv comments list            List review comments [--unresolved] [--json]
+  prv comments list            List review comments [--unresolved] [--pending]
+                               [--json] (--pending = open threads whose last
+                               message is the reviewer's, i.e. awaiting a reply)
   prv comment <file>:<line> "msg"
                                Add a comment anchored to a diff line
                                [--role user|assistant] [--json]
