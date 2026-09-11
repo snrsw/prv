@@ -34,7 +34,7 @@
 - **Date**: 2026-09-10
 - **Context**: Every thread message used to call the agent immediately, so there was no way to write several comments and hand them over together; per-thread "Apply with agent" ran one subprocess per comment with only that thread's context.
 - **Decision**:
-  1. A thread is _pending_ when it is open and its last message is the user's (`isPendingComment`, shared by UI, server and the CLI's `--pending`). No schema change, and replies to agent-review findings count, so triaging findings feeds the same batch.
+  1. A thread is _pending_ when it is open and its last message is the user's (`isPendingComment`, shared by UI and server). No schema change, and replies to agent-review findings count, so triaging findings feeds the same batch.
   2. Thread composer: **Comment** saves only; **Ask agent** (read-only) and **Apply with agent** (single thread) stay explicit.
   3. Transport: a dedicated `/api/batch` WebSocket shaped like `/api/review` — the server builds one apply-mode prompt from the comments the client sends (anchor lines + transcript, no whole diff; the agent can read files), streams activity, and parses one JSON `results` block (one `--resume` retry when it is missing).
   4. The browser folds `results` into the threads (reply appended; `done: true` → resolved) and persists through the existing store flow. The agent never writes `.prv/comments.json` from the browser path.

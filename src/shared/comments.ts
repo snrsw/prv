@@ -51,8 +51,7 @@ export type CommentsFile = {
 /**
  * A thread awaiting the agent: open, and its last message was written by the
  * user (a fresh hand-made comment, or a reply to a review finding). "Finish
- * review" sends every pending thread to the agent in one batch; the CLI's
- * `--pending` filter uses the same rule so headless runs agree with the UI.
+ * review" sends every pending thread to the agent in one batch.
  */
 export function isPendingComment(c: Comment): boolean {
   if (c.status !== "open") return false;

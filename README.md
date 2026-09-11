@@ -73,7 +73,7 @@ Like the diff chat, this needs the selected agent's CLI installed and logged in 
 
 Inline comments no longer call the agent as you write them. **Comment** in a thread just saves your note (the thread shows a `pending` badge); **Ask agent** is the old immediate read-only question, and **Apply with agent** still fixes one thread on its own. When you are done reading, **Finish review (n)** in the topbar lists every pending thread — hand-written comments and your replies to agent findings alike — with an optional note for the whole batch, and sends them to the agent in one apply-mode run. The agent edits the files, then answers each thread: its reply lands on the thread, and a thread it considers addressed is resolved (Reopen is one click). The diff refreshes when the run ends; Stop cancels it.
 
-A thread is _pending_ when it is open and its last message is yours. The same rule drives `prv comments list --pending` for headless runs.
+A thread is _pending_ when it is open and its last message is yours.
 
 ## Use with Claude Code
 
@@ -95,7 +95,6 @@ The same review comments the browser UI shows live in `.prv/comments.json` and c
 
 ```sh
 prv comments list --unresolved --json   # what needs attention
-prv comments list --pending --json      # threads whose last message is the human's
 prv comment src/app.ts:42 "This branch is dead code."
 prv reply c:_42:_42 "Fixed: removed the branch."
 prv resolve c:_42:_42

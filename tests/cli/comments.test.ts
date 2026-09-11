@@ -98,46 +98,6 @@ describe("comments list", () => {
     expect(parsed.map((c) => c.id)).toEqual(["c:2_2:2_2"]);
   });
 
-  test("--pending keeps only open threads awaiting the agent", async () => {
-    const repo = await tmpRepo();
-    await writeComments(
-      [
-        seeded(),
-        seeded({
-          id: "c:3_3:3_3",
-          anchorText: [" three"],
-          messages: [
-            { role: "user", text: "why?" },
-            { role: "assistant", text: "because" },
-          ],
-        }),
-        seeded({ id: "c:4_4:4_4", anchorText: [" four"], status: "resolved" }),
-      ],
-      repo,
-    );
-    const res = await runCommentsCli(["comments", "list", "--pending", "--json"], repo);
-    const parsed = JSON.parse(res.out) as Comment[];
-    expect(parsed.map((c) => c.id)).toEqual(["c:2_2:2_2"]);
-  });
-
-  test("--pending composes with --unresolved", async () => {
-    const repo = await tmpRepo();
-    await writeComments([seeded(), seeded({ id: "c:5_5:5_5", status: "resolved" })], repo);
-    const res = await runCommentsCli(
-      ["comments", "list", "--unresolved", "--pending", "--json"],
-      repo,
-    );
-    expect((JSON.parse(res.out) as Comment[]).map((c) => c.id)).toEqual(["c:2_2:2_2"]);
-  });
-
-  test("--pending on a store with nothing pending says so", async () => {
-    const repo = await tmpRepo();
-    await writeComments([seeded({ status: "resolved" })], repo);
-    const res = await runCommentsCli(["comments", "list", "--pending"], repo);
-    expect(res.code).toBe(0);
-    expect(res.out).toBe("no comments");
-  });
-
   test("--json round-trips the stored schema", async () => {
     const repo = await tmpRepo();
     await writeComments([seeded()], repo);
@@ -549,7 +509,6 @@ describe("cli dispatch (e2e)", () => {
     const out = await new Response(proc.stdout).text();
     expect(await proc.exited).toBe(0);
     expect(out).toContain("prv comments list");
-    expect(out).toContain("--pending");
     expect(out).toContain("prv comment <file>:<line>");
     expect(out).toContain("prv reply");
     expect(out).toContain("prv resolve");

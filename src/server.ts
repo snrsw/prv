@@ -12,7 +12,7 @@ import { DEFAULT_CHAT_AGENT, sanitizeChatSettings } from "./shared/chat";
 import type { ChatClientFrame, ChatServerFrame, ChatWsData } from "./shared/chat";
 import type { ReviewServerFrame, ReviewStart, ReviewWsData } from "./shared/review";
 import type { BatchServerFrame, BatchStart, BatchWsData } from "./shared/batch";
-import { isPendingComment, type Comment, type ReviewSeverity } from "./shared/comments";
+import { isPendingComment, type Comment } from "./shared/comments";
 import { decodeMode } from "./shared/modeQuery";
 import index from "./ui/index.html";
 
@@ -308,55 +308,33 @@ async function handleReviewMessage(
   }
 }
 
-const SEVERITIES: readonly ReviewSeverity[] = ["info", "minor", "major", "critical"];
-
-/** Longest review-level instruction accepted; the rest is dropped, not an error. */
-const MAX_INSTRUCTIONS = 4000;
-
-/** Keep a client-sent line key's numbers, dropping anything else to null. */
-function sanitizeLineKey(value: unknown): { old: number | null; new: number | null } {
-  const k = (typeof value === "object" && value !== null ? value : {}) as Record<string, unknown>;
-  const num = (v: unknown): number | null =>
-    typeof v === "number" && Number.isFinite(v) ? v : null;
-  return { old: num(k.old), new: num(k.new) };
-}
-
 /**
- * Keep only the fields the batch prompt reads, from an untrusted client frame:
- * identity, anchor lines, transcript, and the review-finding labels. Anything
- * malformed drops the whole comment rather than half-describing it to the
- * agent. `status` is honored so a resolved thread can never come back in.
+ * Whether a client-sent value has the shape the batch prompt reads: identity,
+ * line keys, anchor lines and a transcript. Anything else is dropped rather
+ * than half-described to the agent.
  */
-function sanitizeBatchComment(value: unknown): Comment | null {
-  if (typeof value !== "object" || value === null) return null;
+function isBatchComment(value: unknown): value is Comment {
+  if (typeof value !== "object" || value === null) return false;
   const c = value as Record<string, unknown>;
-  if (typeof c.id !== "string" || c.id === "" || typeof c.file !== "string") return null;
-  if (!Array.isArray(c.anchorText) || !c.anchorText.every((l) => typeof l === "string"))
-    return null;
-  if (!Array.isArray(c.messages)) return null;
-  const messages: Comment["messages"] = [];
-  for (const raw of c.messages) {
-    if (typeof raw !== "object" || raw === null) return null;
-    const m = raw as Record<string, unknown>;
-    if ((m.role !== "user" && m.role !== "assistant") || typeof m.text !== "string") return null;
-    messages.push({ role: m.role, text: m.text });
-  }
-  const comment: Comment = {
-    id: c.id,
-    file: c.file,
-    start: sanitizeLineKey(c.start),
-    end: sanitizeLineKey(c.end),
-    anchorText: c.anchorText as string[],
-    status: c.status === "resolved" ? "resolved" : "open",
-    messages,
-  };
-  // Review-finding labels are prompt context only; keep them when well-formed.
-  if (c.source === "review") comment.source = "review";
-  if (typeof c.title === "string") comment.title = c.title;
-  if (typeof c.lens === "string") comment.lens = c.lens;
-  if (SEVERITIES.includes(c.severity as ReviewSeverity))
-    comment.severity = c.severity as ReviewSeverity;
-  return comment;
+  const isKey = (k: unknown): boolean => typeof k === "object" && k !== null;
+  return (
+    typeof c.id === "string" &&
+    c.id !== "" &&
+    typeof c.file === "string" &&
+    isKey(c.start) &&
+    isKey(c.end) &&
+    Array.isArray(c.anchorText) &&
+    c.anchorText.every((l) => typeof l === "string") &&
+    Array.isArray(c.messages) &&
+    c.messages.every(
+      (m) =>
+        typeof m === "object" &&
+        m !== null &&
+        ((m as { role?: unknown }).role === "user" ||
+          (m as { role?: unknown }).role === "assistant") &&
+        typeof (m as { text?: unknown }).text === "string",
+    )
+  );
 }
 
 /**
@@ -391,20 +369,14 @@ async function handleBatchMessage(
   data.busy = true;
   data.abort = new AbortController();
   try {
-    // The client should only send pending threads, but it is untrusted input:
-    // re-check, so a stale or hand-crafted frame can never make the agent
-    // answer a thread it has already answered (or a resolved one).
-    const comments = msg.comments
-      .map(sanitizeBatchComment)
-      .filter((c): c is Comment => c !== null && isPendingComment(c));
+    // The client should only send pending threads; re-check, so a stale frame
+    // never makes the agent answer a thread it has already answered.
+    const comments = msg.comments.filter(isBatchComment).filter(isPendingComment);
     if (comments.length === 0) {
       send({ type: "error", message: "no pending comments" });
       return;
     }
-    const instructions =
-      typeof msg.instructions === "string"
-        ? msg.instructions.trim().slice(0, MAX_INSTRUCTIONS)
-        : "";
+    const instructions = typeof msg.instructions === "string" ? msg.instructions.trim() : "";
     const runId = crypto.randomUUID().slice(0, 8);
     send({ type: "run", runId, count: comments.length });
     await runBatch({

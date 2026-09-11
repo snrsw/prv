@@ -9,7 +9,7 @@
  */
 import { $ } from "bun";
 import { computeDiff } from "../diff/engine";
-import { isPendingComment, type Comment, type StoredMessage } from "../shared/comments";
+import type { Comment, StoredMessage } from "../shared/comments";
 import { pathExists } from "../shared/fs";
 import {
   anchorTextOf,
@@ -48,20 +48,13 @@ export function parseTarget(target: string): { file: string; line: number } | nu
 type Flags = {
   positional: string[];
   unresolved: boolean;
-  pending: boolean;
   json: boolean;
   role: StoredMessage["role"];
   file?: string;
 };
 
 function parseFlags(argv: string[]): Flags | { error: string } {
-  const flags: Flags = {
-    positional: [],
-    unresolved: false,
-    pending: false,
-    json: false,
-    role: "assistant",
-  };
+  const flags: Flags = { positional: [], unresolved: false, json: false, role: "assistant" };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg === "--") {
@@ -69,7 +62,6 @@ function parseFlags(argv: string[]): Flags | { error: string } {
       flags.positional.push(...argv.slice(i + 1));
       break;
     } else if (arg === "--unresolved") flags.unresolved = true;
-    else if (arg === "--pending") flags.pending = true;
     else if (arg === "--json") flags.json = true;
     else if (arg === "--role") {
       const next = argv[++i];
@@ -113,14 +105,9 @@ function formatComment(c: Comment): string {
     .join("\n");
 }
 
-const LIST_USAGE = "usage: prv comments list [--unresolved] [--pending] [--json]";
-
 async function list(flags: Flags, cwd: string): Promise<CliResult> {
   const all = await readCommentsStrict(cwd);
-  // The filters compose: `--pending` already implies open, but combining them
-  // is harmless and lets a caller pass both without special-casing.
-  let comments = flags.unresolved ? all.filter((c) => c.status === "open") : all;
-  if (flags.pending) comments = comments.filter(isPendingComment);
+  const comments = flags.unresolved ? all.filter((c) => c.status === "open") : all;
   if (flags.json) return ok(JSON.stringify(comments, null, 2));
   if (comments.length === 0) return ok("no comments");
   return ok(comments.map(formatComment).join("\n"));
@@ -239,7 +226,8 @@ async function dispatch(command: string, flags: Flags, cwd: string): Promise<Cli
   switch (command) {
     case "comments": {
       const [sub, ...subRest] = flags.positional;
-      if (sub !== "list" || subRest.length > 0) return fail(LIST_USAGE);
+      if (sub !== "list") return fail("usage: prv comments list [--unresolved] [--json]");
+      if (subRest.length > 0) return fail("usage: prv comments list [--unresolved] [--json]");
       return list(flags, cwd);
     }
     case "comment":
