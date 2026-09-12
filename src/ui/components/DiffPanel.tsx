@@ -119,6 +119,7 @@ export function DiffPanel({
   ui,
   setUi,
   focusedCommentId,
+  batchRunning = false,
 }: {
   file: FileDiff;
   mode: ServerMode | null;
@@ -134,6 +135,8 @@ export function DiffPanel({
   setUi: (patch: FileUi) => void;
   /** The finding a jump just landed on (App flashes it), if it is in this file. */
   focusedCommentId: string | null;
+  /** A "Finish review" batch is in flight; threads disable their agent buttons. */
+  batchRunning?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const expanded = !ui.collapsed;
@@ -790,6 +793,7 @@ export function DiffPanel({
                 onRemove={() => removeComment(comment.id)}
                 onApplied={onApplied}
                 focused={comment.id === focusedCommentId}
+                batchRunning={batchRunning}
               />,
               getContainer(comment.id),
             ),
@@ -813,6 +817,7 @@ export function DiffPanel({
                     onRemove={() => removeComment(comment.id)}
                     onApplied={onApplied}
                     focused={comment.id === focusedCommentId}
+                    batchRunning={batchRunning}
                   />
                 );
               })}

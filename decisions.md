@@ -28,3 +28,14 @@
   3. A session belongs to the CLI that created it: switching agents mid-conversation drops the session on the server and re-sends the diff from the client.
   4. Codex read-only = `--sandbox read-only`; apply = `--sandbox workspace-write`; `approval_policy="never"` in both, since `codex exec` cannot prompt. Codex's non-fatal `error` events surface as progress lines, only `turn.failed` is an error.
 - **Rationale**: Keeps the wire protocol and UI event model unchanged (both CLIs normalize to `ChatEvent`), so every existing consumer works with either agent; the per-agent validation keeps a Claude-only flag from ever reaching Codex.
+
+## DR: "Finish review" batches pending threads to one apply turn
+
+- **Date**: 2026-09-10
+- **Context**: Every thread message used to call the agent immediately, so there was no way to write several comments and hand them over together; per-thread "Apply with agent" ran one subprocess per comment with only that thread's context.
+- **Decision**:
+  1. A thread is _pending_ when it is open and its last message is the user's (`isPendingComment`, shared by UI and server). No schema change, and replies to agent-review findings count, so triaging findings feeds the same batch.
+  2. Thread composer: **Comment** saves only; **Ask agent** (read-only) and **Apply with agent** (single thread) stay explicit.
+  3. Transport: a dedicated `/api/batch` WebSocket shaped like `/api/review` — the server builds one apply-mode prompt from the comments the client sends (anchor lines + transcript, no whole diff; the agent can read files), streams activity, and parses one JSON `results` block (one `--resume` retry when it is missing).
+  4. The browser folds `results` into the threads (reply appended; `done: true` → resolved) and persists through the existing store flow. The agent never writes `.prv/comments.json` from the browser path.
+- **Rationale**: Keeps the "browser is the store's single writer" decision (letting the agent run `prv reply`/`prv resolve` would race the debounced PUT and needs Bash in apply mode). Mirroring the review runner gives an injectable `TurnRunner` and tolerant parsing for free. Resolving on `done: true` was chosen over "reply only" because Reopen is one click and the point of the batch is fewer clicks.

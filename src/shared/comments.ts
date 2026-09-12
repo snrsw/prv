@@ -47,3 +47,14 @@ export type CommentsFile = {
   schema_version: "1.0";
   comments: Comment[];
 };
+
+/**
+ * A thread awaiting the agent: open, and its last message was written by the
+ * user (a fresh hand-made comment, or a reply to a review finding). "Finish
+ * review" sends every pending thread to the agent in one batch.
+ */
+export function isPendingComment(c: Comment): boolean {
+  if (c.status !== "open") return false;
+  const last = c.messages[c.messages.length - 1];
+  return last !== undefined && last.role === "user" && last.text.trim() !== "";
+}

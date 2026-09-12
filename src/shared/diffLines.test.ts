@@ -1,6 +1,7 @@
 import { test, expect, describe } from "bun:test";
-import { flattenDiff, lineMaps, keyGi } from "./diffLines";
+import { flattenDiff, lineMaps, keyGi, rangeLabelOfComment } from "./diffLines";
 import type { FileDiff } from "../diff/types";
+import type { LineKey } from "./comments";
 
 // A hunk mixing context, a deletion, and additions:
 //   gi 0  " import x;"     old1 new1
@@ -46,5 +47,27 @@ describe("lineMaps + keyGi", () => {
     expect(keyGi(maps, { old: 2, new: null })).toBe(1); // deleted line
     expect(keyGi(maps, { old: 1, new: 1 })).toBe(0); // context, prefers new
     expect(keyGi(maps, { old: 99, new: null })).toBeNull();
+  });
+});
+
+describe("rangeLabelOfComment", () => {
+  const range = (start: LineKey, end: LineKey) => rangeLabelOfComment({ start, end });
+
+  test("uses new-side numbers when the range has any", () => {
+    expect(range({ old: 2, new: 2 }, { old: 2, new: 2 })).toBe("2");
+    expect(range({ old: 2, new: 2 }, { old: 4, new: 5 })).toBe("2-5");
+    expect(range({ old: null, new: 11 }, { old: null, new: 11 })).toBe("11");
+  });
+
+  test("a deleted-only range falls back to the old side, labelled as such", () => {
+    expect(range({ old: 7, new: null }, { old: 9, new: null })).toBe("old 7-9");
+  });
+
+  test("endpoints out of order still read low-to-high", () => {
+    expect(range({ old: null, new: 9 }, { old: null, new: 3 })).toBe("3-9");
+  });
+
+  test("a file-level comment (no line numbers) has no label", () => {
+    expect(range({ old: null, new: null }, { old: null, new: null })).toBe("");
   });
 });

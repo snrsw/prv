@@ -1,16 +1,18 @@
 import { $ } from "bun";
 import { buildPrompt, relativizeTarget, runTurn } from "./chat/agent";
 import { readComments, writeComments } from "./comments/store";
-import type { Comment } from "./shared/comments";
 import { computeDiff } from "./diff/engine";
 import type { DiffMode } from "./diff/types";
 import { loadFile } from "./file/loader";
+import { runBatch } from "./batch/runner";
 import { annotateDiff } from "./review/annotate";
 import { LENSES } from "./review/lenses";
 import { runReviewPanel, type TurnRunner } from "./review/runner";
 import { DEFAULT_CHAT_AGENT, sanitizeChatSettings } from "./shared/chat";
 import type { ChatClientFrame, ChatServerFrame, ChatWsData } from "./shared/chat";
 import type { ReviewServerFrame, ReviewStart, ReviewWsData } from "./shared/review";
+import type { BatchServerFrame, BatchStart, BatchWsData } from "./shared/batch";
+import { isPendingComment, type Comment } from "./shared/comments";
 import { decodeMode } from "./shared/modeQuery";
 import index from "./ui/index.html";
 
@@ -24,7 +26,7 @@ export type ServerOptions = {
 };
 
 /** Every WebSocket route's per-connection state, discriminated by `kind`. */
-type WsData = ChatWsData | ReviewWsData;
+type WsData = ChatWsData | ReviewWsData | BatchWsData;
 
 /**
  * Whether prv runs from its source tree (`bun src/cli.ts`, `bun test`) rather
@@ -59,6 +61,11 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
       },
       "/api/review": (req, server) => {
         const data: ReviewWsData = { kind: "review", busy: false };
+        if (server.upgrade(req, { data })) return undefined;
+        return new Response("expected websocket upgrade", { status: 426 });
+      },
+      "/api/batch": (req, server) => {
+        const data: BatchWsData = { kind: "batch", busy: false };
         if (server.upgrade(req, { data })) return undefined;
         return new Response("expected websocket upgrade", { status: 426 });
       },
@@ -125,6 +132,9 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
         const data = ws.data;
         if (data.kind === "review") {
           return handleReviewMessage(ws, data, raw, defaultMode, turnRunner);
+        }
+        if (data.kind === "batch") {
+          return handleBatchMessage(ws, data, raw, turnRunner);
         }
         return handleChatMessage(ws, data, raw, turnRunner);
       },
@@ -283,6 +293,96 @@ async function handleReviewMessage(
     await runReviewPanel({
       annotatedDiff,
       cwd: mode.cwd,
+      emit: send,
+      signal: data.abort.signal,
+      // Untrusted frame: keep only well-formed agent/model/effort values.
+      settings: sanitizeChatSettings(msg),
+      turnRunner,
+    });
+  } catch (err) {
+    send({ type: "error", message: errorMessage(err) });
+  } finally {
+    data.busy = false;
+    data.abort = undefined;
+    send({ type: "done" });
+  }
+}
+
+/**
+ * Whether a client-sent value has the shape the batch prompt reads: identity,
+ * line keys, anchor lines and a transcript. Anything else is dropped rather
+ * than half-described to the agent.
+ */
+function isBatchComment(value: unknown): value is Comment {
+  if (typeof value !== "object" || value === null) return false;
+  const c = value as Record<string, unknown>;
+  const isKey = (k: unknown): boolean => typeof k === "object" && k !== null;
+  return (
+    typeof c.id === "string" &&
+    c.id !== "" &&
+    typeof c.file === "string" &&
+    isKey(c.start) &&
+    isKey(c.end) &&
+    Array.isArray(c.anchorText) &&
+    c.anchorText.every((l) => typeof l === "string") &&
+    Array.isArray(c.messages) &&
+    c.messages.every(
+      (m) =>
+        typeof m === "object" &&
+        m !== null &&
+        ((m as { role?: unknown }).role === "user" ||
+          (m as { role?: unknown }).role === "assistant") &&
+        typeof (m as { text?: unknown }).text === "string",
+    )
+  );
+}
+
+/**
+ * Handle one /api/batch message: address every pending comment thread the
+ * client sent in a single apply-mode turn, streaming the agent's activity.
+ * Every accepted start terminates with exactly one `done` (via finally);
+ * `busy` is a lone reply. Like the chat panel's apply turns, the agent runs in
+ * prv's own cwd — the repository under review — not in a diff mode's cwd.
+ */
+async function handleBatchMessage(
+  ws: Bun.ServerWebSocket<WsData>,
+  data: BatchWsData,
+  raw: string | Buffer,
+  turnRunner: TurnRunner,
+): Promise<void> {
+  const send = (frame: BatchServerFrame): void => {
+    ws.send(JSON.stringify(frame));
+  };
+
+  let msg: BatchStart;
+  try {
+    msg = JSON.parse(String(raw)) as BatchStart;
+  } catch {
+    return;
+  }
+  if (msg.type !== "start" || !Array.isArray(msg.comments)) return;
+  if (data.busy) {
+    send({ type: "busy" });
+    return;
+  }
+
+  data.busy = true;
+  data.abort = new AbortController();
+  try {
+    // The client should only send pending threads; re-check, so a stale frame
+    // never makes the agent answer a thread it has already answered.
+    const comments = msg.comments.filter(isBatchComment).filter(isPendingComment);
+    if (comments.length === 0) {
+      send({ type: "error", message: "no pending comments" });
+      return;
+    }
+    const instructions = typeof msg.instructions === "string" ? msg.instructions.trim() : "";
+    const runId = crypto.randomUUID().slice(0, 8);
+    send({ type: "run", runId, count: comments.length });
+    await runBatch({
+      comments,
+      instructions,
+      cwd: process.cwd(),
       emit: send,
       signal: data.abort.signal,
       // Untrusted frame: keep only well-formed agent/model/effort values.
