@@ -9,7 +9,7 @@ generated: { by: claude-code/claude-opus-5-5, at: 2026-10-18T00:00:00Z }
 
 # Status
 
-A thread is `open` or `resolved`. **A thread is pending when it is open and its last message is a non-empty one from you.** Finish review sends every pending thread to the agent in one run.
+A thread is `open` or `resolved`. A pending thread is an open one where you wrote the last message; the rule and the thread's fields are in [Comment thread](/concepts/comment-thread.md). [Finish review](/concepts/finish-review.md) sends every pending thread to the agent in one run.
 
 | Badge | Meaning |
 |---|---|
