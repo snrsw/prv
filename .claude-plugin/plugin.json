@@ -1,7 +1,7 @@
 {
   "name": "prv",
   "description": "Local GitHub-style diff review with inline comments — /prv opens the review UI, and the prv-review skill lets agents read and act on review comments headlessly.",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "author": { "name": "snrsw" },
   "homepage": "https://github.com/snrsw/prv",
   "repository": "https://github.com/snrsw/prv",
