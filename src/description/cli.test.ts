@@ -3,7 +3,14 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseDescribeFlags, runDescribeCli, type DescribeStdin } from "./cli";
-import { clearDescription, descriptionPath, readDescription, writeDescription } from "./store";
+import { MAX_DESCRIPTION_BYTES } from "../shared/description";
+import {
+  clearDescription,
+  descriptionPath,
+  readCapped,
+  readDescription,
+  writeDescription,
+} from "./store";
 
 const dirs: string[] = [];
 function tmp(): string {
@@ -38,6 +45,44 @@ describe("description store", () => {
     expect(written.markdown).toBe("## Summary\n\nhi\n");
     expect(await readDescription(dir)).toEqual(written);
     expect(Number.isNaN(Date.parse(written.updatedAt))).toBe(false);
+  });
+
+  test("refuses to write Markdown over the limit", async () => {
+    const dir = tmp();
+    await expect(writeDescription("x".repeat(MAX_DESCRIPTION_BYTES + 1), dir)).rejects.toThrow(
+      "limit",
+    );
+    expect(await readDescription(dir)).toBeNull();
+  });
+
+  test("the limit counts UTF-8 bytes, not characters", async () => {
+    // "é" is 2 bytes: half the limit in characters is exactly the limit in bytes.
+    const dir = tmp();
+    await writeDescription("é".repeat(MAX_DESCRIPTION_BYTES / 2), dir);
+    await expect(writeDescription("é".repeat(MAX_DESCRIPTION_BYTES / 2 + 1), dir)).rejects.toThrow(
+      "limit",
+    );
+  });
+
+  test("readCapped reads a stream under the cap and gives up over it", async () => {
+    const stream = (text: string) => new Blob([text]).stream();
+    expect(await readCapped(stream("héllo"), 6)).toBe("héllo");
+    expect(await readCapped(stream("héllo"), 5)).toBeNull();
+    expect(await readCapped(null, 5)).toBe("");
+  });
+
+  test("readCapped with drain reads an oversized stream to its end, then gives up", async () => {
+    let pulled = 0;
+    const chunks = ["aaaa", "bbbb", "cccc"];
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const next = chunks[pulled++];
+        if (next === undefined) controller.close();
+        else controller.enqueue(new TextEncoder().encode(next));
+      },
+    });
+    expect(await readCapped(stream, 5, { drain: true })).toBeNull();
+    expect(pulled).toBe(chunks.length + 1);
   });
 
   test("clear reports whether there was a description", async () => {
@@ -121,6 +166,24 @@ describe("prv describe", () => {
     const res = await runDescribeCli([], tmp(), tty);
     expect(res.code).toBe(1);
     expect(res.err).toContain("no input");
+  });
+
+  test("refuses stdin over the limit", async () => {
+    const dir = tmp();
+    const overCap: DescribeStdin = { isTTY: false, read: async () => null };
+    const res = await runDescribeCli([], dir, overCap);
+    expect(res.code).toBe(1);
+    expect(res.err).toContain("limit");
+    expect(await readDescription(dir)).toBeNull();
+  });
+
+  test("refuses a --file over the limit before reading it", async () => {
+    const dir = tmp();
+    writeFileSync(join(dir, "big.md"), "x".repeat(MAX_DESCRIPTION_BYTES + 1));
+    const res = await runDescribeCli(["--file", "big.md"], dir, tty);
+    expect(res.code).toBe(1);
+    expect(res.err).toContain("limit");
+    expect(await readDescription(dir)).toBeNull();
   });
 
   test("flag errors carry the command prefix", async () => {

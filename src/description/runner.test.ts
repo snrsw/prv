@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { ChatEvent, RunTurnArgs } from "../chat/agent";
 import type { FileDiff } from "../diff/types";
 import type { TurnRunner } from "../review/runner";
-import type { DescribeServerFrame } from "../shared/description";
+import { MAX_DESCRIPTION_BYTES, type DescribeServerFrame } from "../shared/description";
 import { runDescribe } from "./runner";
 import { readDescription, writeDescription } from "./store";
 
@@ -103,4 +103,15 @@ test("a stopped run emits nothing and saves nothing", async () => {
   const { runner } = fakeRunner([{ kind: "done", result: "late" }]);
   expect(await run(runner, dir, abort.signal)).toEqual([]);
   expect(await readDescription(dir)).toBeNull();
+});
+
+test("an oversized reply is rejected, not truncated, and keeps the old description", async () => {
+  const dir = tmp();
+  await writeDescription("old", dir);
+  const huge = "x".repeat(MAX_DESCRIPTION_BYTES + 1);
+  const { runner } = fakeRunner([{ kind: "done", result: `<description>${huge}</description>` }]);
+  const frames = await run(runner, dir);
+  expect(frames).toHaveLength(1);
+  expect(frames[0]!.type).toBe("error");
+  expect((await readDescription(dir))?.markdown).toBe("old\n");
 });

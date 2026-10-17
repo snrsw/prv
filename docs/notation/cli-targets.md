@@ -54,6 +54,6 @@ c:_42:_42  src/app.ts:42  open  2 messages
 | `prv describe --show`        | Prints the description; exits 1 with `no description yet` when there is none |
 | `prv describe --clear`       | Removes the description                                                      |
 
-- A write prints `wrote .prv/description.md`. Empty or whitespace-only input is rejected and the old description is kept.
+- A write prints `wrote .prv/description.md`. Empty or whitespace-only input, and input over the 1 MiB [size limit](/concepts/change-description.md), is rejected and the old description is kept.
 - `--show` and `--clear` cannot be combined with each other or with `--file`.
 - `--file` here names the input file; on `reply`, `resolve`, and `unresolve` it names the commented file.

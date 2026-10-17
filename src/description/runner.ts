@@ -10,7 +10,12 @@ import { relativizeTarget, runTurn } from "../chat/agent";
 import type { FileDiff } from "../diff/types";
 import type { TurnRunner } from "../review/runner";
 import type { ChatSettings } from "../shared/chat";
-import type { DescribeServerFrame } from "../shared/description";
+import {
+  descriptionBytes,
+  descriptionTooLargeMessage,
+  MAX_DESCRIPTION_BYTES,
+  type DescribeServerFrame,
+} from "../shared/description";
 import { buildDescribePrompt, diffForDescribe, extractDescription } from "./prompt";
 import { writeDescription } from "./store";
 
@@ -29,7 +34,8 @@ export type RunDescribeArgs = {
 };
 
 /**
- * Run the turn and emit at most one `description` frame (or an `error`).
+ * Run the turn and emit at most one `description` frame (or an `error`). An
+ * empty or oversized reply is an error and leaves the old description alone.
  * `done` is the caller's to send — the server emits it in a `finally`.
  */
 export async function runDescribe({
@@ -72,6 +78,12 @@ export async function runDescribe({
   const markdown = extractDescription(result);
   if (markdown === null) {
     emit({ type: "error", message: "the agent returned an empty description" });
+    return;
+  }
+  // Rejected, not truncated: a cut-off description would read as finished.
+  const bytes = descriptionBytes(markdown);
+  if (bytes > MAX_DESCRIPTION_BYTES) {
+    emit({ type: "error", message: descriptionTooLargeMessage(bytes) });
     return;
   }
   emit({ type: "description", description: await writeDescription(markdown, storeDir) });

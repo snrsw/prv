@@ -2,6 +2,8 @@
 import { $ } from "bun";
 import { COMMENT_SUBCOMMANDS, runCommentsCli } from "./comments/cli";
 import { runDescribeCli } from "./description/cli";
+import { readCapped } from "./description/store";
+import { MAX_DESCRIPTION_BYTES } from "./shared/description";
 import type { DiffMode } from "./diff/engine";
 import { createServer } from "./server";
 import { pathExists } from "./shared/fs";
@@ -156,7 +158,7 @@ async function main() {
   if (argv[0] === "describe") {
     const res = await runDescribeCli(argv.slice(1), process.cwd(), {
       isTTY: Boolean(process.stdin.isTTY),
-      read: () => Bun.stdin.text(),
+      read: () => readCapped(Bun.stdin.stream(), MAX_DESCRIPTION_BYTES),
     });
     if (res.out) console.log(res.out);
     if (res.err) console.error(res.err);

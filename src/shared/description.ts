@@ -6,6 +6,24 @@
 
 import type { ChatSettings } from "./chat";
 
+/**
+ * The largest description prv stores, in UTF-8 bytes of Markdown (1 MiB). A
+ * PR body is a few KB; the cap only stops a runaway writer from filling the
+ * disk and the browser. Enforced by `prv describe`, PUT /api/description and
+ * Generate.
+ */
+export const MAX_DESCRIPTION_BYTES = 1024 * 1024;
+
+/** Size of `markdown` in UTF-8 bytes — what the cap measures. Pure. */
+export function descriptionBytes(markdown: string): number {
+  return new TextEncoder().encode(markdown).length;
+}
+
+/** The error every writer reports for an oversized description. Pure. */
+export function descriptionTooLargeMessage(bytes: number): string {
+  return `the description is ${bytes} bytes; the limit is ${MAX_DESCRIPTION_BYTES} bytes (1 MiB)`;
+}
+
 /** One stored description. `updatedAt` is the file's mtime as an ISO string. */
 export type Description = { markdown: string; updatedAt: string };
 

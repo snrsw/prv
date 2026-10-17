@@ -4,7 +4,7 @@ title: Change description
 description: A PR-body-like overview of the local changes, stored in .prv/description.md and shown in the Overview pane above the diff.
 resource: https://github.com/snrsw/prv/blob/main/src/description/store.ts
 tags: [description, agent, cli]
-generated: { by: claude-code/claude-opus-5-5, at: 2026-10-18T00:00:00Z }
+generated: { by: claude-code/claude-opus-5-5, at: 2026-10-18T12:00:00Z }
 ---
 
 # Definition
@@ -21,6 +21,18 @@ The change description explains the local changes the way a pull request body do
 
 Each write replaces the whole file. The CLI syntax is in [CLI targets](/notation/cli-targets.md).
 
+# Size limit
+
+**A description is at most 1 MiB (1,048,576 bytes) of UTF-8 Markdown.** Every writer refuses a larger one and keeps the old description:
+
+| Writer         | What happens over the limit                                         |
+| -------------- | ------------------------------------------------------------------- |
+| `prv describe` | Exits 1 with an error on stderr                                     |
+| Save (Edit)    | Shows the error under the textarea; the server answers PUT with 413 |
+| Generate       | Shows the error; the reply is rejected, not truncated               |
+
+Generate rejects rather than truncates because a cut-off description would read as complete.
+
 # Overview pane
 
 The Overview pane sits at the top of the diff column and renders the description as Markdown.
@@ -35,6 +47,6 @@ The Overview pane sits at the top of the diff column and renders the description
 1. Generate sends the current comparison to the server, which computes its diff.
 2. The agent chosen in [Agent settings](/concepts/agent-settings.md) runs one read-only turn over the diff, asked for Summary, Changes, and How to verify sections. It may read the repository for context.
 3. The pane shows the agent's activity while it runs. **Stop cancels the run and keeps the old description.**
-4. The reply is saved to `.prv/description.md` and rendered. An empty reply or a failed run shows an error and saves nothing.
+4. The reply is saved to `.prv/description.md` and rendered. An empty or oversized reply, or a failed run, shows an error and saves nothing.
 
 A diff longer than 100,000 characters is cut before it reaches the agent; the agent can read the rest from the repository.

@@ -2,7 +2,12 @@ import { $ } from "bun";
 import { buildPrompt, relativizeTarget, runTurn } from "./chat/agent";
 import { readComments, writeComments } from "./comments/store";
 import { runDescribe } from "./description/runner";
-import { clearDescription, readDescription, writeDescription } from "./description/store";
+import {
+  clearDescription,
+  readCapped,
+  readDescription,
+  writeDescription,
+} from "./description/store";
 import { computeDiff } from "./diff/engine";
 import type { DiffMode } from "./diff/types";
 import { loadFile } from "./file/loader";
@@ -14,7 +19,14 @@ import { DEFAULT_CHAT_AGENT, sanitizeChatSettings } from "./shared/chat";
 import type { ChatClientFrame, ChatServerFrame, ChatWsData } from "./shared/chat";
 import type { ReviewServerFrame, ReviewStart, ReviewWsData } from "./shared/review";
 import type { BatchServerFrame, BatchStart, BatchWsData } from "./shared/batch";
-import type { DescribeServerFrame, DescribeStart, DescribeWsData } from "./shared/description";
+import {
+  descriptionBytes,
+  descriptionTooLargeMessage,
+  MAX_DESCRIPTION_BYTES,
+  type DescribeServerFrame,
+  type DescribeStart,
+  type DescribeWsData,
+} from "./shared/description";
 import { isPendingComment, type Comment } from "./shared/comments";
 import { decodeMode } from "./shared/modeQuery";
 import index from "./ui/index.html";
@@ -26,7 +38,16 @@ export type ServerOptions = {
   development?: boolean;
   /** Injectable agent-turn runner so tests can script agent turns. */
   turnRunner?: TurnRunner;
+  /** Where the change description is stored; default `process.cwd()`, like the comment store. */
+  storeDir?: string;
 };
+
+/**
+ * The largest PUT /api/description body read. JSON escaping can grow the
+ * Markdown (a newline becomes `\n`), so this leaves room for it; the Markdown
+ * itself is then held to `MAX_DESCRIPTION_BYTES`.
+ */
+const MAX_DESCRIPTION_BODY_BYTES = 2 * MAX_DESCRIPTION_BYTES + 1024;
 
 /** Every WebSocket route's per-connection state, discriminated by `kind`. */
 type WsData = ChatWsData | ReviewWsData | BatchWsData | DescribeWsData;
@@ -41,6 +62,7 @@ const runningFromSource = !/\$bunfs|~BUN/.test(import.meta.path);
 export function createServer(options: ServerOptions): Bun.Server<WsData> {
   const { defaultMode } = options;
   const turnRunner = options.turnRunner ?? runTurn;
+  const storeDir = options.storeDir ?? process.cwd();
 
   return Bun.serve({
     port: options.port,
@@ -137,9 +159,24 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
       // The change description lives next to the comment store; `prv describe`
       // writes the same file, so the UI re-reads it rather than caching it.
       "/api/description": {
-        GET: async () => Response.json(await readDescription()),
+        GET: async () => Response.json(await readDescription(storeDir)),
         PUT: async (req) => {
-          const body = (await req.json().catch(() => null)) as { markdown?: unknown } | null;
+          // Never buffer more than the cap. Past it the body is drained and
+          // discarded: answering before it is consumed stalls the client's
+          // next request on the same keep-alive connection.
+          const text = await readCapped(req.body, MAX_DESCRIPTION_BODY_BYTES, { drain: true });
+          if (text === null) {
+            return Response.json(
+              { error: `the description is over the ${MAX_DESCRIPTION_BYTES}-byte limit (1 MiB)` },
+              { status: 413 },
+            );
+          }
+          let body: { markdown?: unknown } | null = null;
+          try {
+            body = JSON.parse(text) as { markdown?: unknown } | null;
+          } catch {
+            /* reported as a 400 below */
+          }
           const markdown = body?.markdown;
           if (typeof markdown !== "string" || markdown.trim() === "") {
             return Response.json(
@@ -147,10 +184,14 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
               { status: 400 },
             );
           }
-          return Response.json(await writeDescription(markdown));
+          const bytes = descriptionBytes(markdown);
+          if (bytes > MAX_DESCRIPTION_BYTES) {
+            return Response.json({ error: descriptionTooLargeMessage(bytes) }, { status: 413 });
+          }
+          return Response.json(await writeDescription(markdown, storeDir));
         },
         DELETE: async () => {
-          await clearDescription();
+          await clearDescription(storeDir);
           return Response.json({ ok: true });
         },
       },
@@ -165,7 +206,7 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
           return handleBatchMessage(ws, data, raw, turnRunner);
         }
         if (data.kind === "describe") {
-          return handleDescribeMessage(ws, data, raw, defaultMode, turnRunner);
+          return handleDescribeMessage(ws, data, raw, defaultMode, turnRunner, storeDir);
         }
         return handleChatMessage(ws, data, raw, turnRunner);
       },
@@ -434,7 +475,7 @@ async function handleBatchMessage(
  * read-only turn that drafts the change description and saves it. Every
  * accepted start terminates with exactly one `done` (via finally); `busy` is a
  * lone reply. The agent runs in the diff mode's cwd, like a review; the
- * description is saved in prv's own cwd, next to the comment store.
+ * description is saved in `storeDir` (prv's own cwd), next to the comment store.
  */
 async function handleDescribeMessage(
   ws: Bun.ServerWebSocket<WsData>,
@@ -442,6 +483,7 @@ async function handleDescribeMessage(
   raw: string | Buffer,
   defaultMode: DiffMode | undefined,
   turnRunner: TurnRunner,
+  storeDir: string,
 ): Promise<void> {
   const send = (frame: DescribeServerFrame): void => {
     ws.send(JSON.stringify(frame));
@@ -475,7 +517,7 @@ async function handleDescribeMessage(
     await runDescribe({
       files,
       cwd: mode.cwd,
-      storeDir: process.cwd(),
+      storeDir,
       emit: send,
       signal: data.abort.signal,
       // Untrusted frame: keep only well-formed agent/model/effort values.

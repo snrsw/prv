@@ -5,6 +5,11 @@
  */
 import { resolve } from "node:path";
 import type { CliResult } from "../comments/cli";
+import {
+  descriptionBytes,
+  descriptionTooLargeMessage,
+  MAX_DESCRIPTION_BYTES,
+} from "../shared/description";
 import { pathExists } from "../shared/fs";
 import { clearDescription, readDescription, writeDescription } from "./store";
 
@@ -15,8 +20,12 @@ const USAGE =
 const ok = (out = ""): CliResult => ({ code: 0, out, err: "" });
 const fail = (err: string): CliResult => ({ code: 1, out: "", err });
 
-/** Where `prv describe` reads its markdown from when no `--file` is given. */
-export type DescribeStdin = { isTTY: boolean; read: () => Promise<string> };
+/**
+ * Where `prv describe` reads its markdown from when no `--file` is given.
+ * `read` resolves null when the input passed `MAX_DESCRIPTION_BYTES` (see
+ * `readCapped`), so an endless pipe is never buffered whole.
+ */
+export type DescribeStdin = { isTTY: boolean; read: () => Promise<string | null> };
 
 type DescribeFlags = { action: "write" | "show" | "clear"; file?: string };
 
@@ -75,11 +84,24 @@ export async function runDescribeCli(
           if (!(await pathExists(path))) {
             return fail(`prv describe: '${flags.file}' does not exist`);
           }
-          markdown = await Bun.file(path).text();
+          const file = Bun.file(path);
+          // Checked before reading, so a huge file is never loaded.
+          if (file.size > MAX_DESCRIPTION_BYTES) {
+            return fail(`prv describe: ${descriptionTooLargeMessage(file.size)}`);
+          }
+          markdown = await file.text();
         } else {
           // Never sit waiting on an interactive terminal.
           if (stdin.isTTY) return fail(`prv describe: no input — pipe markdown in\n${USAGE}`);
-          markdown = await stdin.read();
+          const read = await stdin.read();
+          if (read === null) {
+            return fail(`prv describe: the input is over the ${MAX_DESCRIPTION_BYTES}-byte limit`);
+          }
+          markdown = read;
+        }
+        const bytes = descriptionBytes(markdown);
+        if (bytes > MAX_DESCRIPTION_BYTES) {
+          return fail(`prv describe: ${descriptionTooLargeMessage(bytes)}`);
         }
         if (markdown.trim() === "") return fail("prv describe: the description is empty");
         await writeDescription(markdown, cwd);

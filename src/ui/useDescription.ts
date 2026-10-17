@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Description, DescribeServerFrame, DescribeStart } from "../shared/description";
+import {
+  descriptionBytes,
+  descriptionTooLargeMessage,
+  MAX_DESCRIPTION_BYTES,
+  type Description,
+  type DescribeServerFrame,
+  type DescribeStart,
+} from "../shared/description";
 import { getChatSettings } from "./chatSettings";
 import type { ChatMessage } from "./useDiffChat";
 
@@ -105,6 +112,12 @@ export function useDescription(ready: boolean, reloadKey: number) {
 
   /** Save an edit. Resolves true when the server stored it. */
   const save = useCallback(async (markdown: string): Promise<boolean> => {
+    // The server enforces the same cap (413); checking here skips the upload.
+    const bytes = descriptionBytes(markdown);
+    if (bytes > MAX_DESCRIPTION_BYTES) {
+      setSaveError(descriptionTooLargeMessage(bytes));
+      return false;
+    }
     try {
       const res = await fetch("/api/description", {
         method: "PUT",
