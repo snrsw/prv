@@ -103,3 +103,20 @@ bun --hot ./index.ts
 ```
 
 For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+
+## Docs
+
+`docs/` is an OKF v0.2 bundle (use the `okf` skill). `docs/concepts/` explains what prv's features are; `docs/notation/` explains the symbols, badges, IDs, CLI syntax, shortcuts, and colours the user sees.
+
+Update the matching page in the same change whenever you change:
+
+- a feature's behaviour or rules (diff modes, comment threads, the pending rule, the comment store, agent review, Finish review, diff chat, agent settings) → `docs/concepts/`
+- anything a user sees or types: a glyph, badge, label, ID format, CLI argument or output, keyboard shortcut, or colour meaning → `docs/notation/`
+
+Each page's `resource` field names the source file it describes. A docs update is three edits:
+
+1. The concept page. Refresh its `generated` entry.
+2. Its line in the directory's `index.md`, when the title or description changed.
+3. A dated entry at the top of `docs/log.md`.
+
+State each rule in one page and link to it from the others. Keep file paths stable, because a page's path is its identity. Add a new page, rather than a section in an existing one, only for a new feature or a new kind of notation.
