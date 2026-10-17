@@ -49,3 +49,10 @@
   3. Transport: a dedicated `/api/batch` WebSocket shaped like `/api/review` — the server builds one apply-mode prompt from the comments the client sends (anchor lines + transcript, no whole diff; the agent can read files), streams activity, and parses one JSON `results` block (one `--resume` retry when it is missing).
   4. The browser folds `results` into the threads (reply appended; `done: true` → resolved) and persists through the existing store flow. The agent never writes `.prv/comments.json` from the browser path.
 - **Rationale**: Keeps the "browser is the store's single writer" decision (letting the agent run `prv reply`/`prv resolve` would race the debounced PUT and needs Bash in apply mode). Mirroring the review runner gives an injectable `TurnRunner` and tolerant parsing for free. Resolving on `done: true` was chosen over "reply only" because Reopen is one click and the point of the batch is fewer clicks.
+
+## DR: Only the "+" button starts a comment thread from the mouse
+
+- **Date**: 2026-10-17
+- **Context**: Pressing anywhere in a diff row (code text or line number) started a comment drag and blocked native text selection, so code could not be copied (#75).
+- **Decision**: The hover "+" button is the only mouse trigger — click for one line, drag from it for a range, left button only. Code text is plain selectable text, and clicking or dragging a line number opens no thread. The keyboard path (#56: Shift+↑/↓, Enter on a gutter cell) is unchanged.
+- **Rationale**: Matches GitHub, where the line number is not a comment trigger. Keeping line-number clicks as a trigger was the other option; it was rejected so one visible affordance owns the mouse path.

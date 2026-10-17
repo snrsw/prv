@@ -53,7 +53,7 @@ type Thread = { id: string; side: LineSide; endLine: number };
 /** Where the floating "comment" affordance is shown while hovering a line. */
 type HoverPlus = { gi: number; top: number };
 
-/** In-progress gutter drag, as a span over the global diff-line index. */
+/** In-progress drag from the "+" button, as a span over the global diff-line index. */
 type DragSel = { startGi: number; endGi: number };
 
 /** The gutter cells a keyboard can land on (split view's blank fillers are not lines). */
@@ -251,8 +251,9 @@ export function DiffPanel({
     injectExpanders(root, gaps, shown.hunks.length, outputFormat, onExpand);
   }, [renderTick, gaps, shown.hunks.length, outputFormat, view, file.binary, onExpand]);
 
-  // Gutter drag selection. The live drag lives in a ref (read by a window
-  // mouseup listener without stale closures); `dragViz` mirrors it for render.
+  // Range selection by dragging from the "+" button. The live drag lives in a
+  // ref (read by the wrap's pointer handlers without stale closures);
+  // `dragViz` mirrors it for render.
   const dragRef = useRef<DragSel | null>(null);
   const [dragViz, setDragViz] = useState<DragSel | null>(null);
   // Keyboard range (#56): Shift+↑/↓ from a focused gutter cell. Mirrored in
@@ -362,21 +363,15 @@ export function DiffPanel({
     return cell ? giFromCell(cell) : null;
   };
 
-  // Gutter drag uses Pointer Events + pointer capture so every move/up during
-  // the drag is delivered to the wrap, even outside it.
+  // Only the "+" button starts a drag, so code text stays selectable. Pointer
+  // capture delivers every move/up during the drag to the wrap, even outside it.
   const beginDrag = (e: React.PointerEvent, gi: number) => {
+    if (e.button !== 0) return;
     e.preventDefault();
     wrapRef.current?.setPointerCapture(e.pointerId);
     dragRef.current = { startGi: gi, endGi: gi };
     setDragViz(dragRef.current);
     setHoverPlus(null);
-  };
-
-  const onDiffPointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    const cell = cellFromTarget(e.target as HTMLElement);
-    const gi = cell ? giFromCell(cell) : null;
-    if (gi != null) beginDrag(e, gi);
   };
 
   const onDiffPointerMove = (e: React.PointerEvent) => {
@@ -760,7 +755,6 @@ export function DiffPanel({
         <div
           className={`prv-diff-wrap ${dragViz ? "prv-dragging" : ""}`}
           ref={wrapRef}
-          onPointerDown={onDiffPointerDown}
           onPointerMove={onDiffPointerMove}
           onPointerUp={onDiffPointerUp}
           onMouseOver={onDiffMouseOver}
@@ -775,7 +769,7 @@ export function DiffPanel({
               type="button"
               className="prv-add-comment"
               style={{ top: hoverPlus.top }}
-              title="Comment on this line (or drag to select a range)"
+              title="Comment on this line (drag to select a range)"
               onPointerDown={(e) => beginDrag(e, hoverPlus.gi)}
             >
               +
