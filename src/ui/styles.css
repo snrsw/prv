@@ -2094,6 +2094,17 @@ tr.prv-expand-clickable:hover .d2h-info {
   padding: 0;
   background: var(--canvas-subtle);
 }
+/* The row is as wide as the longest code line, which can be far wider than
+   the card. Size the thread to the visible part of the horizontal scroller
+   and pin it there, so its text wraps on screen while code scrolls (GitHub). */
+.d2h-file-diff {
+  container-type: inline-size;
+}
+.prv-thread-row > td > div {
+  position: sticky;
+  left: 0;
+  width: 100cqi;
+}
 
 /* Split: spacer rows reserve height; the thread floats full-width over them */
 .prv-thread-spacer > td {
