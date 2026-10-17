@@ -31,6 +31,25 @@ Launch the prv local diff-review UI for the user.
    the user. If a browser did not open automatically, tell them to open the URL
    manually.
 
+5. If you made the changes under review in this session, write or update the
+   change description shown in prv's Overview pane, from the repository root:
+
+   ```
+   prv describe <<'EOF'
+   ## Summary
+   <one or two sentences: what changed and why>
+
+   ## Changes
+   - <file or area>: <what changed>
+
+   ## How to verify
+   - <command or step>
+   EOF
+   ```
+
+   Each call replaces the whole description. The open UI picks it up on Refresh
+   or when its tab regains focus.
+
 ## Notes
 
 - Review comments are stored in `.prv/comments.json` under the directory prv was
@@ -38,3 +57,5 @@ Launch the prv local diff-review UI for the user.
 - To read or act on review comments headlessly (without the browser), use the
   `prv-review` skill: `prv comments list --unresolved --json`, `prv reply`,
   `prv resolve`.
+- The change description lives in `.prv/description.md` next to the comments;
+  `prv describe --show` prints it and `prv describe --clear` removes it.

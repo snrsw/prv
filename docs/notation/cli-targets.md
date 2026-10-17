@@ -1,9 +1,9 @@
 ---
 type: CliSyntax
 title: CLI targets
-description: The <file>:<line> syntax, flags, and output of prv comment(s).
+description: The <file>:<line> syntax, flags, and output of prv comment(s), and the forms of prv describe.
 resource: https://github.com/snrsw/prv/blob/main/src/comments/cli.ts
-tags: [cli, comments]
+tags: [cli, comments, description]
 generated: { by: claude-code/claude-opus-5-5, at: 2026-10-18T00:00:00Z }
 ---
 
@@ -42,3 +42,18 @@ c:_42:_42  src/app.ts:42  open  2 messages
 - With no comments it prints `no comments`.
 - `--json` prints the raw comment array, as stored in `.prv/comments.json` but without the `schema_version` wrapper.
 - Errors go to stderr as `prv <command>: <message>` and exit 1.
+
+# prv describe
+
+`prv describe` writes the [change description](/concepts/change-description.md). It takes no positional arguments, and `describe` wins over a file with that name, like the comment subcommands.
+
+| Form                         | Effect                                                                       |
+| ---------------------------- | ---------------------------------------------------------------------------- |
+| `prv describe`               | Saves Markdown from stdin; refuses an interactive terminal                   |
+| `prv describe --file <path>` | Saves Markdown from `<path>`, relative to the current directory              |
+| `prv describe --show`        | Prints the description; exits 1 with `no description yet` when there is none |
+| `prv describe --clear`       | Removes the description                                                      |
+
+- A write prints `wrote .prv/description.md`. Empty or whitespace-only input is rejected and the old description is kept.
+- `--show` and `--clear` cannot be combined with each other or with `--file`.
+- `--file` here names the input file; on `reply`, `resolve`, and `unresolve` it names the commented file.

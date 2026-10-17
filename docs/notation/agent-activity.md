@@ -1,7 +1,7 @@
 ---
 type: UiNotation
 title: Agent activity
-description: Tool glyphs, status text, the agent-settings summary, and the tab title.
+description: Tool glyphs, status text, the Overview age, the agent-settings summary, and the tab title.
 resource: https://github.com/snrsw/prv/blob/main/src/ui/useDiffChat.ts
 tags: [ui, chat, agent]
 generated: { by: claude-code/claude-opus-5-5, at: 2026-10-18T00:00:00Z }
@@ -35,6 +35,20 @@ prv shows agent status as text, not as coloured dots.
 | `No response yet — check that the agent CLI is logged in.` | No output for 30 seconds    |
 | `stopped`                                                  | You pressed Stop            |
 | `⚠ {message}`                                              | An error                    |
+
+# Overview pane
+
+While Generate runs, the [Overview](/concepts/change-description.md) header shows `generating…`. Otherwise it shows the description's age:
+
+| Text                  | Age            |
+| --------------------- | -------------- |
+| `updated just now`    | Under a minute |
+| `updated {n} min ago` | Under an hour  |
+| `updated {n} h ago`   | Under a day    |
+| `updated {n} d ago`   | Under a week   |
+| `updated {date}`      | A week or more |
+
+Hovering the text shows the exact time.
 
 # Settings summary
 

@@ -75,6 +75,10 @@ Inline comments no longer call the agent as you write them. **Comment** in a thr
 
 A thread is _pending_ when it is open and its last message is yours.
 
+### Overview (change description)
+
+The **Overview** pane at the top of the diff shows a PR-body-like description of the changes — summary, what changed and why, how to verify — rendered as Markdown, with when it was last updated. It is one file per repository, `.prv/description.md`, written by an agent with `prv describe` (see below), by **Generate** (the selected agent drafts it read-only from the current diff; Stop cancels), or by hand with **Edit**. prv re-reads it on Refresh and when the tab regains focus, so a description an agent writes while prv is open shows up without a restart. The pane collapses with its chevron.
+
 ## Use with Claude Code
 
 prv ships as a Claude Code plugin (requires the `prv` binary on PATH — install it with Nix as above):
@@ -87,7 +91,7 @@ claude plugin install prv@prv
 This adds:
 
 - **`/prv`** — launches the review UI on the current repo state, or on two refs/paths (`/prv main feature`).
-- **`prv-review` skill** — teaches the agent to read and act on review comments headlessly.
+- **`prv-review` skill** — teaches the agent to read and act on review comments headlessly, and to describe its changes with `prv describe`.
 
 ### Headless review comments (for agents and scripts)
 
@@ -105,6 +109,27 @@ A typical agent loop: list unresolved comments, make the requested change, reply
 - Run from the repo root — comments are stored under the current directory.
 - `prv comment` anchors to lines of the `HEAD` vs working-tree diff (changed lines plus nearby context), so CLI-created comments render in the UI on the right lines.
 - Use `--json` for machine-readable output; errors exit 1 with a message on stderr.
+
+### Change description (for agents)
+
+After making changes, an agent explains them in the Overview pane with `prv describe`, which saves Markdown from stdin (or `--file <path>`) to `.prv/description.md`:
+
+```sh
+prv describe <<'EOF'
+## Summary
+Adds rate limiting to the login endpoint.
+
+## Changes
+- `src/auth/login.ts`: reject a sixth attempt within a minute.
+
+## How to verify
+- `bun test src/auth`
+EOF
+prv describe --show    # print it (exit 1 if there is none)
+prv describe --clear   # remove it
+```
+
+Each call replaces the whole description; update it after every round of changes.
 
 ## Development
 
