@@ -74,7 +74,7 @@ Like the diff chat, this needs the selected agent's CLI installed and logged in 
 Each thread has one split send button; the caret next to it picks the action, and `Enter` runs the selected one. The choice is remembered across threads and reloads.
 
 - **Add to batch** (the default) just saves your note; the thread shows a `pending` badge.
-- **Send now** runs the agent on this thread at once. The agent decides whether the comment asks for a change: if so it edits the files, otherwise it only answers. The diff refreshes when the run ends.
+- **Send now** runs the agent on this thread at once. The agent decides whether the comment asks for a change: if so it edits the files, otherwise it only answers. The diff refreshes when the run ends. On a pending thread, Send now with an empty input sends the saved comment alone.
 
 When you are done reading, **Finish review (n)** in the topbar lists every pending thread — hand-written comments and your replies to agent findings alike — with an optional note for the whole batch, and sends them to the agent in one apply-mode run. The agent edits the files, then answers each thread: its reply lands on the thread, and a thread it considers addressed is resolved (Reopen is one click). The diff refreshes when the run ends; Stop cancels it.
 

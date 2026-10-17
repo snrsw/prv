@@ -4,7 +4,7 @@ import { dropEmptyAssistants, stripEphemeral, useDiffChat } from "../useDiffChat
 import { isSubmitKey } from "../keys";
 import { buildThreadContext } from "../lineContext";
 import { splitFindingBody } from "../reviewComments";
-import { appendUserMessage, persistedIsAhead } from "../threadTranscript";
+import { appendUserMessage, persistedIsAhead, splitPendingTail } from "../threadTranscript";
 import { ChatMessageList } from "./ChatMessageList";
 import { isPendingComment, type Comment, type StoredMessage } from "../../shared/comments";
 import { SEND_ACTIONS, setSendAction, useSendAction, type SendAction } from "../sendAction";
@@ -100,16 +100,27 @@ export function CommentThread({
     setInput("");
   };
 
-  /** Run the agent on this thread now; it may edit files, so refresh after. */
+  /**
+   * Run the agent on this thread now; it may edit files, so refresh after.
+   * With an empty input a pending thread is sent as it stands: its unanswered
+   * comments become the question and are not appended to the thread again.
+   */
   const sendNow = () => {
-    if (input.trim() === "" || streaming || claimedByBatch) return;
-    refreshPendingRef.current = true;
-    send(input, threadContext, "auto");
-    setInput("");
+    if (streaming || claimedByBatch) return;
+    if (input.trim() !== "") {
+      refreshPendingRef.current = true;
+      send(input, threadContext, "auto");
+      setInput("");
+    } else if (pending) {
+      refreshPendingRef.current = true;
+      const { earlier, pending: question } = splitPendingTail(comment.messages);
+      send(question, buildThreadContext(context, earlier), "auto", false);
+    }
   };
 
   const submit = action === "now" ? sendNow : addToBatch;
-  const submitDisabled = input.trim() === "" || (action === "now" && claimedByBatch);
+  const submitDisabled =
+    action === "now" ? claimedByBatch || (input.trim() === "" && !pending) : input.trim() === "";
 
   // When a "Send now" turn finishes, refresh the diff so any edits show.
   const wasStreaming = useRef(false);

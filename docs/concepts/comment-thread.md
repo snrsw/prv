@@ -42,6 +42,7 @@ The thread input has one split send button. Its main part runs the selected acti
 
 - The default action is Add to batch. The browser remembers your choice for every thread, across reloads.
 - Send now runs in the `auto` [run mode](/concepts/diff-chat.md), which may edit files. The diff refreshes when the run ends, and Stop cancels it.
+- Add to batch needs text. Send now needs text unless the thread is pending: with an empty input, Send now sends the thread's unanswered comments as they are and adds no new message.
 - While a [Finish review](/concepts/finish-review.md) run is addressing a pending thread, Send now is disabled on that thread.
 - Resolve and Reopen change `status`.
 

@@ -21,6 +21,29 @@ export function appendUserMessage(messages: StoredMessage[], text: string): Stor
 }
 
 /**
+ * Split a thread into the messages before its pending tail and the tail
+ * itself: the trailing run of user messages the agent has not answered yet
+ * (one or more comments saved with "Add to batch"). "Send now" with an empty
+ * input sends `pending` as the turn's question and `earlier` as prior
+ * conversation, so the tail is neither re-added to the thread nor repeated in
+ * the prompt. `pending` is "" when the thread does not end with a user
+ * message. Pure.
+ */
+export function splitPendingTail(messages: StoredMessage[]): {
+  earlier: StoredMessage[];
+  pending: string;
+} {
+  let start = messages.length;
+  while (start > 0 && messages[start - 1]?.role === "user") start--;
+  const pending = messages
+    .slice(start)
+    .map((m) => m.text.trim())
+    .filter((t) => t !== "")
+    .join("\n\n");
+  return { earlier: messages.slice(0, start), pending };
+}
+
+/**
  * Whether the persisted transcript holds something the live one does not, so
  * the card must adopt it.
  *
