@@ -78,14 +78,14 @@ export function usePlusDrag({
     setHoverPlus({ index: line.index, top });
   };
 
+  const onMouseLeave = () => setHoverPlus(null);
+
   return {
     hoverPlus,
     setHoverPlus,
     dragViz,
     beginDrag,
-    onPointerMove,
-    onPointerUp,
-    onMouseOver,
-    onMouseLeave: () => setHoverPlus(null),
+    /** The pointer and mouse handlers, to spread onto the wrap. */
+    handlers: { onPointerMove, onPointerUp, onMouseOver, onMouseLeave },
   };
 }
