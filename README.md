@@ -119,6 +119,14 @@ bun run dev
 To run the source checkout against another repository, start it from that
 repository's directory: `PRV_DEV=1 bun --hot /path/to/prv/src/cli.ts`.
 
+### Releasing
+
+Releases are cut by [tagpr](https://github.com/Songmu/tagpr). Merging any PR into `main` opens — or updates — a **Release for vX.Y.Z** pull request that bumps the version files and the changelog. Merging that release PR tags the version and publishes the GitHub Release.
+
+- The version lives in `package.json` and `.claude-plugin/plugin.json`; tagpr keeps them in step. `flake.nix` reads `package.json`, so the Nix package version and `prv --version` follow along.
+- The release PR bumps the patch digit by default. Add a `minor` or `major` label to it to bump those instead.
+- CI does not run on the release PR, because pull requests opened with the default `GITHUB_TOKEN` do not trigger `pull_request` workflows.
+
 ## Status
 
 Pre-alpha. See [plan](./plan.md) for the implementation roadmap.
