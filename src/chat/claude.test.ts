@@ -23,19 +23,42 @@ describe("buildArgs", () => {
   });
 });
 
-describe("buildPrompt apply mode", () => {
-  test("apply framing tells the agent to edit, ask framing forbids it", () => {
-    const apply = buildPrompt({
+describe("buildArgs auto mode", () => {
+  test("auto profile has apply's edit permissions (no Bash)", () => {
+    expect(buildArgs("auto")).toEqual(buildArgs("apply"));
+    expect(buildArgs("auto", "sid-2", { model: "opus" }).join(" ")).toContain(
+      "acceptEdits --allowedTools Read,Edit,Write,Grep,Glob --model opus --resume sid-2",
+    );
+  });
+});
+
+describe("buildPrompt modes", () => {
+  test("auto framing lets the agent choose between editing and answering", () => {
+    const auto = buildPrompt({
       diff: "d",
       question: "rename x",
       isFirstTurn: true,
-      mode: "apply",
+      mode: "auto",
     });
-    expect(apply).toContain("editing the files directly");
-    expect(apply).toContain("Requested change: rename x");
+    expect(auto).toContain("decide");
+    expect(auto).toContain("whether the comment asks for a code change");
+    expect(auto).toContain("minimal");
+    expect(auto).toContain("without modifying any files");
+    expect(auto).toContain("<diff>\nd\n</diff>");
+    expect(auto).toContain("Comment: rename x");
+    expect(auto).not.toContain("read-only");
+  });
+
+  test("ask framing forbids edits", () => {
     const ask = buildPrompt({ diff: "d", question: "why?", isFirstTurn: true, mode: "ask" });
     expect(ask).toContain("read-only");
     expect(ask).toContain("Question: why?");
+  });
+
+  test("a resumed auto turn sends only the comment", () => {
+    expect(buildPrompt({ diff: "d", question: "and y?", isFirstTurn: false, mode: "auto" })).toBe(
+      "and y?",
+    );
   });
 });
 

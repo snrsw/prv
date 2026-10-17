@@ -59,19 +59,24 @@ The one exception is `prv <path>` on a path git's diff cannot show: a file outsi
 
 ### Diff chat
 
-The **Chat** button opens a read-only conversation with your local coding agent about the current diff. The **agent** picker next to Send chooses which CLI answers — **Claude Code** (`claude`, the default) or **Codex** (`codex`). The **model** and **effort** pickers map to that CLI's own setting (`claude --model` / `claude --effort`; `codex --model` / Codex's `model_reasoning_effort`); leave either on `default` to use the CLI's configured value. For Claude the model list offers the CLI aliases (`fable`, `opus`, `sonnet`, `haiku`); for Codex enter a full model name via the custom entry. The choice is remembered in the browser and also applies to inline comment threads (including "Apply with agent") and to agent reviews. Switching agents mid-conversation starts a fresh session, since neither CLI can resume the other's.
+The **Chat** button opens a read-only conversation with your local coding agent about the current diff. The **agent** picker next to Send chooses which CLI answers — **Claude Code** (`claude`, the default) or **Codex** (`codex`). The **model** and **effort** pickers map to that CLI's own setting (`claude --model` / `claude --effort`; `codex --model` / Codex's `model_reasoning_effort`); leave either on `default` to use the CLI's configured value. For Claude the model list offers the CLI aliases (`fable`, `opus`, `sonnet`, `haiku`); for Codex enter a full model name via the custom entry. The choice is remembered in the browser and also applies to inline comment threads ("Send now"), to agent reviews, and to Finish review. Switching agents mid-conversation starts a fresh session, since neither CLI can resume the other's.
 
-With Codex, read-only chat runs `codex exec` in its `read-only` sandbox and "Apply with agent" in `workspace-write`; approvals are set to `never` because there is no one to answer them.
+With Codex, read-only chat runs `codex exec` in its `read-only` sandbox, and "Send now" and Finish review run in `workspace-write`; approvals are set to `never` because there is no one to answer them.
 
 ### Agent review
 
-The **Review** button in the topbar runs three read-only review agents in parallel over the current diff — correctness, silent failures, and test coverage. Their findings land as inline review comments, anchored to the diff lines they cite (with severity and lens badges). Each one is a normal comment thread: reply to discuss it with the agent, use "Apply with agent" to fix it, resolve or delete it. Re-running a review stacks new comments; "Clear agent comments" removes open ones no human has replied to. Stop cancels an in-flight run.
+The **Review** button in the topbar runs three read-only review agents in parallel over the current diff — correctness, silent failures, and test coverage. Their findings land as inline review comments, anchored to the diff lines they cite (with severity and lens badges). Each one is a normal comment thread: reply to it with "Send now" (the agent fixes it or answers) or "Add to batch" (for Finish review), resolve or delete it. Re-running a review stacks new comments; "Clear agent comments" removes open ones no human has replied to. Stop cancels an in-flight run.
 
 Like the diff chat, this needs the selected agent's CLI installed and logged in — Claude Code (`claude`) or Codex (`codex`). Each review spawns three runs of that CLI over the whole diff.
 
 ### Finish review
 
-Inline comments no longer call the agent as you write them. **Comment** in a thread just saves your note (the thread shows a `pending` badge); **Ask agent** is the old immediate read-only question, and **Apply with agent** still fixes one thread on its own. When you are done reading, **Finish review (n)** in the topbar lists every pending thread — hand-written comments and your replies to agent findings alike — with an optional note for the whole batch, and sends them to the agent in one apply-mode run. The agent edits the files, then answers each thread: its reply lands on the thread, and a thread it considers addressed is resolved (Reopen is one click). The diff refreshes when the run ends; Stop cancels it.
+Each thread has one split send button; the caret next to it picks the action, and `Enter` runs the selected one. The choice is remembered across threads and reloads.
+
+- **Add to batch** (the default) just saves your note; the thread shows a `pending` badge.
+- **Send now** runs the agent on this thread at once. The agent decides whether the comment asks for a change: if so it edits the files, otherwise it only answers. The diff refreshes when the run ends.
+
+When you are done reading, **Finish review (n)** in the topbar lists every pending thread — hand-written comments and your replies to agent findings alike — with an optional note for the whole batch, and sends them to the agent in one apply-mode run. The agent edits the files, then answers each thread: its reply lands on the thread, and a thread it considers addressed is resolved (Reopen is one click). The diff refreshes when the run ends; Stop cancels it.
 
 A thread is _pending_ when it is open and its last message is yours.
 

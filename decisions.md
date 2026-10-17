@@ -56,3 +56,13 @@
 - **Context**: Pressing anywhere in a diff row (code text or line number) started a comment drag and blocked native text selection, so code could not be copied (#75).
 - **Decision**: The hover "+" button is the only mouse trigger — click for one line, drag from it for a range, left button only. Code text is plain selectable text, and clicking or dragging a line number opens no thread. The keyboard path (#56: Shift+↑/↓, Enter on a gutter cell) is unchanged.
 - **Rationale**: Matches GitHub, where the line number is not a comment trigger. Keeping line-number clicks as a trigger was the other option; it was rejected so one visible affordance owns the mouse path.
+
+## DR: One split send button in comment threads (issue #83)
+
+- **Date**: 2026-10-18
+- **Context**: The thread composer had three buttons — Comment, Ask agent (read-only) and Apply with agent (edits files) — so the reviewer had to decide up front whether a comment needed an edit.
+- **Decision** (decided by the user): Merged the buttons into one split button, Send now / Add to batch; the agent decides edit vs answer.
+  1. **Add to batch** (default) keeps Comment's behaviour: save the message; the thread becomes pending for Finish review.
+  2. **Send now** runs one turn in a new `auto` mode with apply's edit permissions (Claude `acceptEdits` without Bash; Codex `workspace-write`). The prompt tells the agent to make a minimal edit when the comment asks for a change and to answer without editing otherwise. No confirmation dialog; the menu description says the agent may edit files.
+  3. The selected action is one app-wide choice persisted in localStorage; Enter runs it.
+- **Rationale**: Finish review's prompt already lets the agent decide per thread; Send now gives a single thread the same rule, so the reviewer only chooses _when_ the agent runs, not _what_ it may do.

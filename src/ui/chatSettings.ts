@@ -8,8 +8,8 @@ import {
 
 /**
  * The model/effort the agent runs with, chosen in the chat panel and shared by
- * every conversation (the diff chat and inline comment threads, including
- * "Apply with agent"). One app-wide value, persisted in localStorage, exposed
+ * every conversation (the diff chat, inline comment threads' "Send now", agent
+ * reviews and "Finish review"). One app-wide value, persisted in localStorage, exposed
  * as a tiny external store so any component can read or change it without
  * prop-drilling through the diff tree.
  */

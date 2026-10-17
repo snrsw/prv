@@ -6,7 +6,12 @@
  * backend lives in its own module and only knows argv + line parsing.
  */
 
-import { type ChatAgent, type ChatEffort, DEFAULT_CHAT_AGENT } from "../shared/chat";
+import {
+  type ChatAgent,
+  type ChatAskMode,
+  type ChatEffort,
+  DEFAULT_CHAT_AGENT,
+} from "../shared/chat";
 import type { Backend, ChatEvent, TurnMode } from "./backend";
 import { claudeBackend } from "./claude";
 import { codexBackend } from "./codex";
@@ -22,15 +27,37 @@ export type BuildPromptArgs = {
   diff: string;
   question: string;
   isFirstTurn: boolean;
-  mode?: TurnMode;
+  mode?: ChatAskMode;
+};
+
+/** The opening instructions and the label for the user's message, per mode. */
+const FRAMING: Record<ChatAskMode, { lead: string[]; label: string }> = {
+  ask: {
+    lead: [
+      "You are helping review a git diff in a strictly read-only capacity.",
+      "Below is the relevant diff context. Answer the user's questions about it",
+      "clearly and concisely. Do not modify any files or run any mutating commands.",
+    ],
+    label: "Question",
+  },
+  auto: {
+    lead: [
+      "You are handling a code-review comment on the diff below. First decide",
+      "whether the comment asks for a code change. If it does, make the minimal,",
+      "focused edit to the files, then briefly summarize what you changed. If it",
+      "is a question or a discussion point, answer it clearly and concisely",
+      "without modifying any files.",
+    ],
+    label: "Comment",
+  },
 };
 
 /**
  * Build the prompt text sent to the agent for a single turn.
  *
  * On the first turn the diff context is included; later turns resume the
- * CLI's session so only the new message is sent. `mode: "apply"` asks the
- * agent to edit the files rather than just explain.
+ * CLI's session so only the new message is sent. `mode: "auto"` (a comment
+ * thread's "Send now") lets the agent decide whether to edit files or answer.
  */
 export function buildPrompt({
   diff,
@@ -39,19 +66,7 @@ export function buildPrompt({
   mode = "ask",
 }: BuildPromptArgs): string {
   if (!isFirstTurn) return question;
-  const lead =
-    mode === "apply"
-      ? [
-          "You are addressing a code-review comment by editing the files directly.",
-          "Below is the relevant diff context. Make the requested change, then",
-          "briefly summarize what you edited. Keep the change minimal and focused.",
-        ]
-      : [
-          "You are helping review a git diff in a strictly read-only capacity.",
-          "Below is the relevant diff context. Answer the user's questions about it",
-          "clearly and concisely. Do not modify any files or run any mutating commands.",
-        ];
-  const label = mode === "apply" ? "Requested change" : "Question";
+  const { lead, label } = FRAMING[mode];
   return [...lead, "", "<diff>", diff, "</diff>", "", `${label}: ${question}`].join("\n");
 }
 

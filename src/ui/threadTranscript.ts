@@ -2,7 +2,7 @@
  * Pure helpers for keeping an inline thread's live transcript in step with the
  * persisted one.
  *
- * The store is a thread's authority: the composer's Comment button writes
+ * The store is a thread's authority: the composer's "Add to batch" writes
  * straight to it (no agent involved), and a "Finish review" run appends the
  * agent's reply — and a resolved status — to every pending thread while the
  * cards are mounted. `useDiffChat` meanwhile keeps its own copy of the

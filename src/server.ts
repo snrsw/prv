@@ -185,7 +185,8 @@ async function handleChatMessage(
   data.busy = true;
   const abort = new AbortController();
   data.abort = abort;
-  const mode = msg.mode ?? "ask";
+  // Untrusted too: anything but "auto" runs read-only.
+  const mode = msg.mode === "auto" ? "auto" : "ask";
   // The frame is untrusted input: keep only well-formed agent/model/effort values.
   const settings = sanitizeChatSettings(msg);
   const agent = settings.agent ?? DEFAULT_CHAT_AGENT;

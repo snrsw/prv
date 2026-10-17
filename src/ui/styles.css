@@ -2088,6 +2088,73 @@ tr.prv-expand-clickable:hover .d2h-info {
   justify-content: flex-end;
   gap: var(--sp-2);
 }
+/* One send button whose caret picks the action: Send now or Add to batch (#83). */
+.prv-split-send {
+  position: relative;
+  display: flex;
+  align-self: flex-end;
+}
+.prv-split-send-main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.prv-split-send-caret {
+  border-left-color: rgba(255, 255, 255, 0.3);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  padding: 5px 8px;
+}
+.prv-split-send-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  right: 0;
+  z-index: 50;
+  width: 280px;
+  max-width: calc(100vw - 2 * var(--sp-3));
+  padding: 4px;
+  background: var(--canvas-default);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+}
+.prv-split-send-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: var(--fg-default);
+}
+.prv-split-send-item:hover,
+.prv-split-send-item:focus-visible {
+  background: var(--canvas-subtle);
+}
+.prv-split-send-check {
+  flex: 0 0 1em;
+  color: var(--accent-fg);
+  font-size: 13px;
+}
+.prv-split-send-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.prv-split-send-label {
+  font-size: 13px;
+}
+.prv-split-send-item.is-selected .prv-split-send-label {
+  font-weight: 600;
+}
+.prv-split-send-desc {
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-muted);
+}
 .prv-thread-confirm {
   display: flex;
   flex-direction: column;
