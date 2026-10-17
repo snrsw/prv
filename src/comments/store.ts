@@ -1,8 +1,13 @@
 import type { Comment, CommentsFile } from "../shared/comments";
 
+/** prv's per-repo state directory: the comment store and the change description. */
+export function prvDir(dir: string): string {
+  return `${dir}/.prv`;
+}
+
 /** Path to the comment store for a given repo directory. */
 export function commentsPath(dir: string): string {
-  return `${dir}/.prv/comments.json`;
+  return `${prvDir(dir)}/comments.json`;
 }
 
 /**

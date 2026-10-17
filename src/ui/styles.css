@@ -2336,6 +2336,39 @@ tr.prv-expand-clickable:hover .d2h-info {
   color: var(--danger-fg);
 }
 
+/* ---- Overview (change description) card ---- */
+
+.overview-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.overview-chevron {
+  display: inline-flex;
+  color: var(--fg-muted);
+}
+.overview-updated {
+  color: var(--fg-subtle);
+  font-size: var(--fs-ui-sm);
+}
+.overview-body {
+  padding: var(--sp-3) var(--sp-4);
+}
+/* The textarea sits directly under the header; no second divider. */
+.overview-form {
+  border-top: 0;
+}
+.overview-input {
+  font-family: var(--ff-mono);
+  resize: vertical;
+}
+
 /* ---- Review comment chips + finding body ---- */
 .prv-thread-title {
   display: flex;

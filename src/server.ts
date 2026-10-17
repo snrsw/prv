@@ -1,6 +1,8 @@
 import { $ } from "bun";
 import { buildPrompt, relativizeTarget, runTurn } from "./chat/agent";
 import { readComments, writeComments } from "./comments/store";
+import { runDescribe } from "./description/runner";
+import { clearDescription, readDescription, writeDescription } from "./description/store";
 import { computeDiff } from "./diff/engine";
 import type { DiffMode } from "./diff/types";
 import { loadFile } from "./file/loader";
@@ -12,6 +14,7 @@ import { DEFAULT_CHAT_AGENT, sanitizeChatSettings } from "./shared/chat";
 import type { ChatClientFrame, ChatServerFrame, ChatWsData } from "./shared/chat";
 import type { ReviewServerFrame, ReviewStart, ReviewWsData } from "./shared/review";
 import type { BatchServerFrame, BatchStart, BatchWsData } from "./shared/batch";
+import type { DescribeServerFrame, DescribeStart, DescribeWsData } from "./shared/description";
 import { isPendingComment, type Comment } from "./shared/comments";
 import { decodeMode } from "./shared/modeQuery";
 import index from "./ui/index.html";
@@ -26,7 +29,7 @@ export type ServerOptions = {
 };
 
 /** Every WebSocket route's per-connection state, discriminated by `kind`. */
-type WsData = ChatWsData | ReviewWsData | BatchWsData;
+type WsData = ChatWsData | ReviewWsData | BatchWsData | DescribeWsData;
 
 /**
  * Whether prv runs from its source tree (`bun src/cli.ts`, `bun test`) rather
@@ -66,6 +69,11 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
       },
       "/api/batch": (req, server) => {
         const data: BatchWsData = { kind: "batch", busy: false };
+        if (server.upgrade(req, { data })) return undefined;
+        return new Response("expected websocket upgrade", { status: 426 });
+      },
+      "/api/describe": (req, server) => {
+        const data: DescribeWsData = { kind: "describe", busy: false };
         if (server.upgrade(req, { data })) return undefined;
         return new Response("expected websocket upgrade", { status: 426 });
       },
@@ -126,6 +134,26 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
           return Response.json({ ok: true });
         },
       },
+      // The change description lives next to the comment store; `prv describe`
+      // writes the same file, so the UI re-reads it rather than caching it.
+      "/api/description": {
+        GET: async () => Response.json(await readDescription()),
+        PUT: async (req) => {
+          const body = (await req.json().catch(() => null)) as { markdown?: unknown } | null;
+          const markdown = body?.markdown;
+          if (typeof markdown !== "string" || markdown.trim() === "") {
+            return Response.json(
+              { error: "expected { markdown: non-empty string }" },
+              { status: 400 },
+            );
+          }
+          return Response.json(await writeDescription(markdown));
+        },
+        DELETE: async () => {
+          await clearDescription();
+          return Response.json({ ok: true });
+        },
+      },
     },
     websocket: {
       async message(ws, raw) {
@@ -135,6 +163,9 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
         }
         if (data.kind === "batch") {
           return handleBatchMessage(ws, data, raw, turnRunner);
+        }
+        if (data.kind === "describe") {
+          return handleDescribeMessage(ws, data, raw, defaultMode, turnRunner);
         }
         return handleChatMessage(ws, data, raw, turnRunner);
       },
@@ -383,6 +414,68 @@ async function handleBatchMessage(
       comments,
       instructions,
       cwd: process.cwd(),
+      emit: send,
+      signal: data.abort.signal,
+      // Untrusted frame: keep only well-formed agent/model/effort values.
+      settings: sanitizeChatSettings(msg),
+      turnRunner,
+    });
+  } catch (err) {
+    send({ type: "error", message: errorMessage(err) });
+  } finally {
+    data.busy = false;
+    data.abort = undefined;
+    send({ type: "done" });
+  }
+}
+
+/**
+ * Handle one /api/describe message: compute the requested diff, then run one
+ * read-only turn that drafts the change description and saves it. Every
+ * accepted start terminates with exactly one `done` (via finally); `busy` is a
+ * lone reply. The agent runs in the diff mode's cwd, like a review; the
+ * description is saved in prv's own cwd, next to the comment store.
+ */
+async function handleDescribeMessage(
+  ws: Bun.ServerWebSocket<WsData>,
+  data: DescribeWsData,
+  raw: string | Buffer,
+  defaultMode: DiffMode | undefined,
+  turnRunner: TurnRunner,
+): Promise<void> {
+  const send = (frame: DescribeServerFrame): void => {
+    ws.send(JSON.stringify(frame));
+  };
+
+  let msg: DescribeStart;
+  try {
+    msg = JSON.parse(String(raw)) as DescribeStart;
+  } catch {
+    return;
+  }
+  if (msg.type !== "start" || typeof msg.modeQuery !== "string") return;
+  if (data.busy) {
+    send({ type: "busy" });
+    return;
+  }
+
+  data.busy = true;
+  data.abort = new AbortController();
+  try {
+    const mode = decodeMode(new URLSearchParams(msg.modeQuery)) ?? defaultMode;
+    if (!mode) {
+      send({ type: "error", message: "no diff mode" });
+      return;
+    }
+    const files = await computeDiff(mode);
+    if (files.length === 0) {
+      send({ type: "error", message: "no changes to describe" });
+      return;
+    }
+    await runDescribe({
+      files,
+      cwd: mode.cwd,
+      storeDir: process.cwd(),
       emit: send,
       signal: data.abort.signal,
       // Untrusted frame: keep only well-formed agent/model/effort values.

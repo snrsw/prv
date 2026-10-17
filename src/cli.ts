@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { $ } from "bun";
 import { COMMENT_SUBCOMMANDS, runCommentsCli } from "./comments/cli";
+import { runDescribeCli } from "./description/cli";
 import type { DiffMode } from "./diff/engine";
 import { createServer } from "./server";
 import { pathExists } from "./shared/fs";
@@ -125,6 +126,15 @@ Review comments (headless, no browser — for agents and scripts):
   diff (changed lines plus nearby context). These keywords take precedence
   over file names — view a file named "comment" with \`prv ./comment\`.
 
+Change description (the PR-body-like Overview shown above the diff):
+  prv describe                 Save markdown from stdin as the description
+  prv describe --file <path>   Save the description from a markdown file
+  prv describe --show          Print the description (exit 1 if there is none)
+  prv describe --clear         Remove the description
+
+  The description lives in .prv/description.md next to the comments; an open
+  prv picks up a new one on Refresh or when its tab regains focus.
+
 Notes:
   The "chat about the diff" and agent-review features require a local coding
   agent installed separately: Claude Code (the \`claude\` CLI) or OpenAI Codex
@@ -137,6 +147,17 @@ async function main() {
   // forces the path form, matching the existing ref/path convention).
   if (argv[0] !== undefined && COMMENT_SUBCOMMANDS.includes(argv[0])) {
     const res = await runCommentsCli(argv, process.cwd());
+    if (res.out) console.log(res.out);
+    if (res.err) console.error(res.err);
+    process.exit(res.code);
+  }
+
+  // `prv describe`: same keyword-over-file-name rule as the comments CLI.
+  if (argv[0] === "describe") {
+    const res = await runDescribeCli(argv.slice(1), process.cwd(), {
+      isTTY: Boolean(process.stdin.isTTY),
+      read: () => Bun.stdin.text(),
+    });
     if (res.out) console.log(res.out);
     if (res.err) console.error(res.err);
     process.exit(res.code);

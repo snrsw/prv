@@ -5,6 +5,7 @@ import { DiffPanel } from "./components/DiffPanel";
 import { BatchPanel } from "./components/BatchPanel";
 import { DiffStat } from "./components/DiffStat";
 import { ModePicker } from "./components/ModePicker";
+import { OverviewPanel } from "./components/OverviewPanel";
 import { ReviewPanel } from "./components/ReviewPanel";
 import { ShortcutHelp } from "./components/ShortcutHelp";
 import { findingsToComments } from "../review/transform";
@@ -27,6 +28,7 @@ import type { FileUi } from "./useFileUiState";
 import { useResizablePanel } from "./useResizablePanel";
 import type { ResizablePanel } from "./useResizablePanel";
 import { useBatch } from "./useBatch";
+import { useDescription } from "./useDescription";
 import { useReview } from "./useReview";
 import type { DiffOutputFormat, FileDiff, ServerMode } from "./types";
 
@@ -217,6 +219,15 @@ export function App() {
     dismissRemoved,
   } = useComments(bootstrapped);
   const refreshDiff = useCallback(() => setReloadKey((k) => k + 1), []);
+  // The change description is re-read on every refresh (and on tab focus), so
+  // one written by `prv describe` while prv is open shows up.
+  const description = useDescription(bootstrapped, reloadKey);
+  const { generate: generateDescription } = description;
+  const startDescribe = useCallback(() => {
+    const params = new URLSearchParams();
+    if (mode) encodeMode(mode, params);
+    generateDescription(params.toString()); // empty query → the server's default mode
+  }, [mode, generateDescription]);
   const filePaths = useMemo(() => files?.map((f) => f.path) ?? null, [files]);
   const [fileUi, setFileUi] = useFileUiState(loadedMode?.mode ?? null, filePaths);
 
@@ -699,6 +710,20 @@ export function App() {
         )}
 
         <main className="main-col">
+          {/* A description is about a set of changes; `prv <path>` showing plain
+              files whole has none. */}
+          {mode?.kind !== "files" && (
+            <OverviewPanel
+              description={description.description}
+              run={description.run}
+              saveError={description.saveError}
+              canGenerate={files !== null && files.length > 0}
+              onGenerate={startDescribe}
+              onStop={description.stop}
+              onDismissRun={description.dismissRun}
+              onSave={description.save}
+            />
+          )}
           {(review.run !== null || hasAgentComments) && (
             <ReviewPanel
               run={review.run}
