@@ -1954,7 +1954,6 @@ tr.prv-expand-clickable:hover .d2h-info {
 .prv-line-selected td.d2h-code-side-linenumber,
 .prv-line-selected .d2h-code-line-ctn,
 .prv-line-selected .d2h-code-side-line,
-.prv-line-selected .file-line-num,
 .prv-line-selected .file-line-code {
   background: var(--accent-subtle) !important;
 }
@@ -1963,9 +1962,16 @@ tr.prv-expand-clickable:hover .d2h-info {
 .prv-line-commented td.d2h-code-side-linenumber,
 .prv-line-commented .d2h-code-line-ctn,
 .prv-line-commented .d2h-code-side-line,
-.prv-line-commented .file-line-num,
 .prv-line-commented .file-line-code {
   background: var(--attention-subtle) !important;
+}
+/* File-view gutter: tint the colour only, so the change-mark bar (a
+   background image) stays visible under a selection or comment. */
+.prv-line-selected .file-line-num {
+  background-color: var(--accent-subtle) !important;
+}
+.prv-line-commented .file-line-num {
+  background-color: var(--attention-subtle) !important;
 }
 .prv-line-commented td.d2h-code-linenumber,
 .prv-line-commented td.d2h-code-side-linenumber {
