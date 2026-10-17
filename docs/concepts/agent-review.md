@@ -23,10 +23,10 @@ An agent review is one run started by the **Review** button. It starts three rea
 
 # Rules
 
-* **Re-running stacks new findings on top of the old ones; prv does not deduplicate them.**
-* Clear agent comments removes open findings that no one has replied to.
-* Stop cancels the run.
-* A finding is a normal thread: you can reply, Ask agent, Apply with agent, resolve, or delete it. A reply makes it pending for [Finish review](/concepts/finish-review.md).
+- **Re-running stacks new findings on top of the old ones; prv does not deduplicate them.**
+- Clear agent comments removes open findings that no one has replied to.
+- Stop cancels the run.
+- A finding is a normal thread: you can reply, Ask agent, Apply with agent, resolve, or delete it. A reply makes it pending for [Finish review](/concepts/finish-review.md).
 
 The agent and model come from [agent settings](/concepts/agent-settings.md). Severity values, lenses, and run phases are in [Review findings](/notation/review-findings.md).[^decisions]
 

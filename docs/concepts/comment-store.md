@@ -25,10 +25,10 @@ prv also reads a bare array of comments.
 
 # Writers
 
-| Writer | When it writes |
-|---|---|
-| Browser | After each change in the UI, as one whole-file write |
-| `prv comment`, `reply`, `resolve`, `unresolve` | Directly, with no server needed |
+| Writer                                         | When it writes                                       |
+| ---------------------------------------------- | ---------------------------------------------------- |
+| Browser                                        | After each change in the UI, as one whole-file write |
+| `prv comment`, `reply`, `resolve`, `unresolve` | Directly, with no server needed                      |
 
 **In the browser, the browser is the only writer.** Agent-review findings and [Finish review](/concepts/finish-review.md) results reach the store through the browser, not from the server or the agent. This avoids two writers overwriting each other.[^decisions]
 

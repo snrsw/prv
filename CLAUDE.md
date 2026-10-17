@@ -119,4 +119,6 @@ Each page's `resource` field names the source file it describes. A docs update i
 2. Its line in the directory's `index.md`, when the title or description changed.
 3. A dated entry at the top of `docs/log.md`.
 
+Run `bun run format` afterwards; CI's `format:check` covers `docs/`.
+
 State each rule in one page and link to it from the others. Keep file paths stable, because a page's path is its identity. Add a new page, rather than a section in an existing one, only for a new feature or a new kind of notation.

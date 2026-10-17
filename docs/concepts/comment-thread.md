@@ -13,15 +13,15 @@ A comment thread is a list of messages attached to a range of diff lines in one 
 
 # Fields
 
-| Field | Meaning |
-|---|---|
-| `id` | Built from the range endpoints; format in [Comment IDs](/notation/comment-ids.md) |
-| `file` | Path of the file the thread is on |
-| `start`, `end` | First and last line, each as old and new line numbers |
-| `anchorText` | The text of the anchored lines, each with its `+`/`-`/space marker |
-| `status` | `open` or `resolved` |
-| `messages` | The conversation, oldest first |
-| `source`, `severity`, `lens`, `title`, `runId` | Present only on agent-review findings |
+| Field                                          | Meaning                                                                           |
+| ---------------------------------------------- | --------------------------------------------------------------------------------- |
+| `id`                                           | Built from the range endpoints; format in [Comment IDs](/notation/comment-ids.md) |
+| `file`                                         | Path of the file the thread is on                                                 |
+| `start`, `end`                                 | First and last line, each as old and new line numbers                             |
+| `anchorText`                                   | The text of the anchored lines, each with its `+`/`-`/space marker                |
+| `status`                                       | `open` or `resolved`                                                              |
+| `messages`                                     | The conversation, oldest first                                                    |
+| `source`, `severity`, `lens`, `title`, `runId` | Present only on agent-review findings                                             |
 
 # Pending
 
@@ -33,11 +33,11 @@ prv shows a thread on its lines while `anchorText` still matches the current dif
 
 # Acting on a thread
 
-| Button | What happens |
-|---|---|
-| Comment | Saves your message only; the thread becomes pending |
-| Ask agent | The agent answers this thread, read-only |
-| Apply with agent | The agent edits files to address this thread alone |
-| Resolve / Reopen | Changes `status` |
+| Button           | What happens                                        |
+| ---------------- | --------------------------------------------------- |
+| Comment          | Saves your message only; the thread becomes pending |
+| Ask agent        | The agent answers this thread, read-only            |
+| Apply with agent | The agent edits files to address this thread alone  |
+| Resolve / Reopen | Changes `status`                                    |
 
 The badges and labels for these states are in [Comment states](/notation/comment-states.md). Threads are saved in the [comment store](/concepts/comment-store.md).

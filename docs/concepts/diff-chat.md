@@ -15,10 +15,10 @@ The diff chat is a conversation about the whole current diff, opened with the **
 
 Every agent run in prv is in one of two modes.
 
-| Mode | Agent can edit files | Used by |
-|---|---|---|
-| `ask` | no | Diff chat, Ask agent, [agent review](/concepts/agent-review.md) |
-| `apply` | yes | Apply with agent, [Finish review](/concepts/finish-review.md) |
+| Mode    | Agent can edit files | Used by                                                         |
+| ------- | -------------------- | --------------------------------------------------------------- |
+| `ask`   | no                   | Diff chat, Ask agent, [agent review](/concepts/agent-review.md) |
+| `apply` | yes                  | Apply with agent, [Finish review](/concepts/finish-review.md)   |
 
 For Codex, `ask` runs in the `read-only` sandbox and `apply` in `workspace-write`. Approvals are `never`, because no one can answer them.
 

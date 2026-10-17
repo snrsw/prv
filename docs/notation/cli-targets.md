@@ -11,23 +11,23 @@ generated: { by: claude-code/claude-opus-5-5, at: 2026-10-18T00:00:00Z }
 
 `prv comment <file>:<line> "msg"`
 
-* The target splits on the last colon. `<line>` is an integer of 1 or more.
-* **`<line>` is always a new-side line number.** The CLI cannot anchor to a deleted line, and it accepts no ranges (`src/a.ts:10-12` is rejected).
-* The line must appear in the HEAD vs working-tree diff, as a changed or context line.
-* A leading `./` is stripped. A path starting with `-` is rejected.
-* `comments`, `comment`, `reply`, `resolve`, and `unresolve` are subcommands. To view a file with one of those names, write `prv ./comment`.
+- The target splits on the last colon. `<line>` is an integer of 1 or more.
+- **`<line>` is always a new-side line number.** The CLI cannot anchor to a deleted line, and it accepts no ranges (`src/a.ts:10-12` is rejected).
+- The line must appear in the HEAD vs working-tree diff, as a changed or context line.
+- A leading `./` is stripped. A path starting with `-` is rejected.
+- `comments`, `comment`, `reply`, `resolve`, and `unresolve` are subcommands. To view a file with one of those names, write `prv ./comment`.
 
 `reply`, `resolve`, and `unresolve` take a comment ID; its format is in [Comment IDs](/notation/comment-ids.md).
 
 # Flags
 
-| Flag | Applies to | Meaning |
-|---|---|---|
-| `--unresolved` | `comments list` | Only open threads |
-| `--json` | `comments list`, `comment` | Machine-readable output |
-| `--role user\|assistant` | `comment`, `reply` | Author of the message; default `assistant` |
-| `--file <path>` | `reply`, `resolve`, `unresolve` | Pick the file when an ID exists in several files |
-| `--` | all | End of options |
+| Flag                     | Applies to                      | Meaning                                          |
+| ------------------------ | ------------------------------- | ------------------------------------------------ |
+| `--unresolved`           | `comments list`                 | Only open threads                                |
+| `--json`                 | `comments list`, `comment`      | Machine-readable output                          |
+| `--role user\|assistant` | `comment`, `reply`              | Author of the message; default `assistant`       |
+| `--file <path>`          | `reply`, `resolve`, `unresolve` | Pick the file when an ID exists in several files |
+| `--`                     | all                             | End of options                                   |
 
 # Output
 
@@ -38,7 +38,7 @@ c:_42:_42  src/app.ts:42  open  2 messages
   This branch is dead code.
 ```
 
-* The second line is the first line of the first message.
-* With no comments it prints `no comments`.
-* `--json` prints the raw comment array, as stored in `.prv/comments.json` but without the `schema_version` wrapper.
-* Errors go to stderr as `prv <command>: <message>` and exit 1.
+- The second line is the first line of the first message.
+- With no comments it prints `no comments`.
+- `--json` prints the raw comment array, as stored in `.prv/comments.json` but without the `schema_version` wrapper.
+- Errors go to stderr as `prv <command>: <message>` and exit 1.

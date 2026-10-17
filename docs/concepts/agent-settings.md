@@ -13,10 +13,10 @@ Agent settings choose which local CLI answers and how. **One choice applies to e
 
 # Values
 
-| Setting | Claude Code (`claude`, default) | Codex (`codex`) |
-|---|---|---|
-| model | `default`, `fable`, `opus`, `sonnet`, `haiku`, or a custom name | `default` or a custom name |
-| effort | `default`, `low`, `medium`, `high`, `xhigh`, `max` | `default`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |
+| Setting | Claude Code (`claude`, default)                                 | Codex (`codex`)                                               |
+| ------- | --------------------------------------------------------------- | ------------------------------------------------------------- |
+| model   | `default`, `fable`, `opus`, `sonnet`, `haiku`, or a custom name | `default` or a custom name                                    |
+| effort  | `default`, `low`, `medium`, `high`, `xhigh`, `max`              | `default`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |
 
 `default` leaves the value to the CLI's own configuration. Model maps to `--model`. Effort maps to `claude --effort` or Codex's `model_reasoning_effort`.
 

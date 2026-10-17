@@ -26,11 +26,11 @@ Finish review hands all your pending threads to the agent at once, like submitti
 
 # Compared with per-thread actions
 
-| Action | Threads per run | Can edit files |
-|---|---|---|
-| Ask agent | 1 | no |
-| Apply with agent | 1 | yes |
-| Finish review | every pending thread | yes |
+| Action           | Threads per run      | Can edit files |
+| ---------------- | -------------------- | -------------- |
+| Ask agent        | 1                    | no             |
+| Apply with agent | 1                    | yes            |
+| Finish review    | every pending thread | yes            |
 
 Results are saved through the browser, the only writer of the [comment store](/concepts/comment-store.md) while the UI runs.[^decisions]
 
