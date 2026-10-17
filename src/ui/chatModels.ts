@@ -21,7 +21,7 @@ export function fallbackModelList(agent: ChatAgent): ChatModelList {
 }
 
 /** The option `model` runs, or for "default" (`undefined`) the CLI's default model. Pure. */
-function resolveOption(
+export function resolveOption(
   list: ChatModelList,
   model: string | undefined,
 ): ChatModelOption | undefined {

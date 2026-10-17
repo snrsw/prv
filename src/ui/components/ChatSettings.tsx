@@ -7,7 +7,13 @@ import {
   isChatEffort,
   isChatModel,
 } from "../../shared/chat";
-import { defaultEffortFor, effortsFor, selectModel, useChatModels } from "../chatModels";
+import {
+  defaultEffortFor,
+  effortsFor,
+  resolveOption,
+  selectModel,
+  useChatModels,
+} from "../chatModels";
 import { useChatSettings } from "../chatSettings";
 
 const CUSTOM = "__custom__";
@@ -44,6 +50,11 @@ export function ChatSettings({ disabled }: { disabled: boolean }) {
   const efforts =
     settings.effort && !offered.includes(settings.effort) ? [...offered, settings.effort] : offered;
   const defaultEffort = defaultEffortFor(list, settings.model);
+  // Native <option> titles are not shown on every platform, so the running
+  // model's description gets its own line. An empty custom field runs the
+  // CLI default but should not describe it as if it had been picked.
+  const description =
+    custom && !settings.model ? undefined : resolveOption(list, settings.model)?.description;
 
   const onAgentChange = (value: string) => {
     if (!isChatAgent(value) || value === agent) return;
@@ -118,6 +129,11 @@ export function ChatSettings({ disabled }: { disabled: boolean }) {
           spellCheck={false}
           onChange={(e) => onDraftChange(e.target.value)}
         />
+      )}
+      {description && (
+        <p className="chat-setting-hint" title={description}>
+          {description}
+        </p>
       )}
       <label className="chat-setting">
         <span className="chat-setting-label">effort</span>

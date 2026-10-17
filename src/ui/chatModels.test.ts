@@ -1,6 +1,12 @@
 import { test, expect, describe } from "bun:test";
 import type { ChatModelList } from "../shared/chat";
-import { defaultEffortFor, effortsFor, fallbackModelList, selectModel } from "./chatModels";
+import {
+  defaultEffortFor,
+  effortsFor,
+  fallbackModelList,
+  resolveOption,
+  selectModel,
+} from "./chatModels";
 
 const CODEX: ChatModelList = {
   models: [
@@ -40,6 +46,15 @@ describe("effortsFor", () => {
       "xhigh",
       "max",
     ]);
+  });
+});
+
+describe("resolveOption", () => {
+  test("is the selected model, or the CLI's default model for 'default'", () => {
+    expect(resolveOption(CODEX, "luna")?.label).toBe("Luna");
+    expect(resolveOption(CODEX, undefined)?.label).toBe("Sol");
+    expect(resolveOption(CODEX, "custom-model")).toBeUndefined();
+    expect(resolveOption({ models: CODEX.models }, undefined)).toBeUndefined();
   });
 });
 
