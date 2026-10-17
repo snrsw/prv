@@ -1,7 +1,7 @@
 # Notation
 
 - [File status](/notation/file-status.md) - Icons, counts, and diffstat squares that mark how a file changed.
-- [Diff lines](/notation/diff-lines.md) - Row markers, hunk headers, expanders, and line tints in the diff and File view.
+- [Diff lines](/notation/diff-lines.md) - Row markers, hunk headers, expanders, and line tints in the diff and File view, and the Rendered/Source toggle for Markdown files.
 - [Comment states](/notation/comment-states.md) - Open, resolved, and pending threads, and where a thread is placed.
 - [Review findings](/notation/review-findings.md) - Severity and lens values on agent-review comments, and lens run phases.
 - [Comment IDs](/notation/comment-ids.md) - The `c:` and `r:` ID formats and the line-range labels.
