@@ -18,21 +18,14 @@ import {
   keyOfRow,
   lineMaps,
   rangeLabel,
-  relocateComment,
   type LineSide,
 } from "../lineContext";
+import { useFileComments } from "../useFileComments";
+import { useHighlightedLines } from "../useHighlightedLines";
+import { usePlusDrag, type HoverPlus } from "../usePlusDrag";
+import { useShownDiff } from "../useShownDiff";
 import { fileLevelContext, isFileLevelComment } from "../reviewComments";
-import {
-  EXPAND_STEP,
-  addRange,
-  expandFile,
-  gapsOf,
-  revealRange,
-  splitLines,
-  type ExpandDirection,
-  type Gap,
-  type LineRange,
-} from "../hunkExpand";
+import { EXPAND_STEP, splitLines, type ExpandDirection, type Gap } from "../hunkExpand";
 import { splitPath } from "../paths";
 import { fileTotals } from "../totals";
 import { describeBlock, fileMarks, type FileMarks } from "../fileMarks";
@@ -49,12 +42,6 @@ const MARKED_LINE = ".file-line-num.is-marked";
 
 /** A comment anchored under one diff line (its range's last line). */
 type Thread = { id: string; side: LineSide; endLine: number };
-
-/** Where the floating "comment" affordance is shown while hovering a line. */
-type HoverPlus = { gi: number; top: number };
-
-/** In-progress drag from the "+" button, as a span over the global diff-line index. */
-type DragSel = { startGi: number; endGi: number };
 
 /** The gutter cells a keyboard can land on (split view's blank fillers are not lines). */
 const GUTTER_CELL = ".d2h-code-linenumber, .d2h-code-side-linenumber";
@@ -102,8 +89,7 @@ function PathParts({ path }: { path: string }) {
   );
 }
 
-// Must match .file-content-pre code.hljs vertical padding and var(--fs-code-lh) in styles.css.
-const FILE_CODE_PADDING_TOP = 8;
+// Must match var(--fs-code-lh) in styles.css.
 const FILE_LINE_HEIGHT = 20;
 
 export function DiffPanel({
@@ -157,14 +143,8 @@ export function DiffPanel({
   const fileBodyRef = useRef<HTMLDivElement>(null);
   const scrollHintRef = useRef<{ line: number; screenY: number } | null>(null);
 
-  // Context the reader has asked to see, as new-side line ranges, plus the
-  // file's own lines to fill them from (fetched on the first expand click).
-  const [reveals, setReveals] = useState<LineRange[]>([]);
-  const [source, setSource] = useState<string[] | null>(null);
-  const sourceRef = useRef<Promise<string[] | null> | null>(null);
   const modeKey = useMemo(() => JSON.stringify(mode), [mode]);
 
-  const [hoverPlus, setHoverPlus] = useState<HoverPlus | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   // Stable portal containers (one per thread) — moved into the freshly rendered
   // diff DOM after each render so a thread's React subtree (and its WebSocket)
@@ -174,53 +154,29 @@ export function DiffPanel({
   // Bumped whenever the diff DOM is (re)built, so the anchoring effect re-runs.
   const [renderTick, setRenderTick] = useState(0);
 
-  // The diff as currently shown: the original one, with any revealed context
-  // folded in. Everything downstream (rendering, anchoring, selection) reads
-  // this, so expanded context behaves exactly like context git sent us.
-  const shown = useMemo(
-    () => (source ? expandFile(file, source, reveals) : file),
-    [file, source, reveals],
-  );
-  const gaps = useMemo(
-    () => (file.binary ? [] : gapsOf(shown.hunks, source?.length ?? null)),
-    [shown.hunks, source, file.binary],
-  );
-
-  // A new diff (or a different comparison) hides everything again.
-  useEffect(() => {
-    sourceRef.current = null;
-    setSource(null);
-    setReveals((prev) => (prev.length === 0 ? prev : []));
-  }, [file.raw, modeKey]);
-
   // A renamed file's old side is read from where it used to live.
   const pathOn = useCallback(
     (side: FileSide): string => (side === "old" ? (file.oldPath ?? file.path) : file.path),
     [file.path, file.oldPath],
   );
 
-  const loadSource = useCallback(async (): Promise<string[] | null> => {
+  // The file's lines, for revealing context the diff hides.
+  const fetchSource = useCallback(async (): Promise<string[] | null> => {
     if (!mode) return null;
-    if (!sourceRef.current) {
-      const side: FileSide = file.status === "deleted" ? "old" : "new";
-      sourceRef.current = fetchFileContent(mode, pathOn(side), side)
-        .then((res) => (res.kind === "text" ? splitLines(res.content) : null))
-        .catch(() => null);
-    }
-    const lines = await sourceRef.current;
-    if (lines) setSource(lines);
-    return lines;
+    const side: FileSide = file.status === "deleted" ? "old" : "new";
+    const res = await fetchFileContent(mode, pathOn(side), side);
+    return res.kind === "text" ? splitLines(res.content) : null;
   }, [mode, pathOn, file.status]);
 
-  const onExpand = useCallback(
-    async (gap: Gap, direction: ExpandDirection) => {
-      const range = revealRange(gap, direction);
-      if (!range) return;
-      if (!(await loadSource())) return;
-      setReveals((prev) => addRange(prev, range));
-    },
-    [loadSource],
-  );
+  // The diff as the Diff view shows it (expanded context folded in), and
+  // where each comment goes in it.
+  const { shown, gaps, onExpand, anchored, orphaned } = useShownDiff({
+    file,
+    comments,
+    expanded,
+    resetKey: modeKey,
+    fetchSource,
+  });
 
   useEffect(() => {
     if (!expanded || !ref.current) return;
@@ -251,11 +207,6 @@ export function DiffPanel({
     injectExpanders(root, gaps, shown.hunks.length, outputFormat, onExpand);
   }, [renderTick, gaps, shown.hunks.length, outputFormat, view, file.binary, onExpand]);
 
-  // Range selection by dragging from the "+" button. The live drag lives in a
-  // ref (read by the wrap's pointer handlers without stale closures);
-  // `dragViz` mirrors it for render.
-  const dragRef = useRef<DragSel | null>(null);
-  const [dragViz, setDragViz] = useState<DragSel | null>(null);
   // Keyboard range (#56): Shift+↑/↓ from a focused gutter cell. Mirrored in
   // a ref so the keydown handler never reads a stale range.
   const keySelRef = useRef<GutterSel | null>(null);
@@ -290,38 +241,15 @@ export function DiffPanel({
     return c;
   };
 
-  /** Open (or re-open) a thread on the range; returns its comment id. */
-  const openThread = useCallback(
-    (giA: number, giB: number): string => {
-      const lo = Math.min(giA, giB);
-      const hi = Math.max(giA, giB);
-      const start = keyOfRow(rows[lo]!);
-      const end = keyOfRow(rows[hi]!);
+  /** Open (or re-open) a thread on a range; returns its comment id. */
+  const createThread = useCallback(
+    ({ start, end, anchorText }: Pick<Comment, "start" | "end" | "anchorText">): string => {
       const id = commentId(start, end);
-      addComment({
-        id,
-        file: file.path,
-        start,
-        end,
-        anchorText: anchorTextOf(rows.slice(lo, hi + 1)),
-        status: "open",
-        messages: [],
-      });
-      setHoverPlus(null);
+      addComment({ id, file: file.path, start, end, anchorText, status: "open", messages: [] });
       return id;
     },
-    [file, addComment, rows],
+    [file.path, addComment],
   );
-
-  // Place each comment in the current diff: relocated → anchored under its last
-  // line; null → "orphaned" (its lines changed) and rendered below.
-  const { anchored, orphaned } = useMemo(() => {
-    const located = comments.map((c) => ({ comment: c, loc: relocateComment(shown, c) }));
-    return {
-      anchored: located.flatMap(({ comment, loc }) => (loc ? [{ comment, loc }] : [])),
-      orphaned: located.flatMap(({ comment, loc }) => (loc ? [] : [comment])),
-    };
-  }, [comments, shown]);
 
   // The line key of a gutter cell, then its global index.
   const keyFromCell = useCallback((cell: HTMLElement): LineKey | null => {
@@ -363,33 +291,29 @@ export function DiffPanel({
     return cell ? giFromCell(cell) : null;
   };
 
-  // Only the "+" button starts a drag, so code text stays selectable. Pointer
-  // capture delivers every move/up during the drag to the wrap, even outside it.
-  const beginDrag = (e: React.PointerEvent, gi: number) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    wrapRef.current?.setPointerCapture(e.pointerId);
-    dragRef.current = { startGi: gi, endGi: gi };
-    setDragViz(dragRef.current);
-    setHoverPlus(null);
-  };
+  // Range selection by dragging from the "+" button, over global indexes.
+  const plus = usePlusDrag({
+    wrapRef,
+    lineAt: (target) => {
+      const cell = cellFromTarget(target);
+      const gi = cell ? giFromCell(cell) : null;
+      return cell && gi != null ? { cell, index: gi } : null;
+    },
+    indexAtPoint: giAtPoint,
+    onSelect: (a, b) => openThread(a, b),
+  });
+  const dragViz = plus.dragViz;
 
-  const onDiffPointerMove = (e: React.PointerEvent) => {
-    const drag = dragRef.current;
-    if (!drag) return;
-    const gi = giAtPoint(e.clientX, e.clientY);
-    if (gi != null && gi !== drag.endGi) {
-      dragRef.current = { ...drag, endGi: gi };
-      setDragViz(dragRef.current);
-    }
-  };
-
-  const onDiffPointerUp = () => {
-    const drag = dragRef.current;
-    if (!drag) return;
-    dragRef.current = null;
-    setDragViz(null);
-    openThread(drag.startGi, drag.endGi);
+  /** Open (or re-open) a thread on the diff range; returns its comment id. */
+  const openThread = (giA: number, giB: number): string => {
+    const lo = Math.min(giA, giB);
+    const hi = Math.max(giA, giB);
+    plus.setHoverPlus(null);
+    return createThread({
+      start: keyOfRow(rows[lo]!),
+      end: keyOfRow(rows[hi]!),
+      anchorText: anchorTextOf(rows.slice(lo, hi + 1)),
+    });
   };
 
   // Tint the lines covered by (a) the in-progress drag and (b) every open
@@ -412,7 +336,7 @@ export function DiffPanel({
     for (const { loc, comment } of anchored) {
       if (comment.status === "open") mark(loc.lo, loc.hi, "prv-line-commented");
     }
-    const sel = dragViz ?? keySel;
+    const sel = dragViz ? { startGi: dragViz.start, endGi: dragViz.end } : keySel;
     if (sel) {
       mark(Math.min(sel.startGi, sel.endGi), Math.max(sel.startGi, sel.endGi), "prv-line-selected");
     }
@@ -530,23 +454,6 @@ export function DiffPanel({
     else pendingFocusRef.current = { kind: "thread", id };
   };
 
-  const onDiffMouseOver = (e: React.MouseEvent) => {
-    if (dragRef.current) return; // an active drag is handled by the pointer handlers
-    const wrap = wrapRef.current;
-    if (!wrap) return;
-    const target = e.target as HTMLElement;
-    // Keep the affordance while the pointer is on it or inside an open thread.
-    if (target.closest(".prv-add-comment, .prv-thread")) return;
-    const cell = cellFromTarget(target);
-    const gi = cell ? giFromCell(cell) : null;
-    if (!cell || gi == null) {
-      setHoverPlus(null);
-      return;
-    }
-    const top = cell.getBoundingClientRect().top - wrap.getBoundingClientRect().top;
-    setHoverPlus({ gi, top });
-  };
-
   useEffect(() => {
     if (!expanded || view !== "file" || file.binary || !mode) return;
     const key = JSON.stringify({ p: file.path, s: file.status, m: mode });
@@ -590,15 +497,81 @@ export function DiffPanel({
   const marksVisible =
     !!marks && marks.blocks.length > 0 && (!isMarkdownPath(file.path) || mdView === "source");
 
+  // Comments in the File view, and what it lists below the file.
+  const fileComments = useFileComments({
+    file,
+    comments,
+    shown: view === "file" && !contentLoading && !contentError,
+    content,
+    side: contentSide,
+    mdView,
+    diffListed: orphaned,
+    createThread,
+  });
+  const fileModel = fileComments.model;
+
+  // Memoized so hovering and dragging in the File view do not rebuild its rows.
+  const fileCommenting = useMemo((): FileCommenting | null => {
+    if (!fileModel) return null;
+    const threads = new Map<number, React.ReactNode[]>();
+    for (const { comment, line, label, context } of fileModel.threads) {
+      const list = threads.get(line) ?? [];
+      list.push(
+        <CommentThread
+          key={comment.id}
+          file={file}
+          comment={comment}
+          placement="anchored"
+          label={label}
+          context={context}
+          onUpdate={(updater) => updateComment(comment.id, updater)}
+          onRemove={() => removeComment(comment.id)}
+          onApplied={onApplied}
+          focused={comment.id === focusedCommentId}
+          batchRunning={batchRunning}
+        />,
+      );
+      threads.set(line, list);
+    }
+    return { threads, commentedLines: fileModel.commentedLines, onSelect: fileModel.onSelect };
+  }, [fileModel, file, updateComment, removeComment, onApplied, focusedCommentId, batchRunning]);
+
+  // Comments shown below a view rather than on its lines.
+  const listedThreads = (list: Comment[]) =>
+    list.length > 0 && (
+      <div className="prv-orphaned">
+        {list.map((comment) => {
+          // Never-anchored review findings are file-level, not "moved".
+          const fileLevel = isFileLevelComment(comment);
+          return (
+            <CommentThread
+              key={comment.id}
+              file={file}
+              comment={comment}
+              placement={fileLevel ? "file-level" : "moved"}
+              label={fileLevel ? "" : "lines changed"}
+              context={fileLevel ? fileLevelContext(file.path) : orphanContext(file.path, comment)}
+              onUpdate={(updater) => updateComment(comment.id, updater)}
+              onRemove={() => removeComment(comment.id)}
+              onApplied={onApplied}
+              focused={comment.id === focusedCommentId}
+              batchRunning={batchRunning}
+            />
+          );
+        })}
+      </div>
+    );
+
   // Scroll to the next (or previous) change past the middle of the viewport,
   // so the reader can hop between changes in a long file. Marked lines come
   // in runs, one per change; only a run's first line is a stop, and it wraps.
   const jumpToChange = (direction: 1 | -1) => {
     const body = fileBodyRef.current;
     if (!body) return;
-    const starts = Array.from(body.querySelectorAll<HTMLElement>(MARKED_LINE)).filter(
-      (r) => !r.previousElementSibling?.classList.contains("is-marked"),
-    );
+    // Line rows are interleaved with thread rows, so a run is told by numbers.
+    const marked = Array.from(body.querySelectorAll<HTMLElement>(MARKED_LINE));
+    const lineOf = (r: HTMLElement | undefined) => Number(r?.textContent);
+    const starts = marked.filter((r, i) => lineOf(marked[i - 1]) !== lineOf(r) - 1);
     if (starts.length === 0) return;
     const mid = window.innerHeight / 2;
     const isNext = (r: HTMLElement) => r.getBoundingClientRect().top > mid + FILE_LINE_HEIGHT;
@@ -616,13 +589,12 @@ export function DiffPanel({
     const hint = scrollHintRef.current;
     if (!hint) return;
     scrollHintRef.current = null;
-    // Defer one frame so the file-body DOM is committed and laid out.
+    // Defer one frame so the file-body DOM is committed and laid out. The
+    // line's row is measured: thread rows above it shift it down.
     const id = window.setTimeout(() => {
-      const code = fileBodyRef.current?.querySelector<HTMLElement>(".file-content-pre code.hljs");
-      if (!code) return;
-      const codeTop = code.getBoundingClientRect().top;
-      const lineY = codeTop + FILE_CODE_PADDING_TOP + (hint.line - 1) * FILE_LINE_HEIGHT;
-      window.scrollBy({ top: lineY - hint.screenY });
+      const row = fileBodyRef.current?.querySelectorAll<HTMLElement>(".file-line")[hint.line - 1];
+      if (!row) return;
+      window.scrollBy({ top: row.getBoundingClientRect().top - hint.screenY });
     }, 0);
     return () => window.clearTimeout(id);
   }, [expanded, view, content]);
@@ -755,25 +727,14 @@ export function DiffPanel({
         <div
           className={`prv-diff-wrap ${dragViz ? "prv-dragging" : ""}`}
           ref={wrapRef}
-          onPointerMove={onDiffPointerMove}
-          onPointerUp={onDiffPointerUp}
-          onMouseOver={onDiffMouseOver}
-          onMouseLeave={() => setHoverPlus(null)}
+          {...plus.handlers}
           onFocus={onDiffFocus}
           onBlur={onDiffBlur}
           onKeyDown={onDiffKeyDown}
         >
           <div className="file-card-body" ref={ref} />
-          {hoverPlus && !file.binary && (
-            <button
-              type="button"
-              className="prv-add-comment"
-              style={{ top: hoverPlus.top }}
-              title="Comment on this line (drag to select a range)"
-              onPointerDown={(e) => beginDrag(e, hoverPlus.gi)}
-            >
-              +
-            </button>
+          {plus.hoverPlus && !file.binary && (
+            <AddCommentButton hover={plus.hoverPlus} beginDrag={plus.beginDrag} />
           )}
           {anchored.map(({ comment, loc }) =>
             createPortal(
@@ -792,45 +753,25 @@ export function DiffPanel({
               getContainer(comment.id),
             ),
           )}
-          {orphaned.length > 0 && (
-            <div className="prv-orphaned">
-              {orphaned.map((comment) => {
-                // Never-anchored review findings are file-level, not "moved".
-                const fileLevel = isFileLevelComment(comment);
-                return (
-                  <CommentThread
-                    key={comment.id}
-                    file={file}
-                    comment={comment}
-                    placement={fileLevel ? "file-level" : "moved"}
-                    label={fileLevel ? "" : "lines changed"}
-                    context={
-                      fileLevel ? fileLevelContext(file.path) : orphanContext(file.path, comment)
-                    }
-                    onUpdate={(updater) => updateComment(comment.id, updater)}
-                    onRemove={() => removeComment(comment.id)}
-                    onApplied={onApplied}
-                    focused={comment.id === focusedCommentId}
-                    batchRunning={batchRunning}
-                  />
-                );
-              })}
-            </div>
-          )}
+          {listedThreads(orphaned)}
         </div>
       )}
       {expanded && view === "file" && (
-        <div className="file-card-body" ref={fileBodyRef}>
-          <FileContentView
-            file={file}
-            content={content}
-            marks={marks}
-            mdView={mdView}
-            setMdView={(v) => setUi({ mdView: v })}
-            loading={contentLoading}
-            error={contentError}
-          />
-        </div>
+        <>
+          <div className="file-card-body" ref={fileBodyRef}>
+            <FileContentView
+              file={file}
+              content={content}
+              marks={marks}
+              mdView={mdView}
+              setMdView={(v) => setUi({ mdView: v })}
+              loading={contentLoading}
+              error={contentError}
+              commenting={fileCommenting}
+            />
+          </div>
+          {listedThreads(fileComments.listed)}
+        </>
       )}
     </section>
   );
@@ -1086,6 +1027,7 @@ function FileContentView({
   setMdView,
   loading,
   error,
+  commenting,
 }: {
   file: FileDiff;
   content: FileContent | null;
@@ -1094,6 +1036,7 @@ function FileContentView({
   setMdView: (v: MdView) => void;
   loading: boolean;
   error: string | null;
+  commenting: FileCommenting | null;
 }) {
   if (error) return <div className="file-content-notice">Error: {error}</div>;
   if (loading || content === null) return <div className="file-content-notice">loading…</div>;
@@ -1113,10 +1056,18 @@ function FileContentView({
         marks={marks}
         md={mdView}
         setMd={setMdView}
+        commenting={commenting}
       />
     );
   }
-  return <FileContentCode path={file.path} text={content.content} marks={marks} />;
+  return (
+    <FileContentCode
+      path={file.path}
+      text={content.content}
+      marks={marks}
+      commenting={commenting}
+    />
+  );
 }
 
 /**
@@ -1130,12 +1081,14 @@ function MarkdownFileView({
   marks,
   md,
   setMd,
+  commenting,
 }: {
   path: string;
   text: string;
   marks: FileMarks | null;
   md: MdView;
   setMd: (v: MdView) => void;
+  commenting: FileCommenting | null;
 }) {
   const changes = marks?.blocks.length ?? 0;
   return (
@@ -1173,110 +1126,175 @@ function MarkdownFileView({
       {md === "rendered" ? (
         <Markdown source={text} />
       ) : (
-        <FileContentCode path={path} text={text} marks={marks} />
+        <FileContentCode path={path} text={text} marks={marks} commenting={commenting} />
       )}
     </div>
   );
 }
 
+/** What the File view needs to take comments; null where it takes none. */
+type FileCommenting = {
+  /** Thread elements by the line they render under (0: above line 1). */
+  threads: Map<number, React.ReactNode[]>;
+  /** Lines covered by an open comment, tinted like the Diff view's. */
+  commentedLines: Set<number>;
+  /** Open a thread on lines a..b, in either order. */
+  onSelect: (a: number, b: number) => void;
+};
+
+/**
+ * The File view's code, one row per line: a gutter cell and a code cell, with
+ * any comment threads in full-width rows under the line they anchor to.
+ */
 function FileContentCode({
   path,
   text,
   marks,
+  commenting,
 }: {
   path: string;
   text: string;
   marks: FileMarks | null;
+  commenting: FileCommenting | null;
 }) {
-  const codeRef = useRef<HTMLElement>(null);
-  const count = useMemo(() => countLines(text), [text]);
-  // Paint plain text first, then highlight on the next idle frame so the
-  // user isn't blocked on hljs parsing for large files.
-  useEffect(() => {
-    if (!codeRef.current) return;
-    const el = codeRef.current;
-    const run = () => {
-      el.removeAttribute("data-highlighted");
-      hljs.highlightElement(el);
-    };
-    const idle = (
-      window as unknown as {
-        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
-        cancelIdleCallback?: (id: number) => void;
-      }
-    ).requestIdleCallback;
-    if (idle) {
-      const id = idle(run, { timeout: 200 });
-      return () => {
-        const cancel = (window as unknown as { cancelIdleCallback?: (id: number) => void })
-          .cancelIdleCallback;
-        if (cancel) cancel(id);
-      };
-    }
-    const id = window.setTimeout(run, 0);
-    return () => window.clearTimeout(id);
-  }, [text]);
-  return (
-    <div className="file-content-wrap">
-      <FileGutter count={count} marks={marks} />
-      <pre className="file-content-pre">
-        <code ref={codeRef} className={`hljs language-${languageHint(path)}`}>
-          {text}
-        </code>
-      </pre>
-    </div>
-  );
-}
+  const lines = useMemo(() => splitLines(text), [text]);
+  // Plain text paints first; highlighted lines replace it once ready.
+  const htmlLines = useHighlightedLines(text, languageHint(path));
 
-/**
- * The File view's line-number column, tinted like the diff view's gutter:
- * green for lines the diff added, yellow for lines that replaced others (red
- * for every line of a deleted file), each with a bar at the left edge whose
- * pattern also tells them apart. Where lines were removed there is no row to
- * tint, so a red wedge marks the seam: on the line that follows the removal,
- * or the bottom of the last line at EOF. Every mark explains itself on hover.
- */
-function FileGutter({ count, marks }: { count: number; marks: FileMarks | null }) {
+  // "+" on a hovered line's gutter; pressing it and dragging selects lines.
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const plus = usePlusDrag({
+    wrapRef,
+    lineAt: (target) => fileLineAt(wrapRef.current, target),
+    indexAtPoint: (x, y) =>
+      fileLineAt(wrapRef.current, document.elementFromPoint(x, y))?.index ?? null,
+    onSelect: (a, b) => commenting?.onSelect(a, b),
+  });
+  const drag = plus.dragViz;
+  const [selLo, selHi] = dragSpan(drag);
+
   const rows = useMemo(() => {
     const out: React.ReactNode[] = [];
-    for (let n = 1; n <= count; n++) {
-      const block = marks?.lines.get(n);
-      const gapBefore = marks?.gaps.get(n);
-      const gapAfter = n === count ? marks?.gaps.get(count + 1) : undefined;
+    const threadRow = (n: number) => {
+      const threads = commenting?.threads.get(n);
+      if (!threads) return;
+      out.push(
+        <div key={`t${n}`} className="file-thread-row">
+          <div>{threads}</div>
+        </div>,
+      );
+    };
+    threadRow(0);
+    for (let n = 1; n <= lines.length; n++) {
+      // Both tints may apply; styles.css decides which shows, as in the Diff view.
       const cls = [
-        "file-line-num",
-        block || gapBefore || gapAfter ? "is-marked" : "",
-        block ? `is-${block.kind}` : "",
-        gapBefore ? "has-gap-before" : "",
-        gapAfter ? "has-gap-after" : "",
+        "file-line",
+        n >= selLo && n <= selHi ? "prv-line-selected" : "",
+        commenting?.commentedLines.has(n) ? "prv-line-commented" : "",
       ]
         .filter(Boolean)
         .join(" ");
-      // A line inside a replacement already describes the whole block, lost
-      // lines included; only a bare seam needs its own words.
-      const described = block ?? gapBefore ?? gapAfter;
-      const title = described && marks ? describeBlock(described, marks.side) : undefined;
+      const html = htmlLines?.[n - 1];
       out.push(
-        <span key={n} className={cls} title={title}>
-          {n}
-        </span>,
+        <div key={n} className={cls} data-line={n}>
+          <span className="file-line-gutter" aria-hidden="true">
+            <FileLineNum n={n} count={lines.length} marks={marks} />
+          </span>
+          {html === undefined ? (
+            <span className="file-line-code">{lines[n - 1]}</span>
+          ) : (
+            <span className="file-line-code" dangerouslySetInnerHTML={{ __html: html }} />
+          )}
+        </div>,
       );
+      threadRow(n);
     }
     return out;
-  }, [count, marks]);
+  }, [lines, htmlLines, marks, commenting, selLo, selHi]);
+
   return (
-    <div className="file-content-gutter" aria-hidden="true">
-      {rows}
+    <div
+      className={`file-content-wrap ${drag ? "prv-dragging" : ""}`}
+      ref={wrapRef}
+      {...(commenting ? plus.handlers : {})}
+    >
+      <div className="file-content-scroll">
+        <div className="file-content-rows">{rows}</div>
+      </div>
+      {commenting && plus.hoverPlus && (
+        <AddCommentButton hover={plus.hoverPlus} beginDrag={plus.beginDrag} />
+      )}
     </div>
   );
 }
 
-function countLines(text: string): number {
-  if (text.length === 0) return 0;
-  let n = 0;
-  for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) n++;
-  if (text.charCodeAt(text.length - 1) !== 10) n++;
-  return n || 1;
+/** The File-view line row under `el` inside `wrap`: its gutter cell and line number. */
+function fileLineAt(
+  wrap: HTMLElement | null,
+  el: Element | null,
+): { cell: HTMLElement; index: number } | null {
+  const row = el?.closest<HTMLElement>(".file-line");
+  const cell = row?.querySelector<HTMLElement>(".file-line-gutter");
+  if (!row || !cell || !wrap?.contains(row)) return null;
+  return { cell, index: Number(row.dataset.line) };
+}
+
+/** A drag's lines as [lo, hi]; an empty span when there is no drag. */
+function dragSpan(drag: { start: number; end: number } | null): [number, number] {
+  return drag ? [Math.min(drag.start, drag.end), Math.max(drag.start, drag.end)] : [0, -1];
+}
+
+/**
+ * A File-view line number, tinted like the diff view's gutter: green for
+ * lines the diff added, yellow for lines that replaced others (red for every
+ * line of a deleted file), each with a bar at the left edge whose pattern
+ * also tells them apart. Where lines were removed there is no row to tint, so
+ * a red wedge marks the seam: on the line that follows the removal, or the
+ * bottom of the last line at EOF. Every mark explains itself on hover.
+ */
+function FileLineNum({ n, count, marks }: { n: number; count: number; marks: FileMarks | null }) {
+  const block = marks?.lines.get(n);
+  const gapBefore = marks?.gaps.get(n);
+  const gapAfter = n === count ? marks?.gaps.get(count + 1) : undefined;
+  const cls = [
+    "file-line-num",
+    block || gapBefore || gapAfter ? "is-marked" : "",
+    block ? `is-${block.kind}` : "",
+    gapBefore ? "has-gap-before" : "",
+    gapAfter ? "has-gap-after" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  // A line inside a replacement already describes the whole block, lost
+  // lines included; only a bare seam needs its own words.
+  const described = block ?? gapBefore ?? gapAfter;
+  const title = described && marks ? describeBlock(described, marks.side) : undefined;
+  return (
+    <span className={cls} title={title}>
+      {n}
+    </span>
+  );
+}
+
+/** The floating "comment on this line" button, at the hovered line's gutter. */
+function AddCommentButton({
+  hover,
+  beginDrag,
+}: {
+  hover: HoverPlus;
+  beginDrag: (e: React.PointerEvent, index: number) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="prv-add-comment"
+      style={{ top: hover.top }}
+      title="Comment on this line (drag to select a range)"
+      onPointerDown={(e) => beginDrag(e, hover.index)}
+    >
+      +
+    </button>
+  );
 }
 
 const LANGUAGE_BY_EXT: Record<string, string> = {

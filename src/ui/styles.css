@@ -1112,21 +1112,44 @@ html.prv-col-resize * {
   box-shadow: var(--shadow-sm);
 }
 
+/* The File view: one row per line (gutter cell + code cell), with comment
+   threads in rows between them. Wrapped so the "+" button can sit over the
+   gutter while the rows scroll sideways. */
 .file-content-wrap {
-  display: flex;
-  align-items: stretch;
+  position: relative;
   background: var(--canvas-default);
 }
-.file-content-gutter {
-  margin: 0;
-  /* Vertical padding only: each line paints its own row edge to edge, so a
-     tinted line fills the gutter's full width like the diff view's does. */
+.file-content-scroll {
+  overflow-x: auto;
+  /* Thread rows size to this visible width (100cqi), like the diff's (#76). */
+  container-type: inline-size;
   padding: var(--sp-2) 0;
-  flex: 0 0 auto;
-  width: 96px;
   font-family: var(--ff-mono);
   font-size: var(--fs-code);
   line-height: var(--fs-code-lh);
+  /* The gutter column (and its divider) through the top and bottom padding,
+     where there are no rows; the background stays put on sideways scroll. */
+  background: linear-gradient(
+    to right,
+    var(--canvas-subtle) 95px,
+    var(--border-muted) 95px 96px,
+    var(--canvas-default) 96px
+  );
+}
+/* As wide as the longest line, so every row's tint runs the full width. */
+.file-content-rows {
+  width: max-content;
+  min-width: 100%;
+}
+.file-line {
+  display: flex;
+}
+/* Sticky and opaque, so line numbers stay put while long lines scroll. */
+.file-line-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  flex: 0 0 96px;
   color: var(--fg-subtle);
   background: var(--canvas-subtle);
   /* Inset shadow draws the divider without consuming layout width, so the
@@ -1135,9 +1158,25 @@ html.prv-col-resize * {
   text-align: right;
   user-select: none;
   white-space: pre;
-  box-sizing: border-box;
 }
-/* One row per line, the same height as its code line (var(--fs-code-lh)).
+.file-line-code {
+  flex: 1 0 auto;
+  white-space: pre;
+  /* Align with diff: 1px d2h-cntx td padding + 8px line padding
+     + 1ch (+/− prefix slot) + 6px margin
+     + 1ch (whitespace between the two inline-block spans in d2h's markup). */
+  padding: 0 8px 0 calc(9px + 2ch + 6px);
+  color: var(--fg-default);
+}
+.file-thread-row {
+  background: var(--canvas-subtle);
+}
+.file-thread-row > div {
+  position: sticky;
+  left: 0;
+  width: 100cqi;
+}
+/* One per line, the same height as its code line (var(--fs-code-lh)).
    Tints mirror the diff view's gutter so a reader can carry the colours over;
    a 3px bar at the left edge (solid for added / deleted, dashed for replaced)
    tells the kinds apart without relying on hue alone. */
@@ -1231,26 +1270,6 @@ html.prv-col-resize * {
   padding: 0 var(--sp-1);
   white-space: nowrap;
 }
-.file-content-pre {
-  margin: 0;
-  padding: 0;
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-x: auto;
-  font-family: var(--ff-mono);
-  font-size: var(--fs-code);
-  line-height: var(--fs-code-lh);
-  background: var(--canvas-default);
-}
-.file-content-pre code.hljs {
-  display: block;
-  /* Align with diff: 1px d2h-cntx td padding + 8px line padding
-     + 1ch (+/− prefix slot) + 6px margin
-     + 1ch (whitespace between the two inline-block spans in d2h's markup). */
-  padding: var(--sp-2) 8px var(--sp-2) calc(9px + 2ch + 6px);
-  background: var(--canvas-default);
-}
-
 .file-content-notice {
   padding: var(--sp-4);
   color: var(--fg-muted);
@@ -1927,22 +1946,32 @@ tr.prv-expand-clickable:hover .d2h-info {
   outline-offset: -2px;
 }
 /* Lines covered by the in-progress range drag / by an open comment.
- * The class lives on the <tr>; selectors are specific enough (and cover the
- * inner content divs) to win over diff2html's add/delete background rules,
- * which are !important and 2-class specific. */
+ * The class lives on the <tr> (the File view's line row); selectors are
+ * specific enough (and cover the inner content divs) to win over diff2html's
+ * add/delete background rules, which are !important and 2-class specific. */
 .prv-line-selected td,
 .prv-line-selected td.d2h-code-linenumber,
 .prv-line-selected td.d2h-code-side-linenumber,
 .prv-line-selected .d2h-code-line-ctn,
-.prv-line-selected .d2h-code-side-line {
+.prv-line-selected .d2h-code-side-line,
+.prv-line-selected .file-line-code {
   background: var(--accent-subtle) !important;
 }
 .prv-line-commented td,
 .prv-line-commented td.d2h-code-linenumber,
 .prv-line-commented td.d2h-code-side-linenumber,
 .prv-line-commented .d2h-code-line-ctn,
-.prv-line-commented .d2h-code-side-line {
+.prv-line-commented .d2h-code-side-line,
+.prv-line-commented .file-line-code {
   background: var(--attention-subtle) !important;
+}
+/* File-view gutter: tint the colour only, so the change-mark bar (a
+   background image) stays visible under a selection or comment. */
+.prv-line-selected .file-line-num {
+  background-color: var(--accent-subtle) !important;
+}
+.prv-line-commented .file-line-num {
+  background-color: var(--attention-subtle) !important;
 }
 .prv-line-commented td.d2h-code-linenumber,
 .prv-line-commented td.d2h-code-side-linenumber {
