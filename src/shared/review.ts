@@ -1,5 +1,6 @@
 /** Wire protocol and shared types for the /api/review WebSocket (agent review panel). */
 
+import type { ChatSettings } from "./chat";
 import type { Comment, ReviewSeverity } from "./comments";
 
 export type ReviewSide = "old" | "new";
@@ -23,9 +24,10 @@ export type LensId = "correctness" | "silent-failures" | "test-coverage";
 
 /**
  * Client → server: review the diff identified by `modeQuery` (an `encodeMode`
- * query string; empty falls back to the server's default mode).
+ * query string; empty falls back to the server's default mode). The agent
+ * settings (which CLI, model, effort) ride along like on a chat turn.
  */
-export type ReviewStart = { type: "start"; modeQuery: string };
+export type ReviewStart = ChatSettings & { type: "start"; modeQuery: string };
 
 /**
  * Server → client frames. Ordering per accepted start: `run`, then per lens
@@ -44,7 +46,7 @@ export type ReviewServerFrame =
   | { type: "done" };
 
 /** Per-connection state stored on the /api/review WebSocket. `abort` kills the
- * in-flight run's claude subprocesses when the client disconnects. */
+ * in-flight run's agent subprocesses when the client disconnects. */
 export type ReviewWsData = { kind: "review"; busy: boolean; abort?: AbortController };
 
 /** "Clear agent comments" removes open review comments no human has replied to. */

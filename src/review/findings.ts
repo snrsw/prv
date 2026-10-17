@@ -8,25 +8,11 @@
 
 import type { ReviewSeverity } from "../shared/comments";
 import type { ReviewFinding, ReviewSide } from "../shared/review";
+import { braceSlice, lastFencedBlock } from "./jsonBlock";
 
 export const MAX_FINDINGS_PER_LENS = 8;
 
 export type ParsedFindings = { findings: ReviewFinding[]; skipped: string[] };
-
-/** The last fenced code block's contents, or null if the reply has none. */
-function lastFencedBlock(reply: string): string | null {
-  const fence = /```[^\S\n]*\w*[^\S\n]*\n([\s\S]*?)```/g;
-  let last: string | null = null;
-  for (const match of reply.matchAll(fence)) last = match[1] ?? null;
-  return last;
-}
-
-/** The outermost `{`..`}` slice, or null when the reply has no brace pair. */
-function braceSlice(reply: string): string | null {
-  const open = reply.indexOf("{");
-  const close = reply.lastIndexOf("}");
-  return open >= 0 && close > open ? reply.slice(open, close + 1) : null;
-}
 
 /** Coerce a 1-based line number (accepts numeric strings); null when invalid. */
 function toLine(value: unknown): number | null {

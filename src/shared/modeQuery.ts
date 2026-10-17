@@ -2,20 +2,13 @@ import type { DiffMode } from "../diff/types";
 
 export function encodeMode(mode: DiffMode, params: URLSearchParams): void {
   params.set("mode", mode.kind);
-  if (mode.kind === "path-vs-path") {
-    params.set("a", mode.a);
-    params.set("b", mode.b);
-    return;
-  }
-  if (mode.kind === "ref-vs-path") {
-    params.set("cwd", mode.cwd);
-    params.set("ref", mode.ref);
-    params.set("path", mode.path);
-    params.set("refOnLeft", String(mode.refOnLeft));
-    return;
-  }
   params.set("cwd", mode.cwd);
+  if (mode.kind === "files") {
+    for (const p of mode.paths) params.append("path", p);
+    return;
+  }
   params.set("leftRef", mode.leftRef);
+  for (const p of mode.paths ?? []) params.append("path", p);
   if (mode.right.kind === "ref") {
     params.set("right", "ref");
     params.set("rightRef", mode.right.ref);
@@ -26,30 +19,24 @@ export function encodeMode(mode: DiffMode, params: URLSearchParams): void {
 
 export function decodeMode(params: URLSearchParams): DiffMode | null {
   const kind = params.get("mode");
-  if (kind === "path-vs-path") {
-    const a = params.get("a");
-    const b = params.get("b");
-    if (!a || !b) return null;
-    return { kind, a, b };
-  }
-  if (kind === "ref-vs-path") {
-    const cwd = params.get("cwd");
-    const ref = params.get("ref");
-    const path = params.get("path");
-    const refOnLeft = params.get("refOnLeft");
-    if (!cwd || !ref || !path || refOnLeft == null) return null;
-    return { kind, cwd, ref, path, refOnLeft: refOnLeft === "true" };
+  const cwd = params.get("cwd");
+  if (!cwd) return null;
+  if (kind === "files") {
+    const paths = params.getAll("path");
+    return paths.length > 0 ? { kind, cwd, paths } : null;
   }
   if (kind === "git") {
-    const cwd = params.get("cwd");
     const leftRef = params.get("leftRef");
     const right = params.get("right");
-    if (!cwd || !leftRef || !right) return null;
-    if (right === "worktree") return { kind, cwd, leftRef, right: { kind: "worktree" } };
+    if (!leftRef || !right) return null;
+    // `paths` is omitted (not `[]`) when absent so an unscoped mode round-trips as-is.
+    const paths = params.getAll("path");
+    const scope = paths.length > 0 ? { paths } : {};
+    if (right === "worktree") return { kind, cwd, leftRef, right: { kind: "worktree" }, ...scope };
     if (right === "ref") {
       const rightRef = params.get("rightRef");
       if (!rightRef) return null;
-      return { kind, cwd, leftRef, right: { kind: "ref", ref: rightRef } };
+      return { kind, cwd, leftRef, right: { kind: "ref", ref: rightRef }, ...scope };
     }
   }
   return null;

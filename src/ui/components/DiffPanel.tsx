@@ -3,9 +3,10 @@ import { createPortal } from "react-dom";
 import { html as diff2html } from "diff2html";
 import { Diff2HtmlUI } from "diff2html/lib/ui/js/diff2html-ui-base";
 import hljs from "highlight.js";
-import DOMPurify from "dompurify";
-import { isMarkdownPath, markdownToHtml } from "../markdown";
+import { isMarkdownPath } from "../markdown";
+import { Markdown } from "./Markdown";
 import type { DiffOutputFormat, FileContent, FileDiff, FileSide, ServerMode } from "../types";
+import type { FileUi } from "../useFileUiState";
 import { encodeMode } from "../../shared/modeQuery";
 import type { Comment, LineKey } from "../../shared/comments";
 import {
@@ -21,12 +22,30 @@ import {
   type LineSide,
 } from "../lineContext";
 import { fileLevelContext, isFileLevelComment } from "../reviewComments";
+import {
+  EXPAND_STEP,
+  addRange,
+  expandFile,
+  gapsOf,
+  revealRange,
+  splitLines,
+  type ExpandDirection,
+  type Gap,
+  type LineRange,
+} from "../hunkExpand";
+import { splitPath } from "../paths";
 import { fileTotals } from "../totals";
+import { describeBlock, fileMarks, type FileMarks } from "../fileMarks";
+import { gutterKeyAction, moveSelection, type GutterSel } from "../gutterKeys";
 import { CommentThread } from "./CommentThread";
 import { DiffStat } from "./DiffStat";
 import { CheckIcon, ChevronDown, ChevronRight } from "./icons";
 
-type View = "diff" | "file";
+/** The File view's sub-mode for Markdown files. */
+type MdView = NonNullable<FileUi["mdView"]>;
+
+/** Gutter rows that carry a change, for next/previous navigation. */
+const MARKED_LINE = ".file-line-num.is-marked";
 
 /** A comment anchored under one diff line (its range's last line). */
 type Thread = { id: string; side: LineSide; endLine: number };
@@ -36,6 +55,52 @@ type HoverPlus = { gi: number; top: number };
 
 /** In-progress gutter drag, as a span over the global diff-line index. */
 type DragSel = { startGi: number; endGi: number };
+
+/** The gutter cells a keyboard can land on (split view's blank fillers are not lines). */
+const GUTTER_CELL = ".d2h-code-linenumber, .d2h-code-side-linenumber";
+const GUTTER_FILLER = ["d2h-code-side-emptyplaceholder", "d2h-emptyplaceholder"];
+
+function gutterCells(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(GUTTER_CELL)).filter(
+    (cell) => !GUTTER_FILLER.some((cls) => cell.classList.contains(cls)),
+  );
+}
+
+function gutterCellOf(el: EventTarget | null): HTMLElement | null {
+  return el instanceof HTMLElement ? el.closest<HTMLElement>(GUTTER_CELL) : null;
+}
+
+/**
+ * Focus a gutter cell and keep it clear of the sticky topbar: `focus()`'s own
+ * minimal scroll would leave a line stepped up to under the bar.
+ */
+function focusCell(cell: HTMLElement): void {
+  cell.focus({ preventScroll: true });
+  cell.scrollIntoView({ block: "nearest" });
+  const bar = document.querySelector<HTMLElement>(".topbar");
+  const min = (bar?.offsetHeight ?? 0) + 8;
+  const top = cell.getBoundingClientRect().top;
+  if (top < min) window.scrollBy(0, top - min);
+}
+
+/**
+ * A path as a directory part that may be squeezed (from its left, so the
+ * segments nearest the file survive) and a file name that never is. The
+ * `<bdi>` keeps the slashes in reading order inside the RTL-overflow trick.
+ */
+function PathParts({ path }: { path: string }) {
+  const { dir, name } = splitPath(path);
+  return (
+    <>
+      {dir && (
+        <span className="file-card-dir">
+          <bdi>{dir}</bdi>
+        </span>
+      )}
+      <span className="file-card-name">{name}</span>
+    </>
+  );
+}
 
 // Must match .file-content-pre code.hljs vertical padding and var(--fs-code-lh) in styles.css.
 const FILE_CODE_PADDING_TOP = 8;
@@ -51,6 +116,10 @@ export function DiffPanel({
   updateComment,
   removeComment,
   onApplied,
+  ui,
+  setUi,
+  focusedCommentId,
+  batchRunning = false,
 }: {
   file: FileDiff;
   mode: ServerMode | null;
@@ -61,19 +130,39 @@ export function DiffPanel({
   updateComment: (id: string, updater: (c: Comment) => Comment) => void;
   removeComment: (id: string) => void;
   onApplied: () => void;
+  /** Viewed / collapsed / tab state, owned by App so it outlives a Refresh. */
+  ui: FileUi;
+  setUi: (patch: FileUi) => void;
+  /** The finding a jump just landed on (App flashes it), if it is in this file. */
+  focusedCommentId: string | null;
+  /** A "Finish review" batch is in flight; threads disable their agent buttons. */
+  batchRunning?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [expanded, setExpanded] = useState(true);
-  const [viewed, setViewed] = useState(false);
+  const expanded = !ui.collapsed;
+  const viewed = ui.viewed ?? false;
   const [copied, setCopied] = useState(false);
-  const [view, setView] = useState<View>("diff");
+  const view = ui.view ?? "diff";
+  // Rendered is the default since the main use case is reviewing agent-written
+  // plans; Source is the syntax-highlighted code view with the diff gutter.
+  const mdView = ui.mdView ?? "rendered";
   const [content, setContent] = useState<FileContent | null>(null);
+  // Which side `content` came from, so the File view's gutter can be marked
+  // with the diff as it applies to that side.
+  const [contentSide, setContentSide] = useState<FileSide>("new");
   const [contentLoading, setContentLoading] = useState(false);
   const [contentError, setContentError] = useState<string | null>(null);
   const totals = fileTotals(file);
   const lastFetchedKey = useRef<string | null>(null);
   const fileBodyRef = useRef<HTMLDivElement>(null);
   const scrollHintRef = useRef<{ line: number; screenY: number } | null>(null);
+
+  // Context the reader has asked to see, as new-side line ranges, plus the
+  // file's own lines to fill them from (fetched on the first expand click).
+  const [reveals, setReveals] = useState<LineRange[]>([]);
+  const [source, setSource] = useState<string[] | null>(null);
+  const sourceRef = useRef<Promise<string[] | null> | null>(null);
+  const modeKey = useMemo(() => JSON.stringify(mode), [mode]);
 
   const [hoverPlus, setHoverPlus] = useState<HoverPlus | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -85,6 +174,54 @@ export function DiffPanel({
   // Bumped whenever the diff DOM is (re)built, so the anchoring effect re-runs.
   const [renderTick, setRenderTick] = useState(0);
 
+  // The diff as currently shown: the original one, with any revealed context
+  // folded in. Everything downstream (rendering, anchoring, selection) reads
+  // this, so expanded context behaves exactly like context git sent us.
+  const shown = useMemo(
+    () => (source ? expandFile(file, source, reveals) : file),
+    [file, source, reveals],
+  );
+  const gaps = useMemo(
+    () => (file.binary ? [] : gapsOf(shown.hunks, source?.length ?? null)),
+    [shown.hunks, source, file.binary],
+  );
+
+  // A new diff (or a different comparison) hides everything again.
+  useEffect(() => {
+    sourceRef.current = null;
+    setSource(null);
+    setReveals((prev) => (prev.length === 0 ? prev : []));
+  }, [file.raw, modeKey]);
+
+  // A renamed file's old side is read from where it used to live.
+  const pathOn = useCallback(
+    (side: FileSide): string => (side === "old" ? (file.oldPath ?? file.path) : file.path),
+    [file.path, file.oldPath],
+  );
+
+  const loadSource = useCallback(async (): Promise<string[] | null> => {
+    if (!mode) return null;
+    if (!sourceRef.current) {
+      const side: FileSide = file.status === "deleted" ? "old" : "new";
+      sourceRef.current = fetchFileContent(mode, pathOn(side), side)
+        .then((res) => (res.kind === "text" ? splitLines(res.content) : null))
+        .catch(() => null);
+    }
+    const lines = await sourceRef.current;
+    if (lines) setSource(lines);
+    return lines;
+  }, [mode, pathOn, file.status]);
+
+  const onExpand = useCallback(
+    async (gap: Gap, direction: ExpandDirection) => {
+      const range = revealRange(gap, direction);
+      if (!range) return;
+      if (!(await loadSource())) return;
+      setReveals((prev) => addRange(prev, range));
+    },
+    [loadSource],
+  );
+
   useEffect(() => {
     if (!expanded || !ref.current) return;
     if (view !== "diff") return;
@@ -92,7 +229,7 @@ export function DiffPanel({
       ref.current.innerHTML = `<div class="binary-notice">Binary file differs</div>`;
       return;
     }
-    ref.current.innerHTML = diff2html(file.raw, {
+    ref.current.innerHTML = diff2html(shown.raw, {
       drawFileList: false,
       matching: "none",
       outputFormat: outputFormat === "split" ? "side-by-side" : "line-by-line",
@@ -105,16 +242,42 @@ export function DiffPanel({
     );
     ui.highlightCode();
     setRenderTick((t) => t + 1);
-  }, [file.raw, file.binary, expanded, view, outputFormat]);
+  }, [shown.raw, file.binary, expanded, view, outputFormat]);
+
+  // Turn every hunk header into an expander for the lines it hides.
+  useLayoutEffect(() => {
+    const root = ref.current;
+    if (!root || view !== "diff" || file.binary) return;
+    injectExpanders(root, gaps, shown.hunks.length, outputFormat, onExpand);
+  }, [renderTick, gaps, shown.hunks.length, outputFormat, view, file.binary, onExpand]);
 
   // Gutter drag selection. The live drag lives in a ref (read by a window
   // mouseup listener without stale closures); `dragViz` mirrors it for render.
   const dragRef = useRef<DragSel | null>(null);
   const [dragViz, setDragViz] = useState<DragSel | null>(null);
+  // Keyboard range (#56): Shift+↑/↓ from a focused gutter cell. Mirrored in
+  // a ref so the keydown handler never reads a stale range.
+  const keySelRef = useRef<GutterSel | null>(null);
+  const [keySel, setKeySel] = useState<GutterSel | null>(null);
+  const setSel = (sel: GutterSel | null) => {
+    keySelRef.current = sel;
+    setKeySel(sel);
+  };
+  // The line whose gutter cell is the card's Tab stop (tabindex="0"), by
+  // global index; null until the reader has focused a line here.
+  const rovingGiRef = useRef<number | null>(null);
+  // Where focus should go once the diff DOM settles: back to the gutter
+  // after Enter rebuilt it (hunk expand), or into a thread just opened. The
+  // gutter case waits for the rebuild (a new `renderTick`): the anchoring
+  // effect also runs on the commit that changes `shown`, when the old cells
+  // are still on screen and about to be thrown away.
+  const pendingFocusRef = useRef<
+    { kind: "gutter"; tick: number } | { kind: "thread"; id: string } | null
+  >(null);
 
   // Flatten the diff into a single global-index (gi) line list, so a range can
   // span deleted and added lines (and, in split, both columns).
-  const rows = useMemo(() => flattenDiff(file), [file]);
+  const rows = useMemo(() => flattenDiff(shown), [shown]);
   const maps = useMemo(() => lineMaps(rows), [rows]);
 
   const getContainer = (id: string): HTMLDivElement => {
@@ -126,14 +289,16 @@ export function DiffPanel({
     return c;
   };
 
+  /** Open (or re-open) a thread on the range; returns its comment id. */
   const openThread = useCallback(
-    (giA: number, giB: number) => {
+    (giA: number, giB: number): string => {
       const lo = Math.min(giA, giB);
       const hi = Math.max(giA, giB);
       const start = keyOfRow(rows[lo]!);
       const end = keyOfRow(rows[hi]!);
+      const id = commentId(start, end);
       addComment({
-        id: commentId(start, end),
+        id,
         file: file.path,
         start,
         end,
@@ -142,6 +307,7 @@ export function DiffPanel({
         messages: [],
       });
       setHoverPlus(null);
+      return id;
     },
     [file, addComment, rows],
   );
@@ -149,12 +315,12 @@ export function DiffPanel({
   // Place each comment in the current diff: relocated → anchored under its last
   // line; null → "orphaned" (its lines changed) and rendered below.
   const { anchored, orphaned } = useMemo(() => {
-    const located = comments.map((c) => ({ comment: c, loc: relocateComment(file, c) }));
+    const located = comments.map((c) => ({ comment: c, loc: relocateComment(shown, c) }));
     return {
       anchored: located.flatMap(({ comment, loc }) => (loc ? [{ comment, loc }] : [])),
       orphaned: located.flatMap(({ comment, loc }) => (loc ? [] : [comment])),
     };
-  }, [comments, file]);
+  }, [comments, shown]);
 
   // The line key of a gutter cell, then its global index.
   const keyFromCell = useCallback((cell: HTMLElement): LineKey | null => {
@@ -251,14 +417,11 @@ export function DiffPanel({
     for (const { loc, comment } of anchored) {
       if (comment.status === "open") mark(loc.lo, loc.hi, "prv-line-commented");
     }
-    if (dragViz) {
-      mark(
-        Math.min(dragViz.startGi, dragViz.endGi),
-        Math.max(dragViz.startGi, dragViz.endGi),
-        "prv-line-selected",
-      );
+    const sel = dragViz ?? keySel;
+    if (sel) {
+      mark(Math.min(sel.startGi, sel.endGi), Math.max(sel.startGi, sel.endGi), "prv-line-selected");
     }
-  }, [dragViz, anchored, renderTick, view, giFromCell]);
+  }, [dragViz, keySel, anchored, renderTick, view, giFromCell]);
 
   // Re-anchor threads into the diff DOM after every render / comment change.
   useLayoutEffect(() => {
@@ -285,8 +448,92 @@ export function DiffPanel({
       if (outputFormat === "split") anchorSplit(root, thread, container, observersRef.current);
       else anchorUnified(root, thread, container);
     }
+
+    // Roving tabindex (#56): one Tab stop per card — the line last focused,
+    // else the first — and every other gutter cell reachable by ↑/↓ only.
+    // diff2html rebuilt the cells on this tick, so the attributes are re-set
+    // here, after the thread rows are back in place.
+    const cells = gutterCells(root);
+    const rovingGi = rovingGiRef.current;
+    const stop =
+      (rovingGi === null ? undefined : cells.find((c) => giFromCell(c) === rovingGi)) ?? cells[0];
+    for (const cell of cells) cell.tabIndex = cell === stop ? 0 : -1;
+    const pending = pendingFocusRef.current;
+    if (pending?.kind === "gutter" && pending.tick !== renderTick) {
+      pendingFocusRef.current = null;
+      stop?.focus();
+    } else if (pending?.kind === "thread") {
+      const input = containersRef.current.get(pending.id)?.querySelector("textarea");
+      if (input) {
+        pendingFocusRef.current = null;
+        input.focus();
+      }
+    }
     return () => observersRef.current.forEach((o) => o.disconnect());
-  }, [renderTick, anchored, outputFormat, view]);
+  }, [renderTick, anchored, outputFormat, view, giFromCell]);
+
+  // A gutter cell taking focus becomes the card's Tab stop, so leaving the
+  // card and coming back lands on the same line.
+  const onDiffFocus = (e: React.FocusEvent) => {
+    const root = ref.current;
+    const cell = gutterCellOf(e.target);
+    if (!root || !cell) return;
+    for (const other of root.querySelectorAll<HTMLElement>(GUTTER_CELL)) {
+      if (other.tabIndex === 0) other.tabIndex = -1;
+    }
+    cell.tabIndex = 0;
+    const gi = giFromCell(cell);
+    if (gi != null) rovingGiRef.current = gi;
+  };
+
+  // A selection only means something while the gutter has focus.
+  const onDiffBlur = (e: React.FocusEvent) => {
+    if (keySelRef.current && !gutterCellOf(e.relatedTarget)) setSel(null);
+  };
+
+  const onDiffKeyDown = (e: React.KeyboardEvent) => {
+    const root = ref.current;
+    const cell = gutterCellOf(e.target);
+    if (!root || !cell) return;
+    const action = gutterKeyAction(e);
+    if (!action) return;
+    const gi = giFromCell(cell);
+    if (action.kind === "move") {
+      e.preventDefault();
+      const cells = gutterCells(root);
+      const next = cells[cells.indexOf(cell) + action.delta];
+      if (!next) return;
+      setSel(moveSelection(keySelRef.current, gi, giFromCell(next), action.extend));
+      focusCell(next);
+      return;
+    }
+    if (action.kind === "clear") {
+      if (keySelRef.current) {
+        e.preventDefault();
+        setSel(null);
+      }
+      return;
+    }
+    if (gi == null) {
+      // A hunk header offering a single expand action: Enter is its click.
+      const expanders = cell.querySelectorAll<HTMLButtonElement>(".prv-expander");
+      if (e.key === "Enter" && expanders.length === 1) {
+        e.preventDefault();
+        pendingFocusRef.current = { kind: "gutter", tick: renderTick };
+        expanders[0]!.click();
+      }
+      return;
+    }
+    e.preventDefault();
+    const sel = keySelRef.current;
+    const id = sel ? openThread(sel.startGi, sel.endGi) : openThread(gi, gi);
+    setSel(null);
+    // A thread that already exists on this range is on screen now; a new one
+    // is rendered and anchored on the next commit.
+    const existing = containersRef.current.get(id);
+    if (existing?.isConnected) existing.querySelector("textarea")?.focus();
+    else pendingFocusRef.current = { kind: "thread", id };
+  };
 
   const onDiffMouseOver = (e: React.MouseEvent) => {
     if (dragRef.current) return; // an active drag is handled by the pointer handlers
@@ -317,11 +564,16 @@ export function DiffPanel({
     (async () => {
       try {
         const primary: FileSide = file.status === "deleted" ? "old" : "new";
-        let result = await fetchFileContent(mode, file.path, primary, controller.signal);
+        let side = primary;
+        let result = await fetchFileContent(mode, pathOn(primary), primary, controller.signal);
         if (result.kind === "missing" && primary === "new") {
-          const fallback = await fetchFileContent(mode, file.path, "old", controller.signal);
-          if (fallback.kind !== "missing") result = fallback;
+          const fallback = await fetchFileContent(mode, pathOn("old"), "old", controller.signal);
+          if (fallback.kind !== "missing") {
+            result = fallback;
+            side = "old";
+          }
         }
+        setContentSide(side);
         setContent(result);
       } catch (e) {
         if (controller.signal.aborted) return;
@@ -331,7 +583,36 @@ export function DiffPanel({
       }
     })();
     return () => controller.abort();
-  }, [expanded, view, file.binary, file.path, file.status, mode]);
+  }, [expanded, view, file.binary, file.path, file.status, pathOn, mode]);
+
+  // The diff projected onto the side the File view shows: which of its lines
+  // the diff added or replaced, and where the other side's lines went.
+  const marks = useMemo(
+    () => (view === "file" ? fileMarks(file, contentSide) : null),
+    [view, file, contentSide],
+  );
+  // The gutter with its marks is on screen: a code file, or a Markdown one in Source.
+  const marksVisible =
+    !!marks && marks.blocks.length > 0 && (!isMarkdownPath(file.path) || mdView === "source");
+
+  // Scroll to the next (or previous) change past the middle of the viewport,
+  // so the reader can hop between changes in a long file. Marked lines come
+  // in runs, one per change; only a run's first line is a stop, and it wraps.
+  const jumpToChange = (direction: 1 | -1) => {
+    const body = fileBodyRef.current;
+    if (!body) return;
+    const starts = Array.from(body.querySelectorAll<HTMLElement>(MARKED_LINE)).filter(
+      (r) => !r.previousElementSibling?.classList.contains("is-marked"),
+    );
+    if (starts.length === 0) return;
+    const mid = window.innerHeight / 2;
+    const isNext = (r: HTMLElement) => r.getBoundingClientRect().top > mid + FILE_LINE_HEIGHT;
+    const isPrev = (r: HTMLElement) => r.getBoundingClientRect().top < mid - FILE_LINE_HEIGHT;
+    const target = direction === 1 ? starts.find(isNext) : starts.slice().reverse().find(isPrev);
+    (target ?? (direction === 1 ? starts[0] : starts[starts.length - 1]))?.scrollIntoView({
+      block: "center",
+    });
+  };
 
   // After file content loads, restore scroll so the line that was at the
   // top of the diff is at the same screen Y in the file view.
@@ -368,7 +649,7 @@ export function DiffPanel({
 
   const switchToFile = () => {
     if (view !== "file") captureScrollHintFromDiff();
-    setView("file");
+    setUi({ view: "file" });
   };
 
   const onCopyPath = async () => {
@@ -382,19 +663,27 @@ export function DiffPanel({
   };
 
   return (
-    <section id={anchorId} className={`file-card ${viewed ? "viewed" : ""}`}>
+    <section id={anchorId} data-path={file.path} className={`file-card ${viewed ? "viewed" : ""}`}>
       <header className="file-card-header">
         <button
           type="button"
           className="card-chevron"
           aria-label={expanded ? "Collapse file" : "Expand file"}
           aria-expanded={expanded}
-          onClick={() => setExpanded((e) => !e)}
+          onClick={() => setUi({ collapsed: expanded })}
         >
           {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </button>
-        <span className="file-card-path" title={file.path}>
-          {file.path}
+        <span
+          className="file-card-path"
+          title={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
+        >
+          {file.oldPath && (
+            <span className="file-card-renamed">
+              <PathParts path={file.oldPath} /> →{" "}
+            </span>
+          )}
+          <PathParts path={file.path} />
         </span>
         <button
           type="button"
@@ -412,7 +701,7 @@ export function DiffPanel({
               role="tab"
               aria-selected={view === "diff"}
               className={`file-card-view-tab ${view === "diff" ? "is-active" : ""}`}
-              onClick={() => setView("diff")}
+              onClick={() => setUi({ view: "diff" })}
             >
               Diff
             </button>
@@ -427,6 +716,31 @@ export function DiffPanel({
             </button>
           </div>
         )}
+        {marksVisible && (
+          <span className="file-change-nav" aria-label="Changes in this file">
+            <button
+              type="button"
+              className="file-change-nav-btn"
+              title="Previous change"
+              aria-label="Previous change"
+              onClick={() => jumpToChange(-1)}
+            >
+              ↑
+            </button>
+            <span className="file-change-nav-count">
+              {marks!.blocks.length} change{marks!.blocks.length === 1 ? "" : "s"}
+            </span>
+            <button
+              type="button"
+              className="file-change-nav-btn"
+              title="Next change"
+              aria-label="Next change"
+              onClick={() => jumpToChange(1)}
+            >
+              ↓
+            </button>
+          </span>
+        )}
         <span className="file-card-spacer" />
         <span className="file-card-counts">
           {totals.adds > 0 && <span className="adds">+{totals.adds}</span>}
@@ -434,7 +748,11 @@ export function DiffPanel({
           <DiffStat totals={totals} />
         </span>
         <label className="viewed-toggle">
-          <input type="checkbox" checked={viewed} onChange={(e) => setViewed(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={viewed}
+            onChange={(e) => setUi({ viewed: e.target.checked })}
+          />
           <span>Viewed</span>
         </label>
       </header>
@@ -447,6 +765,9 @@ export function DiffPanel({
           onPointerUp={onDiffPointerUp}
           onMouseOver={onDiffMouseOver}
           onMouseLeave={() => setHoverPlus(null)}
+          onFocus={onDiffFocus}
+          onBlur={onDiffBlur}
+          onKeyDown={onDiffKeyDown}
         >
           <div className="file-card-body" ref={ref} />
           {hoverPlus && !file.binary && (
@@ -467,10 +788,12 @@ export function DiffPanel({
                 comment={comment}
                 placement="anchored"
                 label={rangeLabel(loc.slice)}
-                context={buildCommentContext(file, loc.slice)}
+                context={buildCommentContext(shown, loc.slice)}
                 onUpdate={(updater) => updateComment(comment.id, updater)}
                 onRemove={() => removeComment(comment.id)}
                 onApplied={onApplied}
+                focused={comment.id === focusedCommentId}
+                batchRunning={batchRunning}
               />,
               getContainer(comment.id),
             ),
@@ -493,6 +816,8 @@ export function DiffPanel({
                     onUpdate={(updater) => updateComment(comment.id, updater)}
                     onRemove={() => removeComment(comment.id)}
                     onApplied={onApplied}
+                    focused={comment.id === focusedCommentId}
+                    batchRunning={batchRunning}
                   />
                 );
               })}
@@ -505,6 +830,9 @@ export function DiffPanel({
           <FileContentView
             file={file}
             content={content}
+            marks={marks}
+            mdView={mdView}
+            setMdView={(v) => setUi({ mdView: v })}
             loading={contentLoading}
             error={contentError}
           />
@@ -544,6 +872,143 @@ function orphanContext(path: string, comment: Comment): string {
     "",
     ...(comment.anchorText ?? []),
   ].join("\n");
+}
+
+type ExpandAction = { direction: ExpandDirection; glyph: string; title: string };
+
+/**
+ * What a gap offers: a small one is revealed whole in a single click, a large
+ * one a step at a time from whichever hunk borders it.
+ */
+function expandActions(gap: Gap, hunkCount: number): ExpandAction[] {
+  const size = gap.end === null ? null : gap.end - gap.start + 1;
+  if (size !== null && size <= EXPAND_STEP) {
+    return [
+      { direction: "all", glyph: "↕", title: `Expand ${size} hidden line${size === 1 ? "" : "s"}` },
+    ];
+  }
+  const hidden = size === null ? "to the end of the file" : `${size} hidden lines`;
+  const up: ExpandAction = {
+    direction: "up",
+    glyph: "↑",
+    title: `Expand ${EXPAND_STEP} lines up (${hidden})`,
+  };
+  const down: ExpandAction = {
+    direction: "down",
+    glyph: "↓",
+    title: `Expand ${EXPAND_STEP} lines down (${hidden})`,
+  };
+  return [...(gap.hunkIndex < hunkCount ? [up] : []), ...(gap.hunkIndex > 0 ? [down] : [])];
+}
+
+function expanderButton(
+  action: ExpandAction,
+  gap: Gap,
+  onExpand: (gap: Gap, direction: ExpandDirection) => void,
+): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "prv-expander";
+  button.textContent = action.glyph;
+  button.title = action.title;
+  button.setAttribute("aria-label", action.title);
+  // Tab moves between cards, not expanders: the gutter cell they sit in is
+  // the keyboard's way in (↑/↓ to the header row, then Enter).
+  button.tabIndex = -1;
+  // The gutter is also the comment-selection surface; keep clicks out of it.
+  button.addEventListener("pointerdown", (e) => e.stopPropagation());
+  button.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onExpand(gap, action.direction);
+  });
+  return button;
+}
+
+/**
+ * Fill a hunk-header gutter with its expanders. When the gap offers only one
+ * move, the whole blue row takes the click too — that row is the affordance
+ * readers reach for. `onclick` (not a listener) keeps re-injection idempotent.
+ */
+function fillExpanderCell(
+  cell: HTMLElement,
+  gap: Gap,
+  hunkCount: number,
+  onExpand: (gap: Gap, direction: ExpandDirection) => void,
+): void {
+  const actions = expandActions(gap, hunkCount);
+  if (actions.length === 0) return;
+  cell.classList.add("prv-has-expander");
+  for (const action of actions) cell.appendChild(expanderButton(action, gap, onExpand));
+
+  const row = cell.closest<HTMLElement>("tr");
+  if (!row || actions.length !== 1) return;
+  row.classList.add("prv-expand-clickable");
+  row.onclick = (e) => {
+    if ((e.target as HTMLElement).closest(".prv-expander")) return;
+    onExpand(gap, actions[0]!.direction);
+  };
+}
+
+/** A hunk-header-looking row for the gap below the last hunk, which has none. */
+function trailingExpandRow(
+  gap: Gap,
+  hunkCount: number,
+  split: boolean,
+  onExpand: (gap: Gap, direction: ExpandDirection) => void,
+): HTMLTableRowElement {
+  const row = document.createElement("tr");
+  row.className = "prv-expand-row";
+  const gutter = document.createElement("td");
+  gutter.className = `${split ? "d2h-code-side-linenumber" : "d2h-code-linenumber"} d2h-info`;
+  // Reachable by ↑/↓ like the other gutter cells even when this row is
+  // rebuilt between diff renders (the roving-tabindex pass only runs on those).
+  gutter.tabIndex = -1;
+  const code = document.createElement("td");
+  code.className = "d2h-info";
+  const line = document.createElement("div");
+  line.className = split ? "d2h-code-side-line" : "d2h-code-line";
+  code.appendChild(line);
+  row.append(gutter, code);
+  fillExpanderCell(gutter, gap, hunkCount, onExpand);
+  return row;
+}
+
+/**
+ * Put an expander on every hunk header that hides something, and append one
+ * for the gap after the last hunk. In split view both tables get the same
+ * rows, so the two sides stay aligned row for row.
+ */
+function injectExpanders(
+  root: HTMLElement,
+  gaps: Gap[],
+  hunkCount: number,
+  outputFormat: DiffOutputFormat,
+  onExpand: (gap: Gap, direction: ExpandDirection) => void,
+): void {
+  root.querySelectorAll(".prv-expand-row").forEach((n) => n.remove());
+  root.querySelectorAll(".prv-expander").forEach((n) => n.remove());
+  root.querySelectorAll(".prv-has-expander").forEach((n) => n.classList.remove("prv-has-expander"));
+  root.querySelectorAll<HTMLElement>(".prv-expand-clickable").forEach((n) => {
+    n.classList.remove("prv-expand-clickable");
+    n.onclick = null;
+  });
+
+  const split = outputFormat === "split";
+  const tbodies = root.querySelectorAll<HTMLElement>(split ? ".d2h-file-side-diff tbody" : "tbody");
+  // diff2html renders one header row per hunk, so the i-th is hunk i's.
+  const above = new Map(gaps.filter((g) => g.hunkIndex < hunkCount).map((g) => [g.hunkIndex, g]));
+  const trailing = gaps.find((g) => g.hunkIndex === hunkCount);
+
+  for (const tbody of tbodies) {
+    const cells = tbody.querySelectorAll<HTMLElement>(
+      "td.d2h-code-linenumber.d2h-info, td.d2h-code-side-linenumber.d2h-info",
+    );
+    cells.forEach((cell, i) => {
+      const gap = above.get(i);
+      if (gap) fillExpanderCell(cell, gap, hunkCount, onExpand);
+    });
+    if (trailing) tbody.appendChild(trailingExpandRow(trailing, hunkCount, split, onExpand));
+  }
 }
 
 /** Insert a full-width thread row directly under the matching unified row. */
@@ -622,11 +1087,17 @@ function anchorSplit(
 function FileContentView({
   file,
   content,
+  marks,
+  mdView,
+  setMdView,
   loading,
   error,
 }: {
   file: FileDiff;
   content: FileContent | null;
+  marks: FileMarks | null;
+  mdView: MdView;
+  setMdView: (v: MdView) => void;
   loading: boolean;
   error: string | null;
 }) {
@@ -641,67 +1112,90 @@ function FileContentView({
     return <div className="binary-notice">Binary file</div>;
   }
   if (isMarkdownPath(file.path)) {
-    return <MarkdownFileView path={file.path} text={content.content} />;
+    return (
+      <MarkdownFileView
+        path={file.path}
+        text={content.content}
+        marks={marks}
+        md={mdView}
+        setMd={setMdView}
+      />
+    );
   }
-  return <FileContentCode path={file.path} text={content.content} />;
+  return <FileContentCode path={file.path} text={content.content} marks={marks} />;
 }
 
 /**
- * Markdown files get a Rendered/Source sub-toggle in the File view. Rendered is the
- * default since the main use case is reviewing agent-written plans; Source falls back
- * to the syntax-highlighted code view.
+ * Markdown files get a Rendered/Source sub-toggle in the File view. The
+ * rendered page has no gutter, so when the diff touched the file it says
+ * where the marks are rather than looking untouched.
  */
-function MarkdownFileView({ path, text }: { path: string; text: string }) {
-  const [md, setMd] = useState<"rendered" | "source">("rendered");
+function MarkdownFileView({
+  path,
+  text,
+  marks,
+  md,
+  setMd,
+}: {
+  path: string;
+  text: string;
+  marks: FileMarks | null;
+  md: MdView;
+  setMd: (v: MdView) => void;
+}) {
+  const changes = marks?.blocks.length ?? 0;
   return (
     <div className="markdown-file">
-      <div className="md-view-toggle" role="tablist" aria-label="Markdown view mode">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={md === "rendered"}
-          className={`md-view-tab ${md === "rendered" ? "is-active" : ""}`}
-          onClick={() => setMd("rendered")}
-        >
-          Rendered
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={md === "source"}
-          className={`md-view-tab ${md === "source" ? "is-active" : ""}`}
-          onClick={() => setMd("source")}
-        >
-          Source
-        </button>
+      <div className="md-view-bar">
+        <div className="md-view-toggle" role="tablist" aria-label="Markdown view mode">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={md === "rendered"}
+            className={`md-view-tab ${md === "rendered" ? "is-active" : ""}`}
+            onClick={() => setMd("rendered")}
+          >
+            Rendered
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={md === "source"}
+            className={`md-view-tab ${md === "source" ? "is-active" : ""}`}
+            onClick={() => setMd("source")}
+          >
+            Source
+          </button>
+        </div>
+        {md === "rendered" && changes > 0 && (
+          <span className="md-view-note">
+            {changes} change{changes === 1 ? "" : "s"} in this file —{" "}
+            <button type="button" className="md-view-note-link" onClick={() => setMd("source")}>
+              see them in Source
+            </button>
+          </span>
+        )}
       </div>
       {md === "rendered" ? (
-        <MarkdownView text={text} />
+        <Markdown source={text} />
       ) : (
-        <FileContentCode path={path} text={text} />
+        <FileContentCode path={path} text={text} marks={marks} />
       )}
     </div>
   );
 }
 
-/** Render Markdown to sanitized HTML. Sanitization guards against scripts/handlers in file content. */
-function MarkdownView({ text }: { text: string }) {
-  const html = useMemo(() => DOMPurify.sanitize(markdownToHtml(text)), [text]);
-  return (
-    <div
-      className="markdown-body"
-      // Sanitized via DOMPurify on the line above before injection.
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
-  );
-}
-
-function FileContentCode({ path, text }: { path: string; text: string }) {
+function FileContentCode({
+  path,
+  text,
+  marks,
+}: {
+  path: string;
+  text: string;
+  marks: FileMarks | null;
+}) {
   const codeRef = useRef<HTMLElement>(null);
-  const lineNumbers = useMemo(() => {
-    const count = countLines(text);
-    return Array.from({ length: count }, (_, i) => i + 1).join("\n");
-  }, [text]);
+  const count = useMemo(() => countLines(text), [text]);
   // Paint plain text first, then highlight on the next idle frame so the
   // user isn't blocked on hljs parsing for large files.
   useEffect(() => {
@@ -730,14 +1224,55 @@ function FileContentCode({ path, text }: { path: string; text: string }) {
   }, [text]);
   return (
     <div className="file-content-wrap">
-      <pre className="file-content-gutter" aria-hidden="true">
-        {lineNumbers}
-      </pre>
+      <FileGutter count={count} marks={marks} />
       <pre className="file-content-pre">
         <code ref={codeRef} className={`hljs language-${languageHint(path)}`}>
           {text}
         </code>
       </pre>
+    </div>
+  );
+}
+
+/**
+ * The File view's line-number column, tinted like the diff view's gutter:
+ * green for lines the diff added, yellow for lines that replaced others (red
+ * for every line of a deleted file), each with a bar at the left edge whose
+ * pattern also tells them apart. Where lines were removed there is no row to
+ * tint, so a red wedge marks the seam: on the line that follows the removal,
+ * or the bottom of the last line at EOF. Every mark explains itself on hover.
+ */
+function FileGutter({ count, marks }: { count: number; marks: FileMarks | null }) {
+  const rows = useMemo(() => {
+    const out: React.ReactNode[] = [];
+    for (let n = 1; n <= count; n++) {
+      const block = marks?.lines.get(n);
+      const gapBefore = marks?.gaps.get(n);
+      const gapAfter = n === count ? marks?.gaps.get(count + 1) : undefined;
+      const cls = [
+        "file-line-num",
+        block || gapBefore || gapAfter ? "is-marked" : "",
+        block ? `is-${block.kind}` : "",
+        gapBefore ? "has-gap-before" : "",
+        gapAfter ? "has-gap-after" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      // A line inside a replacement already describes the whole block, lost
+      // lines included; only a bare seam needs its own words.
+      const described = block ?? gapBefore ?? gapAfter;
+      const title = described && marks ? describeBlock(described, marks.side) : undefined;
+      out.push(
+        <span key={n} className={cls} title={title}>
+          {n}
+        </span>,
+      );
+    }
+    return out;
+  }, [count, marks]);
+  return (
+    <div className="file-content-gutter" aria-hidden="true">
+      {rows}
     </div>
   );
 }
@@ -788,7 +1323,7 @@ async function fetchFileContent(
   mode: ServerMode,
   filePath: string,
   side: FileSide,
-  signal: AbortSignal,
+  signal?: AbortSignal,
 ): Promise<FileContent> {
   const url = new URL("/api/file", window.location.origin);
   encodeMode(mode, url.searchParams);

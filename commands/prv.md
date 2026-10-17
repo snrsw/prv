@@ -20,7 +20,9 @@ Launch the prv local diff-review UI for the user.
    - No arguments → review the working tree against HEAD: `prv`
    - Exactly two arguments → diff them (each is auto-classified as a git ref or a
      path): `prv diff $ARGUMENTS`
-   - One argument that is an existing file → view that file's diff: `prv $ARGUMENTS`
+   - One argument that is an existing file or directory → view its diff:
+     `prv $ARGUMENTS`. A path git cannot diff (outside a repository, or ignored —
+     e.g. a plan under `~/.claude/plans/`) is shown whole instead.
 
 3. Run the chosen command **in the background** (the server keeps running; do not
    wait for it to exit) from the repository root.

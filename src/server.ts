@@ -1,17 +1,18 @@
 import { $ } from "bun";
-import { readdir } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
 import { buildPrompt, relativizeTarget, runTurn } from "./chat/agent";
 import { readComments, writeComments } from "./comments/store";
-import type { Comment } from "./shared/comments";
 import { computeDiff } from "./diff/engine";
 import type { DiffMode } from "./diff/types";
 import { loadFile } from "./file/loader";
+import { runBatch } from "./batch/runner";
 import { annotateDiff } from "./review/annotate";
 import { LENSES } from "./review/lenses";
-import { reviewCwd, runReviewPanel, type TurnRunner } from "./review/runner";
-import type { ChatAsk, ChatServerFrame, ChatWsData } from "./shared/chat";
+import { runReviewPanel, type TurnRunner } from "./review/runner";
+import { DEFAULT_CHAT_AGENT, sanitizeChatSettings } from "./shared/chat";
+import type { ChatClientFrame, ChatServerFrame, ChatWsData } from "./shared/chat";
 import type { ReviewServerFrame, ReviewStart, ReviewWsData } from "./shared/review";
+import type { BatchServerFrame, BatchStart, BatchWsData } from "./shared/batch";
+import { isPendingComment, type Comment } from "./shared/comments";
 import { decodeMode } from "./shared/modeQuery";
 import index from "./ui/index.html";
 
@@ -20,12 +21,19 @@ export type ServerOptions = {
   defaultMode?: DiffMode;
   /** Enable frontend HMR + console forwarding. Dev only; off for the shipped binary. */
   development?: boolean;
-  /** Injectable claude-turn runner so tests can script agent turns. */
+  /** Injectable agent-turn runner so tests can script agent turns. */
   turnRunner?: TurnRunner;
 };
 
 /** Every WebSocket route's per-connection state, discriminated by `kind`. */
-type WsData = ChatWsData | ReviewWsData;
+type WsData = ChatWsData | ReviewWsData | BatchWsData;
+
+/**
+ * Whether prv runs from its source tree (`bun src/cli.ts`, `bun test`) rather
+ * than the compiled binary, whose modules live under Bun's virtual `$bunfs`
+ * root (`/$bunfs/…`; `B:\~BUN\…` on Windows).
+ */
+const runningFromSource = !/\$bunfs|~BUN/.test(import.meta.path);
 
 export function createServer(options: ServerOptions): Bun.Server<WsData> {
   const { defaultMode } = options;
@@ -33,11 +41,21 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
 
   return Bun.serve({
     port: options.port,
-    development: options.development ? { hmr: true, console: true } : false,
+    // From source, the HTML import must go through Bun's HMR dev server: only
+    // it emits cwd-independent asset URLs (`/_bun/asset/…`). The production
+    // bundler writes them relative to `process.cwd()` at bundle time, and prv's
+    // cwd is the repository under review, so from any directory other than the
+    // prv checkout the page linked `/../../<cwd>/chunk-xxx.css` (#63). The
+    // compiled binary embeds a prebuilt manifest and is unaffected.
+    development: options.development
+      ? { hmr: true, console: true }
+      : runningFromSource
+        ? { hmr: true, console: false }
+        : false,
     routes: {
       "/": index,
       "/api/chat": (req, server) => {
-        const data: ChatWsData = { kind: "chat", sessionId: null, busy: false };
+        const data: ChatWsData = { kind: "chat", sessionId: null, agent: null, busy: false };
         if (server.upgrade(req, { data })) return undefined;
         return new Response("expected websocket upgrade", { status: 426 });
       },
@@ -46,12 +64,21 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
         if (server.upgrade(req, { data })) return undefined;
         return new Response("expected websocket upgrade", { status: 426 });
       },
-      "/api/config": () => Response.json({ mode: defaultMode ?? null, serverCwd: process.cwd() }),
+      "/api/batch": (req, server) => {
+        const data: BatchWsData = { kind: "batch", busy: false };
+        if (server.upgrade(req, { data })) return undefined;
+        return new Response("expected websocket upgrade", { status: 426 });
+      },
+      "/api/config": () => Response.json({ mode: defaultMode ?? null }),
       "/api/diff": {
         GET: async (req) => {
           const mode = decodeMode(new URL(req.url).searchParams) ?? defaultMode;
           if (!mode) return Response.json({ error: "no mode" }, { status: 400 });
-          return Response.json(await computeDiff(mode));
+          try {
+            return Response.json(await computeDiff(mode));
+          } catch (err) {
+            return Response.json({ error: errorMessage(err) }, { status: 400 });
+          }
         },
       },
       "/api/file": {
@@ -65,7 +92,11 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
           if (side !== "new" && side !== "old") {
             return Response.json({ error: "side must be 'new' or 'old'" }, { status: 400 });
           }
-          return Response.json(await loadFile(mode, file, side));
+          try {
+            return Response.json(await loadFile(mode, file, side));
+          } catch (err) {
+            return Response.json({ error: errorMessage(err) }, { status: 400 });
+          }
         },
       },
       "/api/refs": {
@@ -82,22 +113,6 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
             .filter((line) => line.startsWith("\t"))
             .map((line) => line.slice(1));
           return Response.json({ branches });
-        },
-      },
-      "/api/list-dirs": {
-        GET: async (req) => {
-          const path = new URL(req.url).searchParams.get("path");
-          if (!path || !isAbsolute(path)) return Response.json({ dirs: [] });
-          try {
-            const entries = await readdir(path, { withFileTypes: true });
-            const dirs = entries
-              .filter((e) => e.isDirectory() && !e.name.startsWith("."))
-              .map((e) => join(path, e.name))
-              .sort();
-            return Response.json({ dirs });
-          } catch {
-            return Response.json({ dirs: [] });
-          }
         },
       },
       "/api/comments": {
@@ -118,17 +133,28 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
         if (data.kind === "review") {
           return handleReviewMessage(ws, data, raw, defaultMode, turnRunner);
         }
+        if (data.kind === "batch") {
+          return handleBatchMessage(ws, data, raw, turnRunner);
+        }
         return handleChatMessage(ws, data, raw, turnRunner);
       },
       close(ws) {
-        // A client that disconnects mid-review cancels it: kill the turns.
-        if (ws.data.kind === "review") ws.data.abort?.abort();
+        // A client that disconnects mid-turn cancels it: kill the agent subprocess(es).
+        ws.data.abort?.abort();
       },
     },
   });
 }
 
-/** Handle one /api/chat message: run a claude turn and relay its events. */
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Handle one /api/chat message: run an agent turn and relay its events, or
+ * abort the in-flight turn on `stop`. Every accepted ask terminates with
+ * exactly one `done` (via finally), stopped or not; `busy` is a lone reply.
+ */
 async function handleChatMessage(
   ws: Bun.ServerWebSocket<WsData>,
   data: ChatWsData,
@@ -139,10 +165,15 @@ async function handleChatMessage(
     ws.send(JSON.stringify(frame));
   };
 
-  let msg: ChatAsk;
+  let msg: ChatClientFrame;
   try {
-    msg = JSON.parse(String(raw)) as ChatAsk;
+    msg = JSON.parse(String(raw)) as ChatClientFrame;
   } catch {
+    return;
+  }
+  if (msg.type === "stop") {
+    // The session survives a stop, so the next ask still resumes it.
+    data.abort?.abort();
     return;
   }
   if (msg.type !== "ask" || typeof msg.question !== "string") return;
@@ -152,8 +183,19 @@ async function handleChatMessage(
   }
 
   data.busy = true;
-  const isFirstTurn = !data.sessionId;
+  const abort = new AbortController();
+  data.abort = abort;
   const mode = msg.mode ?? "ask";
+  // The frame is untrusted input: keep only well-formed agent/model/effort values.
+  const settings = sanitizeChatSettings(msg);
+  const agent = settings.agent ?? DEFAULT_CHAT_AGENT;
+  // A session is bound to the CLI that created it; a different agent cannot
+  // resume it, so switching agents starts over (the client re-sends the diff).
+  if (data.agent !== agent) {
+    data.sessionId = null;
+    data.agent = agent;
+  }
+  const isFirstTurn = !data.sessionId;
   const prompt = buildPrompt({
     diff: msg.diff ?? "",
     question: msg.question,
@@ -166,6 +208,8 @@ async function handleChatMessage(
       prompt,
       sessionId: data.sessionId ?? undefined,
       mode,
+      ...settings,
+      signal: abort.signal,
     })) {
       switch (event.kind) {
         case "session":
@@ -197,6 +241,7 @@ async function handleChatMessage(
     }
   } finally {
     data.busy = false;
+    data.abort = undefined;
     send({ type: "done" });
   }
 }
@@ -247,13 +292,105 @@ async function handleReviewMessage(
     send({ type: "run", runId, lenses: LENSES.map((l) => l.id) });
     await runReviewPanel({
       annotatedDiff,
-      cwd: reviewCwd(mode, process.cwd()),
+      cwd: mode.cwd,
       emit: send,
       signal: data.abort.signal,
+      // Untrusted frame: keep only well-formed agent/model/effort values.
+      settings: sanitizeChatSettings(msg),
       turnRunner,
     });
   } catch (err) {
-    send({ type: "error", message: err instanceof Error ? err.message : String(err) });
+    send({ type: "error", message: errorMessage(err) });
+  } finally {
+    data.busy = false;
+    data.abort = undefined;
+    send({ type: "done" });
+  }
+}
+
+/**
+ * Whether a client-sent value has the shape the batch prompt reads: identity,
+ * line keys, anchor lines and a transcript. Anything else is dropped rather
+ * than half-described to the agent.
+ */
+function isBatchComment(value: unknown): value is Comment {
+  if (typeof value !== "object" || value === null) return false;
+  const c = value as Record<string, unknown>;
+  const isKey = (k: unknown): boolean => typeof k === "object" && k !== null;
+  return (
+    typeof c.id === "string" &&
+    c.id !== "" &&
+    typeof c.file === "string" &&
+    isKey(c.start) &&
+    isKey(c.end) &&
+    Array.isArray(c.anchorText) &&
+    c.anchorText.every((l) => typeof l === "string") &&
+    Array.isArray(c.messages) &&
+    c.messages.every(
+      (m) =>
+        typeof m === "object" &&
+        m !== null &&
+        ((m as { role?: unknown }).role === "user" ||
+          (m as { role?: unknown }).role === "assistant") &&
+        typeof (m as { text?: unknown }).text === "string",
+    )
+  );
+}
+
+/**
+ * Handle one /api/batch message: address every pending comment thread the
+ * client sent in a single apply-mode turn, streaming the agent's activity.
+ * Every accepted start terminates with exactly one `done` (via finally);
+ * `busy` is a lone reply. Like the chat panel's apply turns, the agent runs in
+ * prv's own cwd — the repository under review — not in a diff mode's cwd.
+ */
+async function handleBatchMessage(
+  ws: Bun.ServerWebSocket<WsData>,
+  data: BatchWsData,
+  raw: string | Buffer,
+  turnRunner: TurnRunner,
+): Promise<void> {
+  const send = (frame: BatchServerFrame): void => {
+    ws.send(JSON.stringify(frame));
+  };
+
+  let msg: BatchStart;
+  try {
+    msg = JSON.parse(String(raw)) as BatchStart;
+  } catch {
+    return;
+  }
+  if (msg.type !== "start" || !Array.isArray(msg.comments)) return;
+  if (data.busy) {
+    send({ type: "busy" });
+    return;
+  }
+
+  data.busy = true;
+  data.abort = new AbortController();
+  try {
+    // The client should only send pending threads; re-check, so a stale frame
+    // never makes the agent answer a thread it has already answered.
+    const comments = msg.comments.filter(isBatchComment).filter(isPendingComment);
+    if (comments.length === 0) {
+      send({ type: "error", message: "no pending comments" });
+      return;
+    }
+    const instructions = typeof msg.instructions === "string" ? msg.instructions.trim() : "";
+    const runId = crypto.randomUUID().slice(0, 8);
+    send({ type: "run", runId, count: comments.length });
+    await runBatch({
+      comments,
+      instructions,
+      cwd: process.cwd(),
+      emit: send,
+      signal: data.abort.signal,
+      // Untrusted frame: keep only well-formed agent/model/effort values.
+      settings: sanitizeChatSettings(msg),
+      turnRunner,
+    });
+  } catch (err) {
+    send({ type: "error", message: errorMessage(err) });
   } finally {
     data.busy = false;
     data.abort = undefined;

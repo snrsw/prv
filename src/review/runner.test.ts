@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { reviewCwd, runReviewPanel, type TurnRunner } from "./runner";
+import { runReviewPanel, type TurnRunner } from "./runner";
 import { RETRY_PROMPT, LENSES, type Lens } from "./lenses";
 import type { ChatEvent, RunTurnArgs } from "../chat/agent";
 import type { ReviewFinding, ReviewServerFrame } from "../shared/review";
@@ -180,17 +180,30 @@ describe("runReviewPanel — the panel", () => {
   });
 });
 
-describe("reviewCwd", () => {
-  test("uses the diff's repo when it has one, the fallback otherwise", () => {
-    expect(reviewCwd({ kind: "path-vs-path", a: "/x", b: "/y" }, "/fb")).toBe("/fb");
-    expect(
-      reviewCwd({ kind: "git", cwd: "/repo", leftRef: "HEAD", right: { kind: "worktree" } }, "/fb"),
-    ).toBe("/repo");
-    expect(
-      reviewCwd(
-        { kind: "ref-vs-path", cwd: "/repo", ref: "HEAD", path: "/p", refOnLeft: true },
-        "/fb",
-      ),
-    ).toBe("/repo");
+describe("runReviewPanel — agent settings", () => {
+  test("settings reach the first turn and the --resume retry alike", async () => {
+    const { runner, calls } = fakeRunner([session("s1"), done("no json here")], [done(goodReply)]);
+    const frames: ReviewServerFrame[] = [];
+    await runReviewPanel({
+      annotatedDiff: "### a.ts (modified)\n1\t1\t x",
+      cwd: "/repo",
+      emit: (f) => frames.push(f),
+      settings: { agent: "codex", model: "gpt-5.5", effort: "low" },
+      lenses: [lens("correctness")],
+      turnRunner: runner,
+    });
+    expect(calls).toHaveLength(2);
+    for (const call of calls) {
+      expect(call).toMatchObject({ agent: "codex", model: "gpt-5.5", effort: "low" });
+    }
+    expect(frames.at(-1)).toEqual({ type: "lens", lens: "correctness", state: "done" });
+  });
+
+  test("without settings the turns carry no agent/model/effort (CLI defaults)", async () => {
+    const { runner, calls } = fakeRunner([done(goodReply)]);
+    await run(runner, [lens("correctness")]);
+    expect(calls[0]?.agent).toBeUndefined();
+    expect(calls[0]?.model).toBeUndefined();
+    expect(calls[0]?.effort).toBeUndefined();
   });
 });

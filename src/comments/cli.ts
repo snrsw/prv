@@ -11,7 +11,13 @@ import { $ } from "bun";
 import { computeDiff } from "../diff/engine";
 import type { Comment, StoredMessage } from "../shared/comments";
 import { pathExists } from "../shared/fs";
-import { anchorTextOf, commentId, flattenDiff, keyOfRow } from "../shared/diffLines";
+import {
+  anchorTextOf,
+  commentId,
+  flattenDiff,
+  keyOfRow,
+  rangeLabelOfComment,
+} from "../shared/diffLines";
 import { readCommentsStrict, writeComments } from "./store";
 
 export type CliResult = { code: number; out: string; err: string };
@@ -88,23 +94,11 @@ function locateById(
   return { comment: matches[0]! };
 }
 
-/** Human label for a comment's range: new-side numbers when available. */
-function rangeOf(c: Comment): string {
-  const nums = [c.start.new, c.end.new].filter((v): v is number => v != null);
-  const olds = [c.start.old, c.end.old].filter((v): v is number => v != null);
-  const use = nums.length ? nums : olds;
-  if (use.length === 0) return "";
-  const lo = Math.min(...use);
-  const hi = Math.max(...use);
-  const prefix = nums.length ? "" : "old ";
-  return lo === hi ? `${prefix}${lo}` : `${prefix}${lo}-${hi}`;
-}
-
 function formatComment(c: Comment): string {
   const excerpt = (c.messages[0]?.text ?? "").split("\n")[0] ?? "";
   const count = c.messages.length;
   return [
-    `${c.id}  ${c.file}:${rangeOf(c)}  ${c.status}  ${count} message${count === 1 ? "" : "s"}`,
+    `${c.id}  ${c.file}:${rangeLabelOfComment(c)}  ${c.status}  ${count} message${count === 1 ? "" : "s"}`,
     excerpt ? `  ${excerpt}` : undefined,
   ]
     .filter((l): l is string => l != null)

@@ -11,6 +11,8 @@ export type Hunk = {
 
 export type FileDiff = {
   path: string;
+  /** The path before a rename (or copy); `path` is then the new one. */
+  oldPath?: string;
   status: Status;
   hunks: Hunk[];
   binary: boolean;
@@ -19,8 +21,25 @@ export type FileDiff = {
 
 export type GitRight = { kind: "ref"; ref: string } | { kind: "worktree" };
 
-export type DiffMode =
-  | { kind: "path-vs-path"; a: string; b: string }
+export type GitMode = {
+  kind: "git";
+  cwd: string;
+  leftRef: string;
+  right: GitRight;
   // `paths`, when set, limits the diff to those git pathspecs (used by `prv <file>`).
-  | { kind: "git"; cwd: string; leftRef: string; right: GitRight; paths?: string[] }
-  | { kind: "ref-vs-path"; cwd: string; ref: string; path: string; refOnLeft: boolean };
+  paths?: string[];
+};
+
+/**
+ * Plain files shown whole, each as an added file. This is how `prv <path>`
+ * views something git's diff cannot show: a file outside any repository (a
+ * plan under `~/.claude/plans`), or one the repository ignores. A directory
+ * expands to the files under it.
+ */
+export type FilesMode = {
+  kind: "files";
+  cwd: string;
+  paths: string[];
+};
+
+export type DiffMode = GitMode | FilesMode;

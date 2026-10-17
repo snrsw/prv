@@ -5,7 +5,7 @@
  */
 
 import type { FileDiff } from "../diff/types";
-import type { LineKey } from "./comments";
+import type { Comment, LineKey } from "./comments";
 
 export type LineSide = "old" | "new";
 
@@ -80,4 +80,21 @@ export function anchorTextOf(slice: DiffRow[]): string[] {
 export function commentId(start: LineKey, end: LineKey): string {
   const k = (key: LineKey) => `${key.old ?? ""}_${key.new ?? ""}`;
   return `c:${k(start)}:${k(end)}`;
+}
+
+/**
+ * Human label for a comment's line range: new-side numbers when the range has
+ * any (added or context lines), else the old-side numbers prefixed with
+ * "old ". Shared by the headless CLI listing and the batch prompt so an agent
+ * sees the same coordinates in both places.
+ */
+export function rangeLabelOfComment(c: Pick<Comment, "start" | "end">): string {
+  const news = [c.start?.new, c.end?.new].filter((v): v is number => v != null);
+  const olds = [c.start?.old, c.end?.old].filter((v): v is number => v != null);
+  const use = news.length ? news : olds;
+  if (use.length === 0) return "";
+  const lo = Math.min(...use);
+  const hi = Math.max(...use);
+  const prefix = news.length ? "" : "old ";
+  return lo === hi ? `${prefix}${lo}` : `${prefix}${lo}-${hi}`;
 }

@@ -58,45 +58,19 @@ test("--port 8765 sets port", async () => {
   expect(opts.port).toBe(8765);
 });
 
-test("diff <ref> <path>: ref classified as ref, existing dir as path → ref-vs-path with refOnLeft=true", async () => {
+test("diff <ref> <dir>: a directory arg is rejected — prv compares refs only", async () => {
   const repo = await mkTempRepo("prv-cli-");
   await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
   const folder = mkdtempSync(join(tmpdir(), "prv-cli-folder-"));
 
-  const opts = await parseArgs(["diff", "HEAD", folder], repo);
-
-  expect(opts.mode).toEqual({
-    kind: "ref-vs-path",
-    cwd: repo,
-    ref: "HEAD",
-    path: folder,
-    refOnLeft: true,
-  });
+  await expect(parseArgs(["diff", "HEAD", folder], repo)).rejects.toThrow(/git ref/);
 });
 
-test("diff <path> <ref>: refOnLeft=false when path comes first", async () => {
-  const repo = await mkTempRepo("prv-cli-");
-  await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
-  const folder = mkdtempSync(join(tmpdir(), "prv-cli-folder-"));
-
-  const opts = await parseArgs(["diff", folder, "HEAD"], repo);
-
-  expect(opts.mode).toEqual({
-    kind: "ref-vs-path",
-    cwd: repo,
-    ref: "HEAD",
-    path: folder,
-    refOnLeft: false,
-  });
-});
-
-test("diff <path> <path>: both existing dirs → path-vs-path", async () => {
+test("diff <dir> <dir>: two directories are rejected — prv compares refs only", async () => {
   const a = mkdtempSync(join(tmpdir(), "prv-cli-a-"));
   const b = mkdtempSync(join(tmpdir(), "prv-cli-b-"));
 
-  const opts = await parseArgs(["diff", a, b], "/work");
-
-  expect(opts.mode).toEqual({ kind: "path-vs-path", a, b });
+  await expect(parseArgs(["diff", a, b], "/work")).rejects.toThrow(/git ref/);
 });
 
 test("diff <ref> <ref>: both resolve as refs → git mode with both refs", async () => {
@@ -114,26 +88,25 @@ test("diff <ref> <ref>: both resolve as refs → git mode with both refs", async
   });
 });
 
-test("diff <neither> <neither>: throws when args are neither paths nor refs", async () => {
+test("diff <neither> <neither>: throws when neither arg resolves as a ref", async () => {
   const repo = await mkTempRepo("prv-cli-");
   await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
 
   await expect(parseArgs(["diff", "no-such-thing", "also-bogus"], repo)).rejects.toThrow();
 });
 
-test("diff: when an arg is both a valid ref and an existing dir, path interpretation wins", async () => {
+test("diff: a name that is both a ref and an existing dir is read as the ref", async () => {
   const repo = await mkTempRepo("prv-cli-");
   await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
-  const ambiguous = join(repo, "main");
-  mkdirSync(ambiguous);
-  const opts = await parseArgs(["diff", ambiguous, "HEAD"], repo);
+  mkdirSync(join(repo, "main"));
+
+  const opts = await parseArgs(["diff", "main", "HEAD"], repo);
 
   expect(opts.mode).toEqual({
-    kind: "ref-vs-path",
+    kind: "git",
     cwd: repo,
-    ref: "HEAD",
-    path: ambiguous,
-    refOnLeft: false,
+    leftRef: "main",
+    right: { kind: "ref", ref: "HEAD" },
   });
 });
 
@@ -217,4 +190,57 @@ test("two bare paths without `diff` throws (use `diff` to compare two)", async (
   await Bun.write(b, "b\n");
 
   await expect(parseArgs([a, b], repo)).rejects.toThrow();
+});
+
+test("single file outside any git repository → files mode showing it whole", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "prv-cli-nogit-"));
+  const file = join(dir, "plan.md");
+  await Bun.write(file, "# plan\n");
+
+  const opts = await parseArgs([file], dir);
+
+  expect(opts.mode).toEqual({ kind: "files", cwd: dir, paths: [file] });
+});
+
+test("single file the repository ignores → files mode (git's diff can't show it)", async () => {
+  const repo = await mkTempRepo("prv-cli-ignored-");
+  writeFileSync(join(repo, ".gitignore"), ".claude/plans/\n");
+  await $`git -C ${repo} add .gitignore`.quiet();
+  await $`git -C ${repo} commit -q -m init`.quiet();
+  mkdirSync(join(repo, ".claude", "plans"), { recursive: true });
+  const file = join(repo, ".claude", "plans", "p.md");
+  writeFileSync(file, "# plan\n");
+
+  const opts = await parseArgs([file], repo);
+
+  expect(opts.mode).toEqual({ kind: "files", cwd: repo, paths: [file] });
+});
+
+test("single untracked-but-not-ignored file stays in git mode", async () => {
+  const repo = await mkTempRepo("prv-cli-untracked-");
+  await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
+  const file = join(repo, "new.md");
+  writeFileSync(file, "new\n");
+
+  const opts = await parseArgs([file], repo);
+
+  expect(opts.mode).toEqual({
+    kind: "git",
+    cwd: repo,
+    leftRef: "HEAD",
+    right: { kind: "worktree" },
+    paths: [file],
+  });
+});
+
+test("single file outside the repository's work tree → files mode", async () => {
+  const repo = await mkTempRepo("prv-cli-outside-");
+  await $`git -C ${repo} commit -q --allow-empty -m init`.quiet();
+  const elsewhere = mkdtempSync(join(tmpdir(), "prv-cli-elsewhere-"));
+  const file = join(elsewhere, "plan.md");
+  writeFileSync(file, "# plan\n");
+
+  const opts = await parseArgs([file], repo);
+
+  expect(opts.mode).toEqual({ kind: "files", cwd: repo, paths: [file] });
 });

@@ -19,20 +19,31 @@ async function isRef(cwd: string, ref: string): Promise<boolean> {
   return r.exitCode === 0;
 }
 
-async function classifyDiffArgs(cwd: string, a: string, b: string): Promise<DiffMode> {
-  const [aIsPath, bIsPath] = await Promise.all([pathExists(a), pathExists(b)]);
-  const [aIsRef, bIsRef] = await Promise.all([
-    aIsPath ? Promise.resolve(false) : isRef(cwd, a),
-    bIsPath ? Promise.resolve(false) : isRef(cwd, b),
-  ]);
+/** `prv diff <a> <b>` compares two git refs; a name that isn't one is an error. */
+async function refDiffMode(cwd: string, a: string, b: string): Promise<DiffMode> {
+  const [aIsRef, bIsRef] = await Promise.all([isRef(cwd, a), isRef(cwd, b)]);
+  const notRefs = [aIsRef ? null : a, bIsRef ? null : b].filter((x) => x !== null);
+  if (notRefs.length > 0) {
+    throw new Error(
+      `not a git ref: ${notRefs.map((r) => `'${r}'`).join(", ")}. ` +
+        "prv compares git refs (e.g. `prv diff main HEAD`).",
+    );
+  }
+  return { kind: "git", cwd, leftRef: a, right: { kind: "ref", ref: b } };
+}
 
-  if (aIsPath && bIsPath) return { kind: "path-vs-path", a, b };
-  if (aIsRef && bIsRef) return { kind: "git", cwd, leftRef: a, right: { kind: "ref", ref: b } };
-  if (aIsRef && bIsPath) return { kind: "ref-vs-path", cwd, ref: a, path: b, refOnLeft: true };
-  if (aIsPath && bIsRef) return { kind: "ref-vs-path", cwd, ref: b, path: a, refOnLeft: false };
-  throw new Error(
-    `prv diff: '${a}' and '${b}' are neither both paths, both refs, nor a ref+path pair.`,
-  );
+/**
+ * Whether git's HEAD-vs-worktree diff can show `path`: it is tracked, or
+ * untracked but not ignored. False outside a repository, for an ignored
+ * path (`.claude/plans/` in many repos), and for a path outside the work tree.
+ */
+async function gitCanDiff(cwd: string, path: string): Promise<boolean> {
+  const tracked = await $`git -C ${cwd} ls-files --error-unmatch -- ${path}`.nothrow().quiet();
+  if (tracked.exitCode === 0) return true;
+  const untracked = await $`git -C ${cwd} ls-files --others --exclude-standard -- ${path}`
+    .nothrow()
+    .quiet();
+  return untracked.exitCode === 0 && untracked.stdout.toString().trim().length > 0;
 }
 
 export async function parseArgs(argv: string[], cwd: string): Promise<CLIOptions> {
@@ -50,7 +61,7 @@ export async function parseArgs(argv: string[], cwd: string): Promise<CLIOptions
       const a = argv[i + 1];
       const b = argv[i + 2];
       if (!a || !b) throw new Error("`diff` requires two args: prv diff <a> <b>");
-      mode = await classifyDiffArgs(cwd, a, b);
+      mode = await refDiffMode(cwd, a, b);
       usedDiff = true;
       i += 2;
     } else if (arg === "--no-open") {
@@ -74,11 +85,14 @@ export async function parseArgs(argv: string[], cwd: string): Promise<CLIOptions
     }
   }
 
-  // `prv <file>`: HEAD vs working tree, scoped to a single path.
+  // `prv <path>`: HEAD vs working tree, scoped to that path. A path git cannot
+  // diff (outside a repository, or ignored) is shown whole instead.
   if (singlePath !== undefined) {
     if (usedDiff) throw new Error("prv: cannot combine a path argument with `diff`.");
     if (!(await pathExists(singlePath))) throw new Error(`prv: '${singlePath}' does not exist.`);
-    mode = { kind: "git", cwd, leftRef: "HEAD", right: { kind: "worktree" }, paths: [singlePath] };
+    mode = (await gitCanDiff(cwd, singlePath))
+      ? { kind: "git", cwd, leftRef: "HEAD", right: { kind: "worktree" }, paths: [singlePath] }
+      : { kind: "files", cwd, paths: [singlePath] };
   }
 
   return { mode, port, open, help, version };
@@ -88,11 +102,10 @@ const HELP = `prv — Pull-Request like View. Local GitHub-style diff viewer.
 
 Usage:
   prv                          Diff HEAD vs the working tree (default)
-  prv diff <a> <b>             Diff two args; each is auto-classified:
-                                 path vs path, ref vs ref, or ref + path.
-                                 If an arg is both a ref name and an existing
-                                 path, the path wins. Force ref with HEAD/a SHA/
-                                 origin/<branch>; force path with ./name.
+  prv <path>                   Diff HEAD vs the working tree for one file or directory
+                               (a path git can't diff — outside a repository, or
+                               ignored, like ~/.claude/plans/x.md — is shown whole)
+  prv diff <a> <b>             Diff two git refs (branch, tag, SHA, HEAD)
   prv --port <n>               Pin the server port (default: a free port)
   prv --no-open                Do not open a browser
   prv --version, -v            Print version and exit
@@ -113,8 +126,9 @@ Review comments (headless, no browser — for agents and scripts):
   over file names — view a file named "comment" with \`prv ./comment\`.
 
 Notes:
-  The "chat about the diff" feature requires Claude Code (the \`claude\` CLI)
-  installed separately.`;
+  The "chat about the diff" and agent-review features require a local coding
+  agent installed separately: Claude Code (the \`claude\` CLI) or OpenAI Codex
+  (the \`codex\` CLI). Pick one in the chat panel.`;
 
 async function main() {
   const argv = Bun.argv.slice(2);
@@ -196,9 +210,7 @@ if (import.meta.main) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (/not a git repository/i.test(message)) {
-      console.error(
-        "prv: not a git repository. cd into a repo, or compare folders with `prv diff <a> <b>`.",
-      );
+      console.error("prv: not a git repository. cd into a git repo and try again.");
     } else {
       console.error(`prv: ${message}`);
     }

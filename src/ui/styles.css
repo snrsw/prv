@@ -1,18 +1,33 @@
+/* Vendored stylesheets, bundled by Bun so the viewer works offline. They come
+   first so prv's own rules below win on equal specificity. The two highlight.js
+   themes are media-qualified: Bun inlines each inside its @media block, so
+   only the theme matching the OS colour scheme applies. */
+@import "diff2html/bundles/css/diff2html.min.css";
+@import url("highlight.js/styles/github.min.css") (prefers-color-scheme: light);
+@import url("highlight.js/styles/github-dark.min.css") (prefers-color-scheme: dark);
+
 /*
- * GitHub-like color tokens (Primer light theme) and a consistent type / spacing scale.
+ * GitHub-like color tokens (Primer light theme, dark below) and a consistent
+ * type / spacing scale.
  */
 :root {
   --canvas-default: #ffffff;
   --canvas-subtle: #f6f8fa;
   --canvas-inset: #f6f8fa;
+  /* One step past hover: the selected tree row, and keyboard focus on it. */
+  --canvas-emphasis: #eaeef2;
   --border-default: #d1d9e0;
   --border-muted: #d8dee4;
   --fg-default: #1f2328;
   --fg-muted: #59636e;
   --fg-subtle: #6e7781;
+  /* Text on a solid emphasis fill (primary button, critical badge). */
+  --fg-on-emphasis: #ffffff;
+  --icon-directory: #54aeff;
   --accent-fg: #0969da;
   --accent-emphasis: #0969da;
   --accent-subtle: #ddf4ff;
+  --accent-ring: rgba(9, 105, 218, 0.15);
   --success-fg: #1a7f37;
   --success-emphasis: #1f883d;
   --success-subtle: #dafbe1;
@@ -23,11 +38,22 @@
   --attention-emphasis: #bf8700;
   --attention-subtle: #fff8c5;
   --diffstat-empty: #d1d9e0;
+  --button-primary-border: rgba(31, 35, 40, 0.15);
+  /* Shadows stay near-black; dark mode raises the alpha so they still read
+     against a dark canvas. */
+  --shadow-sm: 0 1px 2px rgba(31, 35, 40, 0.06);
+  --shadow-md: 0 1px 3px rgba(31, 35, 40, 0.08);
+  --shadow-lg: 0 8px 24px rgba(31, 35, 40, 0.12);
+  /* Dims the page behind a modal (the shortcut help). */
+  --overlay-backdrop: rgba(31, 35, 40, 0.4);
 
   --add-line-bg: #dafbe1;
   --del-line-bg: #ffebe9;
   --gutter-add-bg: #aceebb;
   --gutter-del-bg: #ffaba8;
+  /* Yellow, not the hunk-header blue: a replaced line and "hidden lines
+     here" must not share a colour across the Diff and File views. */
+  --gutter-mod-bg: #fae17d;
   --gutter-hunk-bg: #b6e3ff;
 
   /* Type scale */
@@ -57,6 +83,58 @@
   font-size: var(--fs-ui);
   color: var(--fg-default);
   color-scheme: light;
+}
+
+/* Primer dark. Line and gutter tints are translucent like GitHub's, so they
+   sit on whatever canvas the row already has. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas-default: #0d1117;
+    --canvas-subtle: #161b22;
+    --canvas-inset: #161b22;
+    --canvas-emphasis: #21262d;
+    --border-default: #30363d;
+    --border-muted: #21262d;
+    --fg-default: #e6edf3;
+    --fg-muted: #8b949e;
+    --fg-subtle: #6e7681;
+    --fg-on-emphasis: #ffffff;
+    --icon-directory: #54aeff;
+    --accent-fg: #2f81f7;
+    --accent-emphasis: #1f6feb;
+    --accent-subtle: rgba(56, 139, 253, 0.15);
+    --accent-ring: rgba(47, 129, 247, 0.3);
+    --success-fg: #3fb950;
+    --success-emphasis: #238636;
+    --success-subtle: rgba(46, 160, 67, 0.15);
+    --danger-fg: #f85149;
+    --danger-emphasis: #da3633;
+    --danger-subtle: rgba(248, 81, 73, 0.15);
+    --attention-fg: #d29922;
+    --attention-emphasis: #9e6a03;
+    --attention-subtle: rgba(187, 128, 9, 0.15);
+    --diffstat-empty: #30363d;
+    --button-primary-border: rgba(240, 246, 252, 0.1);
+    --shadow-sm: 0 1px 2px rgba(1, 4, 9, 0.5);
+    --shadow-md: 0 1px 3px rgba(1, 4, 9, 0.6);
+    --shadow-lg: 0 8px 24px rgba(1, 4, 9, 0.8);
+    --overlay-backdrop: rgba(1, 4, 9, 0.6);
+
+    --add-line-bg: rgba(46, 160, 67, 0.15);
+    --del-line-bg: rgba(248, 81, 73, 0.15);
+    --gutter-add-bg: rgba(63, 185, 80, 0.3);
+    --gutter-del-bg: rgba(248, 81, 73, 0.3);
+    --gutter-mod-bg: rgba(210, 153, 34, 0.35);
+    /* Stronger than the hunk row's --accent-subtle so the gutter still reads
+       as a gutter, as it does in light. */
+    --gutter-hunk-bg: rgba(56, 139, 253, 0.3);
+
+    color-scheme: dark;
+  }
+  /* Darkening a hover on a dark row hides it; lighten instead. */
+  tr.prv-expand-clickable:hover .d2h-info {
+    filter: brightness(1.3);
+  }
 }
 
 * {
@@ -127,11 +205,30 @@ input:focus-visible {
   border-color: var(--border-muted);
   color: var(--fg-default);
 }
+/* The discreet "?" at the right end of the topbar. */
+.help-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-muted);
+  font-weight: 600;
+  cursor: pointer;
+}
+.help-btn:hover,
+.help-btn[aria-pressed="true"] {
+  background: var(--canvas-subtle);
+  border-color: var(--border-muted);
+  color: var(--fg-default);
+}
 
 .brand {
   font-weight: 600;
   font-size: 15px;
   color: var(--fg-default);
+  flex-shrink: 0;
 }
 
 .mode-chip {
@@ -172,22 +269,28 @@ input:focus-visible {
 .mode-kind-toggle button.is-active {
   background: var(--canvas-default);
   color: var(--fg-default);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-sm);
 }
 
+/* The picker is the one topbar item allowed to shrink (#60): every wrapper
+   down to the ref name gives up its content-sized minimum so the name can
+   ellipsise instead of the row overflowing into the meta. */
 .mode-picker {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);
+  min-width: 0;
 }
 .mode-picker-side {
   position: relative;
   display: inline-flex;
+  min-width: 0;
 }
 .mode-picker-trigger {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   background: var(--canvas-subtle);
   border: 1px solid var(--border-muted);
   border-radius: 6px;
@@ -248,7 +351,7 @@ input:focus-visible {
   background: var(--canvas-default);
   border: 1px solid var(--border-default);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
 }
 .mode-picker-search {
@@ -451,6 +554,12 @@ input:focus-visible {
   padding: 1px 6px;
   border-radius: 4px;
 }
+/* Review progress (#55): "3/8 viewed", "2 open". Small so the bar stays as wide as before. */
+.meta-item.meta-progress {
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
 
 .refresh-btn {
   background: var(--canvas-default);
@@ -462,8 +571,12 @@ input:focus-visible {
   color: var(--fg-default);
   font-weight: 500;
 }
-.refresh-btn:hover {
+.refresh-btn:hover:not(:disabled) {
   background: var(--canvas-subtle);
+}
+.refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .body {
@@ -508,7 +621,44 @@ input:focus-visible {
 .sidebar-search input:focus {
   border-color: var(--accent-emphasis);
   background: var(--canvas-default);
-  box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+/* Drag handle between panels. It straddles the panel border via negative
+   margins so the grab target is wider than the 2px line it paints. */
+.panel-resizer {
+  flex: 0 0 auto;
+  width: 7px;
+  margin: 0 -3px;
+  position: relative;
+  z-index: 6;
+  cursor: col-resize;
+  touch-action: none;
+}
+.panel-resizer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background-color 80ms ease;
+}
+.panel-resizer:hover::before,
+.panel-resizer:focus-visible::before,
+.panel-resizer.is-dragging::before {
+  background: var(--accent-emphasis);
+}
+.panel-resizer:focus-visible {
+  outline: none;
+}
+/* While a drag is live the pointer can leave the 7px strip between move
+   events; keep the resize cursor and kill text selection everywhere. */
+html.prv-col-resize,
+html.prv-col-resize * {
+  cursor: col-resize !important;
+  user-select: none;
 }
 
 .sidebar-empty {
@@ -524,6 +674,80 @@ input:focus-visible {
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
+}
+
+/* ---- Compact layout (#60) ----
+   Below the breakpoint (COMPACT_MAX in layout.ts) the tree and the chat are
+   drawers over the diff: fixed under the topbar, one at a time, dismissed by
+   the scrim. The topbar keeps only what the reader acts on. */
+
+.drawer-scrim {
+  position: fixed;
+  top: var(--topbar-h);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 8;
+  background: var(--overlay-backdrop);
+}
+/* Both keep their inline `height: calc(100vh - topbar)`: with `bottom: 0` and
+   an auto height instead, the inline `align-self: flex-start` would make the
+   fixed box shrink to its content (CSS abspos self-alignment). */
+.sidebar.is-drawer,
+.chat-panel.is-drawer {
+  position: fixed;
+  top: var(--topbar-h);
+  z-index: 9;
+  box-shadow: var(--shadow-lg);
+}
+.sidebar.is-drawer {
+  left: 0;
+}
+.chat-panel.is-drawer {
+  right: 0;
+  /* The inline `width` rules; the flex basis is for the inline panel. */
+  flex-basis: auto;
+}
+
+@media (max-width: 1000px) {
+  .main-col {
+    padding: var(--sp-2);
+  }
+  .topbar-meta .meta-item.adds,
+  .topbar-meta .meta-item.dels,
+  .topbar-meta .diffstat,
+  .topbar-meta .meta-progress {
+    display: none;
+  }
+  .mode-picker-value {
+    max-width: 10ch;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    padding: 0 var(--sp-3);
+    gap: var(--sp-3);
+  }
+  .topbar-title,
+  .topbar-meta {
+    gap: var(--sp-2);
+  }
+  .topbar-meta .mode-kind-toggle,
+  .mode-picker-label {
+    display: none;
+  }
+  .mode-picker-trigger {
+    padding: 7px 8px;
+  }
+  /* Flex shrinks both refs in proportion, which would cut a short one like
+     "HEAD" first; keep a readable head of each and let the long one give. */
+  .mode-picker-value {
+    min-width: 4ch;
+  }
+  .mode-chip {
+    max-width: none;
+  }
 }
 
 .placeholder,
@@ -571,12 +795,12 @@ input:focus-visible {
   background: var(--canvas-subtle);
 }
 .tree-row.file.active {
-  background: #eaeef2;
-  box-shadow: 0 1px 2px rgba(31, 35, 40, 0.06);
+  background: var(--canvas-emphasis);
+  box-shadow: var(--shadow-sm);
 }
 .tree-row:focus-visible {
   outline: none;
-  background: #eaeef2;
+  background: var(--canvas-emphasis);
 }
 
 .tree-icon {
@@ -589,13 +813,58 @@ input:focus-visible {
   justify-content: center;
 }
 .tree-icon.tree-icon-dir {
-  color: #54aeff;
+  color: var(--icon-directory);
 }
 .tree-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1 1 auto;
+}
+
+/* Right side of a row: open-comment badge, compact diffstat, Viewed check.
+   Fixed-size so the name ellipsises around it rather than being pushed out. */
+.tree-row-meta {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-left: var(--sp-1);
+}
+.tree-row .diffstat {
+  gap: 1px;
+}
+.tree-row .diffstat-block {
+  width: 6px;
+  height: 6px;
+}
+.tree-badge {
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent-subtle);
+  color: var(--accent-fg);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+.tree-badge-dir {
+  background: var(--canvas-subtle);
+  color: var(--fg-muted);
+}
+.tree-row.file.viewed {
+  color: var(--fg-muted);
+}
+.tree-row.file.viewed .tree-name,
+.tree-row.file.viewed .status-icon,
+.tree-row.file.viewed .diffstat {
+  opacity: 0.6;
+}
+.tree-viewed {
+  display: inline-flex;
+  align-items: center;
+  color: var(--success-fg);
 }
 
 /* ---- Status icon (GitHub diff-status octicons) ---- */
@@ -712,11 +981,26 @@ input:focus-visible {
   font-size: var(--fs-path);
   font-weight: 400;
   color: var(--fg-default);
+  display: flex;
+  align-items: baseline;
   flex: 0 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+/* A deep path gives way from its left, so the file name always shows (#62):
+   the directory part overflows as RTL text (ellipsis at the start), while the
+   <bdi> inside keeps the segments themselves in reading order. */
+.file-card-dir {
+  color: var(--fg-muted);
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+.file-card-name {
+  flex: 0 0 auto;
 }
 
 .copy-path-btn {
@@ -747,7 +1031,11 @@ input:focus-visible {
   font-size: 12px;
   color: var(--fg-muted);
   font-style: italic;
-  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: baseline;
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: pre;
 }
 
 .file-card-counts {
@@ -821,7 +1109,7 @@ input:focus-visible {
 .file-card-view-tab.is-active {
   background: var(--canvas-subtle);
   color: var(--fg-default);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-sm);
 }
 
 .file-content-wrap {
@@ -831,7 +1119,9 @@ input:focus-visible {
 }
 .file-content-gutter {
   margin: 0;
-  padding: var(--sp-2) 6px;
+  /* Vertical padding only: each line paints its own row edge to edge, so a
+     tinted line fills the gutter's full width like the diff view's does. */
+  padding: var(--sp-2) 0;
   flex: 0 0 auto;
   width: 96px;
   font-family: var(--ff-mono);
@@ -846,6 +1136,100 @@ input:focus-visible {
   user-select: none;
   white-space: pre;
   box-sizing: border-box;
+}
+/* One row per line, the same height as its code line (var(--fs-code-lh)).
+   Tints mirror the diff view's gutter so a reader can carry the colours over;
+   a 3px bar at the left edge (solid for added / deleted, dashed for replaced)
+   tells the kinds apart without relying on hue alone. */
+.file-line-num {
+  position: relative;
+  display: block;
+  height: var(--fs-code-lh);
+  padding: 0 6px;
+  background-repeat: no-repeat;
+  background-size: 3px 100%;
+}
+.file-line-num.is-marked {
+  color: var(--fg-default);
+}
+.file-line-num.is-add {
+  background-color: var(--gutter-add-bg);
+  background-image: linear-gradient(var(--success-emphasis), var(--success-emphasis));
+}
+.file-line-num.is-mod {
+  background-color: var(--gutter-mod-bg);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--attention-emphasis) 0 4px,
+    transparent 4px 7px
+  );
+}
+.file-line-num.is-del {
+  background-color: var(--gutter-del-bg);
+  background-image: linear-gradient(var(--danger-emphasis), var(--danger-emphasis));
+}
+/* Lines removed from this side leave no row to tint, so mark the seam they
+   left behind: a red line along the top of the next line (or the bottom of
+   the last one at EOF) with a wedge at the left edge, like an editor's
+   deletion marker — the wedge is what catches the eye while scrolling. */
+.file-line-num.has-gap-before {
+  box-shadow: inset 0 2px 0 var(--danger-emphasis);
+}
+.file-line-num.has-gap-after {
+  box-shadow: inset 0 -2px 0 var(--danger-emphasis);
+}
+.file-line-num.has-gap-before.has-gap-after {
+  box-shadow:
+    inset 0 2px 0 var(--danger-emphasis),
+    inset 0 -2px 0 var(--danger-emphasis);
+}
+.file-line-num.has-gap-before::before,
+.file-line-num.has-gap-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: 0;
+  height: 0;
+  border-left: 8px solid var(--danger-emphasis);
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  pointer-events: none;
+  z-index: 1;
+}
+.file-line-num.has-gap-before::before {
+  top: -5px;
+}
+.file-line-num.has-gap-after::after {
+  bottom: -5px;
+}
+
+/* Previous / next change, in the card header while the marked gutter is shown. */
+.file-change-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: var(--sp-2);
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-muted);
+  flex: 0 0 auto;
+}
+.file-change-nav-btn {
+  background: var(--canvas-default);
+  border: 1px solid var(--border-muted);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: var(--fs-ui-sm);
+  line-height: 18px;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+.file-change-nav-btn:hover {
+  color: var(--fg-default);
+  background: var(--canvas-subtle);
+}
+.file-change-nav-count {
+  padding: 0 var(--sp-1);
+  white-space: nowrap;
 }
 .file-content-pre {
   margin: 0;
@@ -879,10 +1263,35 @@ input:focus-visible {
 .markdown-file {
   background: var(--canvas-default);
 }
+.md-view-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: var(--sp-2) var(--sp-3) 0;
+}
+.md-view-note {
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-muted);
+  /* One line, ellipsised, in a narrow card: never one word per line (#60). */
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.md-view-note-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+  color: var(--accent-fg);
+  cursor: pointer;
+}
+.md-view-note-link:hover {
+  text-decoration: underline;
+}
 .md-view-toggle {
   display: inline-flex;
   gap: 2px;
-  margin: var(--sp-2) var(--sp-3) 0;
   padding: 2px;
   background: var(--canvas-default);
   border: 1px solid var(--border-muted);
@@ -904,7 +1313,7 @@ input:focus-visible {
 .md-view-tab.is-active {
   background: var(--canvas-subtle);
   color: var(--fg-default);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-sm);
 }
 
 .markdown-body {
@@ -960,6 +1369,12 @@ input:focus-visible {
   padding: var(--sp-3);
   border-radius: 6px;
   overflow-x: auto;
+  /* A code line cannot wrap, so its intrinsic width would widen every ancestor —
+     the chat panel, or the table cell holding a comment thread. `width: 0` keeps
+     that contribution at zero and `min-width` fills the space actually available,
+     so long lines scroll inside the block instead. */
+  width: 0;
+  min-width: 100%;
 }
 .markdown-body pre code {
   background: transparent;
@@ -1133,7 +1548,7 @@ input:focus-visible {
 }
 .d2h-info,
 .d2h-info .d2h-code-line-ctn {
-  background: #ddf4ff !important;
+  background: var(--accent-subtle) !important;
   color: var(--accent-fg) !important;
   border-top: 1px solid var(--border-muted) !important;
   border-bottom: 1px solid var(--border-muted) !important;
@@ -1157,10 +1572,13 @@ input:focus-visible {
   vertical-align: middle;
   width: 16px;
   height: 16px;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='%230969da' d='M8 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM1.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm13 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z'/></svg>");
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: contain;
+  /* The glyph is a mask over currentColor (the row's --accent-fg) rather than
+     a fixed-fill background image, so it follows the theme. */
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M8 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM1.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm13 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z'/></svg>")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M8 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM1.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm13 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z'/></svg>")
+    center / contain no-repeat;
   float: none !important;
 }
 .d2h-code-linenumber.d2h-info .line-num1,
@@ -1171,6 +1589,54 @@ input:focus-visible {
 }
 .d2h-tag {
   display: none !important;
+}
+
+/* ---- hunk header expanders (reveal the context the diff hides) ---- */
+
+/* The dots stand for "there is more here"; the arrows say it better. */
+.d2h-code-linenumber.d2h-info.prv-has-expander::before,
+.d2h-info .d2h-code-linenumber.prv-has-expander::before {
+  display: none !important;
+}
+/* Two arrows must sit on one line, or the header row doubles in height. The
+   split gutter is rtl (that is how diff2html right-aligns its line numbers),
+   which would show the arrows in reverse. */
+.prv-has-expander {
+  white-space: nowrap !important;
+  direction: ltr !important;
+}
+.prv-expander {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent-fg);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.prv-expander:hover {
+  background: var(--accent-subtle);
+}
+/* The split gutter is half the width of the unified one. */
+.d2h-code-side-linenumber .prv-expander {
+  width: 16px;
+}
+tr.prv-expand-clickable {
+  cursor: pointer;
+}
+tr.prv-expand-clickable:hover .d2h-info {
+  filter: brightness(0.97);
+}
+/* The synthetic row below the last hunk mirrors a hunk header's geometry. */
+.prv-expand-row .d2h-code-line,
+.prv-expand-row .d2h-code-side-line {
+  min-height: var(--fs-code-lh);
 }
 
 /* ---- diff2html overrides toward GitHub (side-by-side / split) ---- */
@@ -1225,6 +1691,9 @@ input:focus-visible {
 
 .chat-panel {
   flex: 0 0 380px;
+  /* A rendered code block cannot wrap, so without min-width its intrinsic width
+     would beat the 380px basis and stretch the panel over the diff. */
+  min-width: 0;
   background: var(--canvas-default);
   border-left: 1px solid var(--border-default);
   position: sticky;
@@ -1265,6 +1734,7 @@ input:focus-visible {
 
 .chat-messages {
   flex: 1 1 auto;
+  min-width: 0;
   overflow-y: auto;
   padding: var(--sp-3);
   display: flex;
@@ -1290,14 +1760,69 @@ input:focus-visible {
   background: var(--accent-subtle);
   color: var(--fg-default);
 }
+/* The agent answer reads as plain transcript text, not a card: no fill, no
+   border, and the same gutter as the tool/progress lines it sits between. Only
+   the user turn keeps a bubble, which is what marks the two apart. */
 .chat-msg-assistant {
   align-self: stretch;
-  background: var(--canvas-subtle);
-  border: 1px solid var(--border-muted);
+  padding: 2px var(--sp-2);
 }
 .chat-thinking {
   color: var(--fg-subtle);
   font-style: italic;
+}
+.chat-stall-hint {
+  margin-top: var(--sp-1);
+  color: var(--fg-muted);
+  font-size: var(--fs-ui-sm);
+}
+/* Assistant replies render as markdown; strip the file-view padding and tighten
+   block spacing so a short answer stays one bubble tall. `white-space: normal`
+   undoes the `pre-wrap` of .chat-msg, which would otherwise double the gaps. */
+.chat-markdown {
+  white-space: normal;
+  padding: 0;
+  font-size: inherit;
+  line-height: 1.55;
+}
+.chat-markdown > :last-child {
+  margin-bottom: 0;
+}
+.chat-markdown p,
+.chat-markdown ul,
+.chat-markdown ol,
+.chat-markdown blockquote,
+.chat-markdown pre,
+.chat-markdown table {
+  margin: 0 0 0.6em;
+}
+.chat-markdown ul,
+.chat-markdown ol {
+  padding-left: 1.4em;
+}
+.chat-markdown h1,
+.chat-markdown h2,
+.chat-markdown h3,
+.chat-markdown h4 {
+  margin: 0.8em 0 0.4em;
+  font-size: var(--fs-ui);
+}
+.chat-markdown h1,
+.chat-markdown h2 {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+/* The bubble is already --canvas-subtle, so code needs a lighter fill to stand out. */
+.chat-markdown code {
+  background: var(--canvas-default);
+  border: 1px solid var(--border-muted);
+}
+.chat-markdown pre {
+  background: var(--canvas-default);
+  border: 1px solid var(--border-muted);
+}
+.chat-markdown pre code {
+  border: 0;
 }
 .chat-activity {
   display: flex;
@@ -1363,13 +1888,13 @@ input:focus-visible {
 .chat-input:focus {
   border-color: var(--accent-emphasis);
   background: var(--canvas-default);
-  box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
+  box-shadow: 0 0 0 3px var(--accent-ring);
 }
 .chat-send {
   align-self: flex-end;
   background: var(--success-emphasis);
-  color: #ffffff;
-  border: 1px solid rgba(27, 31, 36, 0.15);
+  color: var(--fg-on-emphasis);
+  border: 1px solid var(--button-primary-border);
   border-radius: 6px;
   padding: 5px 16px;
   cursor: pointer;
@@ -1393,6 +1918,13 @@ input:focus-visible {
 .prv-dragging,
 .prv-dragging * {
   user-select: none;
+}
+/* Keyboard focus on a gutter line (#56). Drawn inside the cell, where the
+   row's own background (and no neighbour) sits under it. */
+.d2h-code-linenumber:focus-visible,
+.d2h-code-side-linenumber:focus-visible {
+  outline: 2px solid var(--accent-emphasis) !important;
+  outline-offset: -2px;
 }
 /* Lines covered by the in-progress range drag / by an open comment.
  * The class lives on the <tr>; selectors are specific enough (and cover the
@@ -1431,7 +1963,7 @@ input:focus-visible {
   align-items: center;
   justify-content: center;
   background: var(--accent-emphasis);
-  color: #ffffff;
+  color: var(--fg-on-emphasis);
   border: none;
   border-radius: 4px;
   font-size: 14px;
@@ -1453,7 +1985,7 @@ input:focus-visible {
   background: var(--canvas-default);
   border: 1px solid var(--border-default);
   border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(31, 35, 40, 0.08);
+  box-shadow: var(--shadow-md);
   font-family: var(--ff-sans);
 }
 .prv-thread-head {
@@ -1503,8 +2035,17 @@ input:focus-visible {
   color: var(--success-fg);
   font-weight: 600;
 }
+/* A thread the agent has yet to answer — what "Finish review" will send. */
+.prv-thread-badge-pending {
+  color: var(--attention-fg);
+}
 .prv-thread-resolved {
   opacity: 0.75;
+}
+/* Flash the thread a finding jump landed on, so the eye finds it after the scroll. */
+.prv-thread-focus {
+  border-color: var(--accent-emphasis);
+  box-shadow: 0 0 0 3px var(--accent-ring);
 }
 .prv-thread-banner {
   font-size: var(--fs-ui-sm);
@@ -1590,9 +2131,25 @@ input:focus-visible {
 .review-card-count {
   background: var(--accent-subtle);
   color: var(--accent-fg);
+  border: 0;
   border-radius: 999px;
   padding: 1px 8px;
   font-size: var(--fs-ui-sm);
+  font-family: inherit;
+  cursor: pointer;
+}
+/* Severity chips reuse the thread badge look; as buttons they need the reset. */
+.review-severity-chip {
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+.review-card-count:hover,
+.review-severity-chip:hover {
+  filter: brightness(0.92);
+}
+.review-card-header .file-change-nav {
+  margin-left: 0;
 }
 .review-card-spacer {
   flex: 1;
@@ -1652,6 +2209,93 @@ input:focus-visible {
   padding: 2px var(--sp-2);
 }
 
+/* ---- Finish review (batch) card ---- */
+
+.batch-card-count {
+  color: var(--fg-muted);
+  font-size: var(--fs-ui-sm);
+}
+.batch-empty,
+.batch-note {
+  color: var(--fg-muted);
+  font-size: var(--fs-ui-sm);
+}
+.batch-empty {
+  padding: var(--sp-3);
+}
+/* The pending threads, one per row: location, then the ask. */
+.batch-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.batch-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3);
+}
+.batch-item + .batch-item {
+  border-top: 1px solid var(--border-muted);
+}
+.batch-item-loc {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--ff-mono);
+  font-size: var(--fs-ui-sm);
+  color: var(--accent-fg);
+}
+.batch-item-loc:hover {
+  text-decoration: underline;
+}
+/* min-width lets the ellipsis work inside the flex row. */
+.batch-item-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-default);
+}
+.batch-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-top: 1px solid var(--border-muted);
+}
+.batch-label {
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-muted);
+}
+.batch-activity {
+  padding: var(--sp-2) var(--sp-3);
+  max-height: 200px;
+  overflow-y: auto;
+}
+.batch-actions,
+.batch-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-top: 1px solid var(--border-muted);
+  font-size: var(--fs-ui-sm);
+}
+.batch-summary-error {
+  color: var(--danger-fg);
+}
+
 /* ---- Review comment chips + finding body ---- */
 .prv-thread-title {
   display: flex;
@@ -1696,7 +2340,7 @@ input:focus-visible {
 }
 .prv-severity-critical {
   background: var(--danger-emphasis);
-  color: #ffffff;
+  color: var(--fg-on-emphasis);
 }
 .prv-lens-tag {
   font-family: var(--ff-mono);
@@ -1722,4 +2366,260 @@ input:focus-visible {
 }
 .prv-finding-body > :last-child {
   margin-bottom: 0;
+}
+
+/* ---- Undo toast (after deleting a comment thread) ---- */
+
+.undo-toast {
+  position: fixed;
+  left: 50%;
+  bottom: var(--sp-4);
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--canvas-default);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  color: var(--fg-default);
+  font-size: var(--fs-ui);
+}
+.undo-toast-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent-fg);
+}
+.undo-toast-btn:hover {
+  text-decoration: underline;
+}
+.undo-toast-dismiss {
+  background: none;
+  border: 0;
+  padding: 0 2px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--fg-muted);
+}
+.undo-toast-dismiss:hover {
+  color: var(--fg-default);
+}
+
+/* ---- Keyboard shortcut help (#56) ---- */
+
+.shortcut-help-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay-backdrop);
+}
+.shortcut-help {
+  width: min(460px, calc(100vw - 2 * var(--sp-4)));
+  max-height: calc(100vh - 2 * var(--sp-4));
+  overflow: auto;
+  padding: var(--sp-4) var(--sp-5) var(--sp-5);
+  background: var(--canvas-default);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  color: var(--fg-default);
+  font-size: var(--fs-ui);
+  outline: none;
+}
+.shortcut-help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.shortcut-help h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.shortcut-help h3 {
+  margin: var(--sp-4) 0 var(--sp-1);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.shortcut-help-close {
+  background: none;
+  border: 0;
+  padding: 0 4px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--fg-muted);
+}
+.shortcut-help-close:hover {
+  color: var(--fg-default);
+}
+.shortcut-help-list {
+  margin: 0;
+}
+.shortcut-help-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 5px 0;
+  border-top: 1px solid var(--border-muted);
+}
+.shortcut-help-row dd {
+  margin: 0;
+  white-space: nowrap;
+}
+.shortcut-help-or {
+  color: var(--fg-subtle);
+}
+.shortcut-help kbd {
+  display: inline-block;
+  min-width: 20px;
+  padding: 3px 6px;
+  border: 1px solid var(--border-default);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--canvas-subtle);
+  color: var(--fg-default);
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  line-height: 1;
+  text-align: center;
+}
+
+/* ---- Chat composer: settings button + popover next to Send ---- */
+
+/* One row, never wrapping: the settings button gives way (its summary
+   ellipsises) so Send stays pinned right down to the panel's 280px minimum. */
+.chat-composer-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.chat-composer-bar .chat-send {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.chat-settings-menu {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.chat-settings-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-muted);
+}
+.chat-settings-btn:hover,
+.chat-settings-btn.is-active {
+  background: var(--canvas-subtle);
+  border-color: var(--border-muted);
+  color: var(--fg-default);
+}
+.chat-settings-btn svg {
+  flex: 0 0 auto;
+}
+.chat-settings-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-settings-popover {
+  top: auto;
+  bottom: calc(100% + 4px);
+  width: 240px;
+  max-width: calc(100vw - 2 * var(--sp-3));
+  padding: 10px;
+}
+.chat-settings-popover .chat-settings {
+  flex-direction: column;
+  align-items: stretch;
+}
+.chat-settings-popover .chat-setting {
+  justify-content: space-between;
+}
+.chat-settings-popover .chat-select,
+.chat-settings-popover .chat-setting-input {
+  width: 60%;
+  min-width: 0;
+}
+/* The custom-model field has no label; line it up under the model picker. */
+.chat-settings-popover .chat-setting-input {
+  align-self: flex-end;
+}
+.chat-settings {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.chat-setting {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.chat-setting-label {
+  color: var(--fg-muted);
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.chat-select,
+.chat-setting-input {
+  font: inherit;
+  font-size: var(--fs-ui-sm);
+  color: var(--fg-default);
+  background: var(--canvas-default);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  padding: 3px 6px;
+  outline: none;
+}
+.chat-select {
+  cursor: pointer;
+}
+.chat-select:hover:not(:disabled) {
+  background: var(--canvas-subtle);
+}
+.chat-select:disabled,
+.chat-setting-input:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.chat-setting-input {
+  width: 12em;
+  font-family: var(--ff-mono);
+}
+.chat-setting-input:focus {
+  border-color: var(--accent-emphasis);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.chat-setting-input[aria-invalid="true"] {
+  border-color: var(--danger-fg);
 }

@@ -1,3 +1,4 @@
+import type { ReviewSeverity } from "../../shared/comments";
 import type { LensPhase, ReviewRun } from "../useReview";
 import { ChatMessageList } from "./ChatMessageList";
 
@@ -8,22 +9,37 @@ const PHASE_LABEL: Record<LensPhase, string> = {
   error: "error",
 };
 
+/** Chip order: worst first, matching how a reader triages. */
+const SEVERITIES: ReviewSeverity[] = ["critical", "major", "minor", "info"];
+
 /**
  * Live status card for an agent review run: one row per lens (state pill +
  * recent activity, reusing the chat activity rendering), a run-level error
  * line, and the "Clear agent comments" action. After a reload, with no run in
  * flight, it degrades to the summary header. Visibility is owned by App.
+ *
+ * The header doubles as the findings navigator (#58): per-severity chips
+ * (each jumps to its first open finding), the open count (jumps to the first
+ * open finding of any severity) and ↑/↓ that step through them across files.
  */
 export function ReviewPanel({
   run,
   openAgentCount,
+  bySeverity,
   clearableCount,
   onClear,
+  onJump,
+  onJumpToSeverity,
+  onJumpToFirst,
 }: {
   run: ReviewRun | null;
   openAgentCount: number;
+  bySeverity: Partial<Record<ReviewSeverity, number>>;
   clearableCount: number;
   onClear: () => void;
+  onJump: (direction: 1 | -1) => void;
+  onJumpToSeverity: (severity: ReviewSeverity) => void;
+  onJumpToFirst: () => void;
 }) {
   return (
     <section className="review-card">
@@ -31,8 +47,50 @@ export function ReviewPanel({
         <span className="review-card-title">Agent review</span>
         {run?.running && <span className="review-card-running">running…</span>}
         {openAgentCount > 0 && (
-          <span className="review-card-count">
+          <button
+            type="button"
+            className="review-card-count"
+            title="Go to the first open finding"
+            onClick={onJumpToFirst}
+          >
             {openAgentCount} open comment{openAgentCount === 1 ? "" : "s"}
+          </button>
+        )}
+        {SEVERITIES.map((severity) => {
+          const n = bySeverity[severity] ?? 0;
+          if (n === 0) return null;
+          return (
+            <button
+              key={severity}
+              type="button"
+              className={`review-severity-chip prv-severity prv-severity-${severity}`}
+              title={`Go to the first open ${severity} finding`}
+              onClick={() => onJumpToSeverity(severity)}
+            >
+              {n} {severity}
+            </button>
+          );
+        })}
+        {openAgentCount > 0 && (
+          <span className="file-change-nav" aria-label="Open findings">
+            <button
+              type="button"
+              className="file-change-nav-btn"
+              title="Previous finding"
+              aria-label="Previous finding"
+              onClick={() => onJump(-1)}
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              className="file-change-nav-btn"
+              title="Next finding"
+              aria-label="Next finding"
+              onClick={() => onJump(1)}
+            >
+              ↓
+            </button>
           </span>
         )}
         <span className="review-card-spacer" />

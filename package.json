@@ -2,7 +2,7 @@
   "name": "prv",
   "version": "0.0.0",
   "private": true,
-  "description": "Pull-Request like View — local GitHub-style diff viewer for AI-agent changes and arbitrary directory comparisons.",
+  "description": "Pull-Request like View — local GitHub-style diff viewer for AI-agent changes and git ref comparisons.",
   "bin": {
     "prv": "./src/cli.ts"
   },
