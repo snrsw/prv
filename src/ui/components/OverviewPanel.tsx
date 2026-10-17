@@ -1,11 +1,30 @@
 import { useEffect, useRef, useState } from "react";
-import type { Description } from "../../shared/description";
+import { DEFAULT_DESCRIBE_INSTRUCTIONS, type Description } from "../../shared/description";
 import { formatUpdatedAt, type DescribeRun } from "../useDescription";
 import { ChatMessageList } from "./ChatMessageList";
 import { ChevronDown, ChevronRight } from "./icons";
 import { Markdown } from "./Markdown";
 
 const COLLAPSED_KEY = "prv:overviewCollapsed";
+const INSTRUCTIONS_KEY = "prv:describeInstructions";
+
+function readInstructions(): string {
+  try {
+    return window.localStorage.getItem(INSTRUCTIONS_KEY) ?? DEFAULT_DESCRIBE_INSTRUCTIONS;
+  } catch {
+    return DEFAULT_DESCRIBE_INSTRUCTIONS;
+  }
+}
+
+/** Remember the last prompt used; the default is stored as "nothing". */
+function writeInstructions(value: string): void {
+  try {
+    if (value === DEFAULT_DESCRIBE_INSTRUCTIONS) window.localStorage.removeItem(INSTRUCTIONS_KEY);
+    else window.localStorage.setItem(INSTRUCTIONS_KEY, value);
+  } catch {
+    /* localStorage unavailable; the prompt is used for this run only */
+  }
+}
 
 function readCollapsed(): boolean {
   try {
@@ -17,10 +36,11 @@ function readCollapsed(): boolean {
 
 /**
  * The Overview pane at the top of the diff: the change description rendered
- * as Markdown, like a pull request body. It has four faces — the description,
- * an empty state that explains `prv describe`, a textarea while editing, and
- * the agent's activity while Generate runs. The description itself is owned
- * by useDescription; the pane only keeps its collapsed flag and the draft.
+ * as Markdown, like a pull request body. It has five faces — the description,
+ * an empty state that explains `prv describe`, a textarea while editing, the
+ * Generate prompt (editable, remembered in localStorage), and the agent's
+ * activity while Generate runs. The description itself is owned
+ * by useDescription; the pane only keeps its collapsed flag, the draft and the prompt.
  */
 export function OverviewPanel({
   description,
@@ -37,16 +57,19 @@ export function OverviewPanel({
   saveError: string | null;
   /** False when there is no diff to describe. */
   canGenerate: boolean;
-  onGenerate: () => void;
+  /** Run Generate with these instructions (the editable part of the prompt). */
+  onGenerate: (instructions: string) => void;
   onStop: () => void;
   onDismissRun: () => void;
   onSave: (markdown: string) => Promise<boolean>;
 }) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [draft, setDraft] = useState<string | null>(null);
+  // The Generate prompt while it is open for editing; null = closed.
+  const [prompt, setPrompt] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const running = run !== null && run.running;
-  const editing = draft !== null;
+  const editing = draft !== null || prompt !== null;
   const endRef = useRef<HTMLDivElement>(null);
   // Re-render once a minute so "updated 5 min ago" stays true.
   const [, setTick] = useState(0);
@@ -73,9 +96,15 @@ export function OverviewPanel({
     setCollapsed(false);
     setDraft(description?.markdown ?? "");
   };
-  const generate = () => {
+  const openPrompt = () => {
     setCollapsed(false);
-    onGenerate();
+    setPrompt(readInstructions());
+  };
+  const generate = () => {
+    if (prompt === null || prompt.trim() === "") return;
+    writeInstructions(prompt);
+    setPrompt(null);
+    onGenerate(prompt);
   };
   const save = async () => {
     if (draft === null || draft.trim() === "") return;
@@ -114,14 +143,14 @@ export function OverviewPanel({
           ) : (
             <>
               <button type="button" className="prv-thread-btn" onClick={startEdit}>
-                {description ? "Edit" : "Write"}
+                Edit
               </button>
               <button
                 type="button"
                 className="prv-thread-btn"
                 disabled={!canGenerate}
                 title="Ask the selected agent to describe the current diff"
-                onClick={generate}
+                onClick={openPrompt}
               >
                 {description ? "Regenerate" : "Generate"}
               </button>
@@ -147,7 +176,42 @@ export function OverviewPanel({
               <div ref={endRef} />
             </div>
           )}
-          {editing ? (
+          {prompt !== null ? (
+            <div className="batch-form overview-form">
+              <label className="batch-note" htmlFor="overview-prompt">
+                Prompt — what the agent should write. The diff and the read-only rule are added for
+                you.
+              </label>
+              <textarea
+                id="overview-prompt"
+                className="chat-input overview-input"
+                rows={10}
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+              />
+              <div className="prv-thread-confirm-actions">
+                <button
+                  type="button"
+                  className="chat-send"
+                  disabled={prompt.trim() === ""}
+                  onClick={generate}
+                >
+                  Generate
+                </button>
+                <button
+                  type="button"
+                  className="prv-thread-btn"
+                  disabled={prompt === DEFAULT_DESCRIBE_INSTRUCTIONS}
+                  onClick={() => setPrompt(DEFAULT_DESCRIBE_INSTRUCTIONS)}
+                >
+                  Reset to default
+                </button>
+                <button type="button" className="prv-thread-btn" onClick={() => setPrompt(null)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : draft !== null ? (
             <div className="batch-form overview-form">
               <textarea
                 className="chat-input overview-input"
@@ -174,14 +238,14 @@ export function OverviewPanel({
             </div>
           ) : description ? (
             <div className="overview-body">
-              <Markdown source={description.markdown} />
+              <Markdown source={description.markdown} mermaid />
             </div>
           ) : (
             !running && (
               <div className="batch-empty">
                 No description yet. An agent writes one with <code>prv describe</code> (markdown on
-                stdin, saved to <code>.prv/description.md</code>), or press Generate to have the
-                selected agent draft one from the current diff.
+                stdin, saved to <code>.prv/description.md</code>). Press Edit to write one yourself,
+                or Generate to have the selected agent draft one from the current diff.
               </div>
             )
           )}

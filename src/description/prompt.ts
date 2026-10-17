@@ -4,6 +4,7 @@
  */
 
 import type { FileDiff } from "../diff/types";
+import { DEFAULT_DESCRIBE_INSTRUCTIONS } from "../shared/description";
 
 /** Diff text past this many characters is cut; the agent can read the rest from the repo. */
 export const MAX_DESCRIBE_DIFF_CHARS = 100_000;
@@ -18,22 +19,22 @@ export function diffForDescribe(files: FileDiff[], max = MAX_DESCRIBE_DIFF_CHARS
   return `${diff.slice(0, max)}\n… (diff truncated — read the changed files for the rest)`;
 }
 
-export function buildDescribePrompt(diff: string): string {
+/**
+ * Build the Generate prompt. The read-only rule, the diff, and the reply
+ * format are fixed; `instructions` (what to write — the user can edit it in
+ * the Overview pane) sits between them, and defaults to
+ * DEFAULT_DESCRIBE_INSTRUCTIONS.
+ */
+export function buildDescribePrompt(
+  diff: string,
+  instructions: string = DEFAULT_DESCRIBE_INSTRUCTIONS,
+): string {
   return [
     "You are describing a set of local code changes in a strictly read-only capacity.",
-    "Do not modify any files or run any mutating commands.",
+    "Do not modify any files or run any mutating commands. You may Read or Grep the",
+    "repository for context.",
     "",
-    "Write the description a reviewer would want as a pull request body for the diff",
-    "below. You may Read or Grep the repository for context (why the change was made,",
-    "what the touched code does). Use these Markdown sections:",
-    "",
-    "## Summary — one or two sentences: what the change does and why.",
-    "## Changes — a bullet list of what changed, grouped by area; name files or",
-    "   functions where it helps.",
-    "## How to verify — commands to run or steps to check the change works.",
-    "",
-    "Be concrete and brief. Do not invent motivation the diff and repository do not",
-    "support; say what is unclear instead.",
+    instructions.trim(),
     "",
     "<diff>",
     diff,

@@ -1,5 +1,9 @@
 import { test, expect, describe } from "bun:test";
 import type { FileDiff } from "../diff/types";
+import {
+  MAX_DESCRIBE_INSTRUCTIONS_CHARS,
+  sanitizeDescribeInstructions,
+} from "../shared/description";
 import { buildDescribePrompt, diffForDescribe, extractDescription } from "./prompt";
 
 const file = (path: string, raw: string): FileDiff => ({
@@ -31,6 +35,30 @@ test("the prompt is read-only, asks for the PR-body sections, and carries the di
   expect(prompt).toContain("## How to verify");
   expect(prompt).toContain("<diff>\n+added line\n</diff>");
   expect(prompt).toContain("<description>");
+});
+
+test("custom instructions replace the default sections but keep the fixed frame", () => {
+  const prompt = buildDescribePrompt("+x", "  Write a haiku about the change.  ");
+  expect(prompt).toContain("Write a haiku about the change.");
+  expect(prompt).not.toContain("## How to verify");
+  expect(prompt).toContain("Do not modify any files");
+  expect(prompt).toContain("<diff>\n+x\n</diff>");
+  expect(prompt).toContain("<description>");
+});
+
+describe("sanitizeDescribeInstructions", () => {
+  test("keeps a trimmed non-blank string", () => {
+    expect(sanitizeDescribeInstructions("  be brief ")).toBe("be brief");
+  });
+
+  test("drops blanks, non-strings and over-long text", () => {
+    expect(sanitizeDescribeInstructions("   ")).toBeUndefined();
+    expect(sanitizeDescribeInstructions(42)).toBeUndefined();
+    expect(sanitizeDescribeInstructions(undefined)).toBeUndefined();
+    expect(
+      sanitizeDescribeInstructions("x".repeat(MAX_DESCRIBE_INSTRUCTIONS_CHARS + 1)),
+    ).toBeUndefined();
+  });
 });
 
 describe("extractDescription", () => {

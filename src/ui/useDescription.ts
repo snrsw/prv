@@ -147,9 +147,12 @@ export function useDescription(ready: boolean, reloadKey: number) {
     setRun((r) => reduceDescribe(r, frame));
   }, []);
 
-  /** Draft a description of the diff identified by `modeQuery` with the selected agent. */
+  /**
+   * Draft a description of the diff identified by `modeQuery` with the
+   * selected agent; `instructions` replaces the default prompt's "what to write".
+   */
   const generate = useCallback(
-    (modeQuery: string) => {
+    (modeQuery: string, instructions?: string) => {
       if (wsRef.current) return;
       setRun({ running: true, activity: [] });
       const proto = window.location.protocol === "https:" ? "wss" : "ws";
@@ -164,7 +167,12 @@ export function useDescription(ready: boolean, reloadKey: number) {
         );
       };
       // The app-wide agent/model/effort choice decides which CLI drafts it.
-      const start: DescribeStart = { type: "start", modeQuery, ...getChatSettings() };
+      const start: DescribeStart = {
+        type: "start",
+        modeQuery,
+        instructions,
+        ...getChatSettings(),
+      };
       ws.addEventListener("open", () => ws.send(JSON.stringify(start)), { once: true });
       wsRef.current = ws;
     },

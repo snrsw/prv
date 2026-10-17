@@ -32,7 +32,44 @@ export type Description = { markdown: string; updatedAt: string };
  * (an `encodeMode` query string; empty falls back to the server's default
  * mode). Agent/model/effort ride along like on a chat turn.
  */
-export type DescribeStart = ChatSettings & { type: "start"; modeQuery: string };
+export type DescribeStart = ChatSettings & {
+  type: "start";
+  modeQuery: string;
+  /** Replaces DEFAULT_DESCRIBE_INSTRUCTIONS in the prompt; omitted = the default. */
+  instructions?: string;
+};
+
+/**
+ * What Generate asks the agent to write — the part of the prompt the user can
+ * edit before running it. The read-only rule, the diff and the reply format
+ * around it are fixed (see buildDescribePrompt).
+ */
+export const DEFAULT_DESCRIBE_INSTRUCTIONS = [
+  "Write the description a reviewer would want as a pull request body for the diff",
+  "below. Use these Markdown sections:",
+  "",
+  "## Summary — one or two sentences: what the change does and why.",
+  "## Changes — a bullet list of what changed, grouped by area; name files or",
+  "   functions where it helps.",
+  "## How to verify — commands to run or steps to check the change works.",
+  "",
+  "Be concrete and brief. Do not invent motivation the diff and repository do not",
+  "support; say what is unclear instead.",
+].join("\n");
+
+/** Custom instructions longer than this are refused by the server. */
+export const MAX_DESCRIBE_INSTRUCTIONS_CHARS = 20_000;
+
+/**
+ * The custom instructions from an untrusted start frame: a non-blank string
+ * within the length cap, else undefined (use the default). Pure.
+ */
+export function sanitizeDescribeInstructions(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (trimmed === "" || trimmed.length > MAX_DESCRIBE_INSTRUCTIONS_CHARS) return undefined;
+  return trimmed;
+}
 
 /**
  * Server → client frames. Ordering per accepted start: `tool`/`progress`*,

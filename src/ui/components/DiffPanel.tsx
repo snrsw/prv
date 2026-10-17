@@ -1124,7 +1124,7 @@ function MarkdownFileView({
         )}
       </div>
       {md === "rendered" ? (
-        <Markdown source={text} />
+        <Markdown source={text} mermaid />
       ) : (
         <FileContentCode path={path} text={text} marks={marks} commenting={commenting} />
       )}

@@ -30,6 +30,8 @@ export type RunDescribeArgs = {
   signal?: AbortSignal;
   /** Which CLI (and model/effort) runs the turn; omitted = Claude Code defaults. */
   settings?: ChatSettings;
+  /** What to write; omitted = DEFAULT_DESCRIBE_INSTRUCTIONS. */
+  instructions?: string;
   turnRunner?: TurnRunner;
 };
 
@@ -45,9 +47,10 @@ export async function runDescribe({
   emit,
   signal,
   settings = {},
+  instructions,
   turnRunner = runTurn,
 }: RunDescribeArgs): Promise<void> {
-  const prompt = buildDescribePrompt(diffForDescribe(files));
+  const prompt = buildDescribePrompt(diffForDescribe(files), instructions);
   let result: string | null = null;
   let error: string | null = null;
   for await (const event of turnRunner({ cwd, prompt, mode: "ask", signal, ...settings })) {

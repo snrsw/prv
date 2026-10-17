@@ -1400,6 +1400,21 @@ html.prv-col-resize * {
   padding: 0;
   font-size: var(--fs-code);
 }
+/* A rendered ```mermaid block (see src/ui/mermaid.ts). */
+.markdown-body .mermaid-diagram {
+  margin-bottom: var(--sp-3);
+  overflow-x: auto;
+  text-align: center;
+}
+.markdown-body .mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+.markdown-body .mermaid-error {
+  margin: calc(-1 * var(--sp-2)) 0 var(--sp-3);
+  color: var(--danger-fg);
+  font-size: var(--fs-ui-sm);
+}
 .markdown-body blockquote {
   padding: 0 1em;
   color: var(--fg-muted);

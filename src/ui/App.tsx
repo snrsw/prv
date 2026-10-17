@@ -223,11 +223,15 @@ export function App() {
   // one written by `prv describe` while prv is open shows up.
   const description = useDescription(bootstrapped, reloadKey);
   const { generate: generateDescription } = description;
-  const startDescribe = useCallback(() => {
-    const params = new URLSearchParams();
-    if (mode) encodeMode(mode, params);
-    generateDescription(params.toString()); // empty query → the server's default mode
-  }, [mode, generateDescription]);
+  const startDescribe = useCallback(
+    (instructions: string) => {
+      const params = new URLSearchParams();
+      if (mode) encodeMode(mode, params);
+      // An empty query → the server's default mode.
+      generateDescription(params.toString(), instructions);
+    },
+    [mode, generateDescription],
+  );
   const filePaths = useMemo(() => files?.map((f) => f.path) ?? null, [files]);
   const [fileUi, setFileUi] = useFileUiState(loadedMode?.mode ?? null, filePaths);
 

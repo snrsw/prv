@@ -25,6 +25,7 @@ import {
   MAX_DESCRIPTION_BYTES,
   type DescribeServerFrame,
   type DescribeStart,
+  sanitizeDescribeInstructions,
   type DescribeWsData,
 } from "./shared/description";
 import { isPendingComment, type Comment } from "./shared/comments";
@@ -522,6 +523,7 @@ async function handleDescribeMessage(
       signal: data.abort.signal,
       // Untrusted frame: keep only well-formed agent/model/effort values.
       settings: sanitizeChatSettings(msg),
+      instructions: sanitizeDescribeInstructions(msg.instructions),
       turnRunner,
     });
   } catch (err) {
