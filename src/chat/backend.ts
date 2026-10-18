@@ -16,7 +16,13 @@ export type ChatEvent =
   | { kind: "done"; result: string }
   | { kind: "error"; message: string };
 
-export type TurnMode = "ask" | "apply";
+/**
+ * What a turn may do. `ask` is read-only (diff chat, agent review); `apply`
+ * edits files for a "Finish review" batch; `auto` is a comment thread's
+ * "Send now", where the agent decides per comment whether to edit or answer —
+ * so it runs with `apply`'s edit permissions.
+ */
+export type TurnMode = "ask" | "apply" | "auto";
 
 /** Parses one line of CLI output. May keep state across lines (see Codex). */
 export type LineParser = (line: string) => ChatEvent[];

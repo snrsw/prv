@@ -127,13 +127,20 @@ export function sanitizeChatSettings(input: unknown): ChatSettings {
   return settings;
 }
 
+/**
+ * What a client-started turn may do. "ask" = read-only Q&A (the diff chat);
+ * "auto" = a comment thread's "Send now": the agent decides whether the
+ * comment needs a file edit or only an answer, so it runs with edit permission.
+ */
+export type ChatAskMode = "ask" | "auto";
+
 /** Client → server: ask a question. `diff` is used only on the first turn. */
 export type ChatAsk = ChatSettings & {
   type: "ask";
   question: string;
   diff: string;
-  /** "ask" = read-only Q&A (default); "apply" = let the agent edit files. */
-  mode?: "ask" | "apply";
+  /** Omitted = "ask". */
+  mode?: ChatAskMode;
 };
 
 /** Client → server: abort the in-flight turn. The socket (and its session)

@@ -1,9 +1,29 @@
 import { test, expect, describe } from "bun:test";
-import { appendUserMessage, persistedIsAhead } from "./threadTranscript";
+import { appendUserMessage, persistedIsAhead, splitPendingTail } from "./threadTranscript";
 import type { StoredMessage } from "../shared/comments";
 
 const user = (text: string): StoredMessage => ({ role: "user", text });
 const assistant = (text: string): StoredMessage => ({ role: "assistant", text });
+
+describe("splitPendingTail", () => {
+  test("a single pending comment is the question; nothing earlier", () => {
+    expect(splitPendingTail([user("why?")])).toEqual({ earlier: [], pending: "why?" });
+  });
+
+  test("several unanswered comments join into one question; answered history stays earlier", () => {
+    const thread = [user("a"), assistant("A"), user(" b "), user("c")];
+    expect(splitPendingTail(thread)).toEqual({
+      earlier: [user("a"), assistant("A")],
+      pending: "b\n\nc",
+    });
+  });
+
+  test("a thread ending with the agent's reply has no pending tail", () => {
+    const thread = [user("a"), assistant("A")];
+    expect(splitPendingTail(thread)).toEqual({ earlier: thread, pending: "" });
+    expect(splitPendingTail([])).toEqual({ earlier: [], pending: "" });
+  });
+});
 
 describe("appendUserMessage", () => {
   test("appends the trimmed text", () => {

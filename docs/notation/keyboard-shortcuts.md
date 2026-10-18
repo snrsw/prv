@@ -4,7 +4,7 @@ title: Keyboard shortcuts
 description: Global keys and keys on a focused diff line.
 resource: https://github.com/snrsw/prv/blob/main/src/ui/shortcuts.ts
 tags: [ui, keyboard]
-generated: { by: claude-code/claude-opus-5-5, at: 2026-10-18T00:00:00Z }
+generated: { by: claude-code/claude-opus-5-5, at: 2026-10-18T12:00:00Z }
 ---
 
 # Anywhere
@@ -38,4 +38,4 @@ Press Tab to move focus into a card's line numbers first.
 
 # Text inputs
 
-In chat and thread inputs, `Enter` sends and `Shift+Enter` adds a newline.
+In chat and thread inputs, `Enter` sends and `Shift+Enter` adds a newline. In a thread input, `Enter` runs the send button's selected action, Send now or Add to batch; see [Comment thread](/concepts/comment-thread.md).

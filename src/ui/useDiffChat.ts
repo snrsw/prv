@@ -271,7 +271,14 @@ export function useDiffChat(
   }, [handleFrame]);
 
   const send = useCallback(
-    (question: string, firstTurnContext: string, mode: ChatAsk["mode"] = "ask") => {
+    (
+      question: string,
+      firstTurnContext: string,
+      mode: ChatAsk["mode"] = "ask",
+      // false when `question` is already the transcript's last user message
+      // (a pending thread sent as is), so it is not shown or persisted twice.
+      appendUser = true,
+    ) => {
       const q = question.trim();
       if (!q || streaming) return;
       const settings = getChatSettings();
@@ -279,7 +286,10 @@ export function useDiffChat(
       const resumes = hasSessionRef.current && sessionAgentRef.current === agent;
       const diff = resumes ? "" : firstTurnContext;
       sessionAgentRef.current = agent;
-      setMessages((m) => [...m, { role: "user", text: q }, { role: "assistant", text: "" }]);
+      const placeholder: ChatMessage = { role: "assistant", text: "" };
+      setMessages((m) =>
+        appendUser ? [...m, { role: "user", text: q }, placeholder] : [...m, placeholder],
+      );
       turnActiveRef.current = true;
       setStreaming(true);
       armStall();

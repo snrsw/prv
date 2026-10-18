@@ -28,6 +28,14 @@ describe("buildCodexArgs", () => {
     expect(args.join(" ")).not.toContain("--dangerously-bypass");
   });
 
+  test("auto profile (Send now) uses apply's workspace-write sandbox", () => {
+    const args = buildCodexArgs("auto");
+    expect(args).toEqual(buildCodexArgs("apply"));
+    expect(args.join(" ")).toContain("--sandbox workspace-write");
+    expect(args.join(" ")).toContain('-c approval_policy="never"');
+    expect(args.join(" ")).not.toContain("danger-full-access");
+  });
+
   test("a session id becomes the `resume <id>` subcommand, still reading stdin", () => {
     const args = buildCodexArgs("ask", "thread-1");
     expect(args.slice(-3)).toEqual(["resume", "thread-1", "-"]);
