@@ -4,12 +4,12 @@ title: Change description
 description: A PR-body-like overview of the local changes, stored in .prv/description.md and shown in the Overview pane above the diff.
 resource: https://github.com/snrsw/prv/blob/main/src/description/store.ts
 tags: [description, agent, cli]
-generated: { by: claude-code/claude-opus-5-5, at: 2026-10-18T17:30:00Z }
+generated: { by: claude-code/claude-opus-5-5, at: 2026-10-18T18:00:00Z }
 ---
 
 # Definition
 
-The change description explains the local changes the way a pull request body does: a summary, what changed and why, and how to verify it. **There is one description per repository, in `.prv/description.md`** under the directory prv runs from, next to the [comment store](/concepts/comment-store.md). Run prv and `prv describe` from the repository root so both use the same file. It is plain Markdown; prv adds no metadata. The last-updated time is the file's modification time.
+The change description explains the local changes the way a pull request body does: a summary and what changed, plus the data flow, the module and function dependencies, and the blast radius when the change calls for them. **There is one description per repository, in `.prv/description.md`** under the directory prv runs from, next to the [comment store](/concepts/comment-store.md). Run prv and `prv describe` from the repository root so both use the same file. It is plain Markdown; prv adds no metadata. The last-updated time is the file's modification time.
 
 # Who writes it
 
@@ -44,7 +44,7 @@ The Overview pane sits at the top of the diff column and renders the description
 
 # Generate
 
-1. Generate opens the prompt: what the agent should write. **The prompt is editable**; the default asks for Summary, Changes, and How to verify sections. The browser remembers the last prompt used, and **Reset to default** restores the default. The read-only rule, the diff, and the reply format are added around it and cannot be edited. A prompt longer than 20,000 characters is ignored and the default is used.
+1. Generate opens the prompt: what the agent should write. **The prompt is editable**; the default always asks for Summary and Changes, and adds Data flow, Dependencies (module and function), and Blast radius only when the diff calls for them; Data flow and Dependencies are ` ```mermaid ` diagrams. The browser remembers the last prompt used, and **Reset to default** restores the default. The read-only rule, the diff, and the reply format are added around it and cannot be edited. A prompt longer than 20,000 characters is ignored and the default is used.
 2. Generate in the prompt sends the current comparison to the server, which computes its diff. The agent chosen in [Agent settings](/concepts/agent-settings.md) runs one read-only turn over the diff with that prompt. It may read the repository for context.
 3. The pane shows the agent's activity while it runs. **Stop cancels the run and keeps the old description.**
 4. The reply is saved to `.prv/description.md` and rendered. An empty or oversized reply, or a failed run, shows an error and saves nothing.

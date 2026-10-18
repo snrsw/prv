@@ -65,11 +65,18 @@ prv describe <<'EOF'
 
 ## Changes
 - <file or area>: <what changed>
-
-## How to verify
-- <command to run or step to check>
 EOF
 ```
+
+Add these sections only when the change calls for them; leave the rest out:
+
+- `## Data flow` — the change adds or reroutes data between components: a
+  ` ```mermaid ` flowchart of the path, plus one sentence on what changed.
+- `## Dependencies` — the change adds, removes, or rewires module or function
+  dependencies: a ` ```mermaid ` graph of the affected nodes, marking new
+  and removed edges.
+- `## Blast radius` — the change touches shared code, a public interface,
+  persisted data, or configuration: what else is affected and the risk to each.
 
 - Each call replaces the whole description — rewrite it to cover all current
   changes, not just the latest edit. Read the current one first with

@@ -77,7 +77,7 @@ A thread is _pending_ when it is open and its last message is yours.
 
 ### Overview (change description)
 
-The **Overview** pane at the top of the diff shows a PR-body-like description of the changes — summary, what changed and why, how to verify — rendered as Markdown (` ```mermaid ` blocks become diagrams), with when it was last updated. It is one file per repository, `.prv/description.md`, written by an agent with `prv describe` (see below), by **Generate** (the selected agent drafts it read-only from the current diff, following a prompt you can edit; Stop cancels), or by hand with **Edit**. prv re-reads it on Refresh and when the tab regains focus, so a description an agent writes while prv is open shows up without a restart. The pane collapses with its chevron.
+The **Overview** pane at the top of the diff shows a PR-body-like description of the changes — summary and what changed, plus data flow, dependencies, and blast radius when they apply — rendered as Markdown (` ```mermaid ` blocks become diagrams), with when it was last updated. It is one file per repository, `.prv/description.md`, written by an agent with `prv describe` (see below), by **Generate** (the selected agent drafts it read-only from the current diff, following a prompt you can edit; Stop cancels), or by hand with **Edit**. prv re-reads it on Refresh and when the tab regains focus, so a description an agent writes while prv is open shows up without a restart. The pane collapses with its chevron.
 
 ## Use with Claude Code
 
@@ -122,14 +122,14 @@ Adds rate limiting to the login endpoint.
 ## Changes
 - `src/auth/login.ts`: reject a sixth attempt within a minute.
 
-## How to verify
-- `bun test src/auth`
+## Blast radius
+- Clients that retry login in a loop now get 429 after five attempts.
 EOF
 prv describe --show    # print it (exit 1 if there is none)
 prv describe --clear   # remove it
 ```
 
-Each call replaces the whole description; update it after every round of changes.
+Summary and Changes are always there; Data flow, Dependencies, and Blast radius are added when the change calls for them, with ` ```mermaid ` diagrams for the first two. Each call replaces the whole description; update it after every round of changes.
 
 ## Development
 

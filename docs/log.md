@@ -2,6 +2,7 @@
 
 ## 2026-10-18
 
+- **Update**: [Change description](/concepts/change-description.md) — Generate's default prompt adds Data flow, Dependencies, and Blast radius sections when the diff calls for them.
 - **Update**: [Change description](/concepts/change-description.md) — Generate's prompt is editable, the Overview renders ` ```mermaid ` blocks as diagrams, and the empty state offers Edit instead of Write.
 - **Creation**: Added [Change description](/concepts/change-description.md) — `prv describe`, the Overview pane, and Generate (#81).
 - **Update**: [Change description](/concepts/change-description.md) states the 1 MiB size limit and what each writer does over it.

@@ -30,9 +30,10 @@ describe("diffForDescribe", () => {
 test("the prompt is read-only, asks for the PR-body sections, and carries the diff", () => {
   const prompt = buildDescribePrompt("+added line");
   expect(prompt).toContain("strictly read-only");
-  expect(prompt).toContain("## Summary");
-  expect(prompt).toContain("## Changes");
-  expect(prompt).toContain("## How to verify");
+  for (const section of ["Summary", "Changes", "Data flow", "Dependencies", "Blast radius"]) {
+    expect(prompt).toContain(`## ${section}`);
+  }
+  expect(prompt).toContain("only when the diff warrants it");
   expect(prompt).toContain("<diff>\n+added line\n</diff>");
   expect(prompt).toContain("<description>");
 });
@@ -40,7 +41,7 @@ test("the prompt is read-only, asks for the PR-body sections, and carries the di
 test("custom instructions replace the default sections but keep the fixed frame", () => {
   const prompt = buildDescribePrompt("+x", "  Write a haiku about the change.  ");
   expect(prompt).toContain("Write a haiku about the change.");
-  expect(prompt).not.toContain("## How to verify");
+  expect(prompt).not.toContain("## Blast radius");
   expect(prompt).toContain("Do not modify any files");
   expect(prompt).toContain("<diff>\n+x\n</diff>");
   expect(prompt).toContain("<description>");

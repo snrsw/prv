@@ -41,11 +41,12 @@ Launch the prv local diff-review UI for the user.
 
    ## Changes
    - <file or area>: <what changed>
-
-   ## How to verify
-   - <command or step>
    EOF
    ```
+
+   Add `## Data flow`, `## Dependencies` (module/function), and `## Blast radius`
+   sections only when the change calls for them; draw data flow and
+   dependencies as ` ```mermaid ` diagrams.
 
    Each call replaces the whole description. The open UI picks it up on Refresh
    or when its tab regains focus.
