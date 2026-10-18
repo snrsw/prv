@@ -1,8 +1,10 @@
 import { test, expect } from "bun:test";
 import { isMarkdownPath, markdownToHtml } from "./markdown";
 
-test("isMarkdownPath: .md and .mdx are markdown (case-insensitive)", () => {
+test("isMarkdownPath: .md, .markdown and .mdx are markdown (case-insensitive)", () => {
   expect(isMarkdownPath("plan.md")).toBe(true);
+  expect(isMarkdownPath("notes.markdown")).toBe(true);
+  expect(isMarkdownPath("GUIDE.Markdown")).toBe(true);
   expect(isMarkdownPath("docs/README.md")).toBe(true);
   expect(isMarkdownPath("notes.mdx")).toBe(true);
   expect(isMarkdownPath("CHANGES.MD")).toBe(true);

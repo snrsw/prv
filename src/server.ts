@@ -15,7 +15,8 @@ import { runBatch } from "./batch/runner";
 import { annotateDiff } from "./review/annotate";
 import { LENSES } from "./review/lenses";
 import { runReviewPanel, type TurnRunner } from "./review/runner";
-import { DEFAULT_CHAT_AGENT, sanitizeChatSettings } from "./shared/chat";
+import { loadModelList } from "./chat/models";
+import { DEFAULT_CHAT_AGENT, isChatAgent, sanitizeChatSettings } from "./shared/chat";
 import type { ChatClientFrame, ChatServerFrame, ChatWsData } from "./shared/chat";
 import type { ReviewServerFrame, ReviewStart, ReviewWsData } from "./shared/review";
 import type { BatchServerFrame, BatchStart, BatchWsData } from "./shared/batch";
@@ -101,6 +102,15 @@ export function createServer(options: ServerOptions): Bun.Server<WsData> {
         return new Response("expected websocket upgrade", { status: 426 });
       },
       "/api/config": () => Response.json({ mode: defaultMode ?? null }),
+      "/api/agents/models": {
+        GET: async (req) => {
+          const agent = new URL(req.url).searchParams.get("agent");
+          if (!isChatAgent(agent)) {
+            return Response.json({ error: "agent must be 'claude' or 'codex'" }, { status: 400 });
+          }
+          return Response.json(await loadModelList(agent));
+        },
+      },
       "/api/diff": {
         GET: async (req) => {
           const mode = decodeMode(new URL(req.url).searchParams) ?? defaultMode;

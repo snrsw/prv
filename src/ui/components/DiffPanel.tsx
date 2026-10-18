@@ -683,6 +683,9 @@ export function DiffPanel({
             </button>
           </div>
         )}
+        {view === "file" && isMarkdownPath(file.path) && (
+          <MdViewToggle md={mdView} setMd={(v) => setUi({ mdView: v })} />
+        )}
         {marksVisible && (
           <span className="file-change-nav" aria-label="Changes in this file">
             <button
@@ -1071,9 +1074,10 @@ function FileContentView({
 }
 
 /**
- * Markdown files get a Rendered/Source sub-toggle in the File view. The
- * rendered page has no gutter, so when the diff touched the file it says
- * where the marks are rather than looking untouched.
+ * A Markdown file in the File view, Rendered or Source (the toggle is in the
+ * card header, see `MdViewToggle`). The rendered page has no gutter, so when
+ * the diff touched the file it says where the marks are rather than looking
+ * untouched.
  */
 function MarkdownFileView({
   path,
@@ -1093,41 +1097,47 @@ function MarkdownFileView({
   const changes = marks?.blocks.length ?? 0;
   return (
     <div className="markdown-file">
-      <div className="md-view-bar">
-        <div className="md-view-toggle" role="tablist" aria-label="Markdown view mode">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={md === "rendered"}
-            className={`md-view-tab ${md === "rendered" ? "is-active" : ""}`}
-            onClick={() => setMd("rendered")}
-          >
-            Rendered
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={md === "source"}
-            className={`md-view-tab ${md === "source" ? "is-active" : ""}`}
-            onClick={() => setMd("source")}
-          >
-            Source
-          </button>
-        </div>
-        {md === "rendered" && changes > 0 && (
+      {md === "rendered" && changes > 0 && (
+        <div className="md-view-bar">
           <span className="md-view-note">
             {changes} change{changes === 1 ? "" : "s"} in this file —{" "}
             <button type="button" className="md-view-note-link" onClick={() => setMd("source")}>
               see them in Source
             </button>
           </span>
-        )}
-      </div>
+        </div>
+      )}
       {md === "rendered" ? (
         <Markdown source={text} mermaid />
       ) : (
         <FileContentCode path={path} text={text} marks={marks} commenting={commenting} />
       )}
+    </div>
+  );
+}
+
+/** The Rendered/Source tabs a Markdown file shows in its card header in the File view. */
+function MdViewToggle({ md, setMd }: { md: MdView; setMd: (v: MdView) => void }) {
+  return (
+    <div className="md-view-toggle" role="tablist" aria-label="Markdown view mode">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={md === "rendered"}
+        className={`md-view-tab ${md === "rendered" ? "is-active" : ""}`}
+        onClick={() => setMd("rendered")}
+      >
+        Rendered
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={md === "source"}
+        className={`md-view-tab ${md === "source" ? "is-active" : ""}`}
+        onClick={() => setMd("source")}
+      >
+        Source
+      </button>
     </div>
   );
 }

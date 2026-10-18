@@ -1277,7 +1277,7 @@ html.prv-col-resize * {
   text-align: center;
 }
 
-/* ---- Markdown rendered preview (File view, .md/.mdx) ---- */
+/* ---- Markdown rendered preview (File view, .md/.markdown/.mdx) ---- */
 
 .markdown-file {
   background: var(--canvas-default);
@@ -1315,6 +1315,7 @@ html.prv-col-resize * {
   background: var(--canvas-default);
   border: 1px solid var(--border-muted);
   border-radius: 6px;
+  flex: 0 0 auto;
 }
 .md-view-tab {
   background: transparent;
@@ -2670,6 +2671,22 @@ tr.prv-expand-clickable:hover .d2h-info {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+/* The selected model's description, under the model picker: a full-width
+ * muted line, clamped to two lines (the full text is in its title). */
+.chat-setting-hint {
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 .chat-setting-label {
   color: var(--fg-muted);

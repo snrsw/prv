@@ -35,6 +35,15 @@ describe("isChatEffort", () => {
     expect(isChatEffort("minimal", "codex")).toBe(true);
   });
 
+  test("Codex accepts levels its CLI reports, within a safe charset", () => {
+    expect(isChatEffort("ultra", "codex")).toBe(true);
+    expect(isChatEffort("ultra", "claude")).toBe(false);
+    expect(isChatEffort('x"; y', "codex")).toBe(false);
+    expect(isChatEffort("-x", "codex")).toBe(false);
+    expect(isChatEffort("Max", "codex")).toBe(false);
+    expect(isChatEffort("a".repeat(21), "codex")).toBe(false);
+  });
+
   test("rejects unknown strings and non-strings", () => {
     expect(isChatEffort("ultra")).toBe(false);
     expect(isChatEffort("")).toBe(false);
@@ -92,6 +101,10 @@ describe("sanitizeChatSettings", () => {
     });
     expect(sanitizeChatSettings({ agent: "claude", effort: "minimal" })).toEqual({
       agent: "claude",
+    });
+    expect(sanitizeChatSettings({ agent: "codex", effort: "ultra" })).toEqual({
+      agent: "codex",
+      effort: "ultra",
     });
     // An unknown agent falls back to Claude, so Claude's levels apply.
     expect(sanitizeChatSettings({ agent: "nope", effort: "minimal" })).toEqual({});
