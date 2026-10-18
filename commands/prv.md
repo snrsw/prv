@@ -40,6 +40,7 @@ Launch the prv local diff-review UI for the user.
    <the problem and the intended outcome>
 
    ## What changes
+   <mermaid change map>
    - <one bullet per feature or area>
 
    ## Behavior
@@ -52,8 +53,9 @@ Launch the prv local diff-review UI for the user.
    ```
 
    Keep it short and aimed at the reviewer; follow the prv-review skill's
-   "Describing your changes" for the details. Add a ` ```mermaid ` Data flow
-   or Dependencies diagram only when it reads faster than text.
+   "Describing your changes" for the details. Use ` ```mermaid ` diagrams actively:
+   a change map, a sequence diagram for changed interactions, and Data flow or
+   Dependencies diagrams when those change.
 
    Each call replaces the whole description. The open UI picks it up on Refresh
    or when its tab regains focus.

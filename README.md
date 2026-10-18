@@ -114,29 +114,40 @@ A typical agent loop: list unresolved comments, make the requested change, reply
 
 After making changes, an agent explains them in the Overview pane with `prv describe`, which saves Markdown from stdin (or `--file <path>`) to `.prv/description.md`:
 
-```sh
+````sh
 prv describe <<'EOF'
 ## Aim
 Stop password guessing on the login endpoint.
 
 ## What changes
+```mermaid
+flowchart LR
+  C[client] --> L[POST /login]
+  L --> R[rate limiter]:::new
+  L --> A[auth]
+  classDef new fill:#dafbe1,stroke:#1a7f37,color:#1f2328
+````
+
 - Login rejects a sixth attempt from one IP within a minute.
 
 ## Behavior
-| Where | Before | After |
-| --- | --- | --- |
+
+| Where         | Before             | After                     |
+| ------------- | ------------------ | ------------------------- |
 | `POST /login` | unlimited attempts | 429 after five per minute |
 
 ## Review guide
+
 - `src/auth/login.ts`: the window reset logic is the only real change.
 - Clients that retry login in a loop now hit 429.
 - Tests and docs are mechanical.
-EOF
-prv describe --show    # print it (exit 1 if there is none)
-prv describe --clear   # remove it
-```
+  EOF
+  prv describe --show # print it (exit 1 if there is none)
+  prv describe --clear # remove it
 
-The description is for the reviewer: why the change exists (Aim), what it does (What changes), how behavior differs (Behavior), and where to look closely (Review guide). Add a ` ```mermaid ` Data flow or Dependencies diagram only when it reads faster than text. Each call replaces the whole description; update it after every round of changes.
+````
+
+The description is for the reviewer: why the change exists (Aim), what it does (What changes), how behavior differs (Behavior), and where to look closely (Review guide). Use ` ```mermaid ` diagrams actively — a change map in What changes, a sequence diagram for changed interactions, and Data flow or Dependencies diagrams when those change — with new / changed / removed nodes marked. Each call replaces the whole description; update it after every round of changes.
 
 ## Development
 
@@ -146,7 +157,7 @@ The repo ships a Nix flake; `direnv allow` will drop you into a shell with `bun`
 bun install
 bun test
 bun run dev
-```
+````
 
 To run the source checkout against another repository, start it from that
 repository's directory: `PRV_DEV=1 bun --hot /path/to/prv/src/cli.ts`.

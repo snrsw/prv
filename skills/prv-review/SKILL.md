@@ -58,12 +58,13 @@ prv shows a PR-body-like description of the local changes in the **Overview**
 pane above the diff. It lives in `.prv/description.md`. **After making changes,
 write or update it** with `prv describe`, which saves Markdown from stdin:
 
-```
+````
 prv describe <<'EOF'
 ## Aim
 <one or two sentences: the problem and the intended outcome>
 
 ## What changes
+<```mermaid flowchart change map: touched components marked new / changed / removed>
 - <three to six bullets, one per feature or area: what it now does>
 
 ## Behavior
@@ -76,13 +77,21 @@ prv describe <<'EOF'
 - <what else could be affected>
 - <what is mechanical and can be skimmed>
 EOF
-```
+````
 
 Write it to cut review time: lead with the aim, stay at the level of features
 and behavior, and keep it under about 300 words. With no observable difference,
-write "No behavior change." instead of the table. Add a ` ```mermaid `
-`## Data flow` or `## Dependencies` diagram (after What changes, about 8 nodes)
-only when it reads faster than the text.
+write "No behavior change." instead of the table.
+
+Use ` ```mermaid ` diagrams actively, about 10 nodes each, marking nodes with
+`classDef new` / `changed` / `removed` and leaving context nodes plain:
+
+- What changes: a `flowchart` change map — always.
+- Behavior: a `sequenceDiagram` of the main new or changed interaction.
+- `## Data flow` (before Review guide): a `flowchart`, when data takes a new
+  or changed path.
+- `## Dependencies`: a `graph` of module or function dependencies, when they
+  change; removed edges dashed.
 
 - Each call replaces the whole description — rewrite it to cover all current
   changes, not just the latest edit. Read the current one first with

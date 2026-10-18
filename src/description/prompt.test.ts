@@ -40,7 +40,8 @@ test("the prompt is read-only, asks for the PR-body sections, and carries the di
   ]) {
     expect(prompt).toContain(`## ${section}`);
   }
-  expect(prompt).toContain("only when it is faster to read than the text");
+  expect(prompt).toContain("Use diagrams actively");
+  expect(prompt).toContain("sequenceDiagram");
   expect(prompt).toContain("<diff>\n+added line\n</diff>");
   expect(prompt).toContain("<description>");
 });

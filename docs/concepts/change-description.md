@@ -4,7 +4,7 @@ title: Change description
 description: A PR-body-like overview of the local changes, stored in .prv/description.md and shown in the Overview pane above the diff.
 resource: https://github.com/snrsw/prv/blob/main/src/description/store.ts
 tags: [description, agent, cli]
-generated: { by: claude-code/claude-opus-5-5, at: 2026-10-19T04:30:00Z }
+generated: { by: claude-code/claude-opus-5-5, at: 2026-10-19T05:00:00Z }
 ---
 
 # Definition
@@ -44,7 +44,7 @@ The Overview pane sits at the top of the diff column and renders the description
 
 # Generate
 
-1. Generate opens the prompt: what the agent should write. **The prompt is editable**; the default is written to cut review time and asks for Aim (why), What changes (feature-level), Behavior (a before/after table), and Review guide (where to look closely, what else is affected, what to skim), under about 300 words; it adds a ` ```mermaid ` Data flow or Dependencies diagram only when that reads faster than text. The browser remembers the last prompt used, and **Reset to default** restores the default. The read-only rule, the diff, and the reply format are added around it and cannot be edited. A prompt longer than 20,000 characters is ignored and the default is used.
+1. Generate opens the prompt: what the agent should write. **The prompt is editable**; the default is written to cut review time and asks for Aim (why), What changes (feature-level), Behavior (a before/after table), and Review guide (where to look closely, what else is affected, what to skim), with the prose under about 300 words. **It uses ` ```mermaid ` diagrams actively**: a change map in What changes, a sequence diagram for a changed interaction, and Data flow and Dependencies diagrams when those change, with new, changed, and removed nodes coloured. The browser remembers the last prompt used, and **Reset to default** restores the default. The read-only rule, the diff, and the reply format are added around it and cannot be edited. A prompt longer than 20,000 characters is ignored and the default is used.
 2. Generate in the prompt sends the current comparison to the server, which computes its diff. The agent chosen in [Agent settings](/concepts/agent-settings.md) runs one read-only turn over the diff with that prompt. It may read the repository for context.
 3. The pane shows the agent's activity while it runs. **Stop cancels the run and keeps the old description.**
 4. The reply is saved to `.prv/description.md` and rendered. An empty or oversized reply, or a failed run, shows an error and saves nothing.
