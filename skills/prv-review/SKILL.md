@@ -60,23 +60,29 @@ write or update it** with `prv describe`, which saves Markdown from stdin:
 
 ```
 prv describe <<'EOF'
-## Summary
-<one or two sentences: what the change does and why>
+## Aim
+<one or two sentences: the problem and the intended outcome>
 
-## Changes
-- <file or area>: <what changed>
+## What changes
+- <three to six bullets, one per feature or area: what it now does>
+
+## Behavior
+| Where | Before | After |
+| --- | --- | --- |
+| <UI / CLI / API / data> | <old> | <new> |
+
+## Review guide
+- <the one to three places with real logic or risk, and why>
+- <what else could be affected>
+- <what is mechanical and can be skimmed>
 EOF
 ```
 
-Add these sections only when the change calls for them; leave the rest out:
-
-- `## Data flow` — the change adds or reroutes data between components: a
-  ` ```mermaid ` flowchart of the path, plus one sentence on what changed.
-- `## Dependencies` — the change adds, removes, or rewires module or function
-  dependencies: a ` ```mermaid ` graph of the affected nodes, marking new
-  and removed edges.
-- `## Blast radius` — the change touches shared code, a public interface,
-  persisted data, or configuration: what else is affected and the risk to each.
+Write it to cut review time: lead with the aim, stay at the level of features
+and behavior, and keep it under about 300 words. With no observable difference,
+write "No behavior change." instead of the table. Add a ` ```mermaid `
+`## Data flow` or `## Dependencies` diagram (after What changes, about 8 nodes)
+only when it reads faster than the text.
 
 - Each call replaces the whole description — rewrite it to cover all current
   changes, not just the latest edit. Read the current one first with

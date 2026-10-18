@@ -217,7 +217,7 @@ export function OverviewPanel({
                 className="chat-input overview-input"
                 aria-label="Description (Markdown)"
                 rows={12}
-                placeholder="## Summary&#10;&#10;## Changes"
+                placeholder="## Aim&#10;&#10;## What changes&#10;&#10;## Behavior&#10;&#10;## Review guide"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
               />

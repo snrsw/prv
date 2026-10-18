@@ -116,20 +116,27 @@ After making changes, an agent explains them in the Overview pane with `prv desc
 
 ```sh
 prv describe <<'EOF'
-## Summary
-Adds rate limiting to the login endpoint.
+## Aim
+Stop password guessing on the login endpoint.
 
-## Changes
-- `src/auth/login.ts`: reject a sixth attempt within a minute.
+## What changes
+- Login rejects a sixth attempt from one IP within a minute.
 
-## Blast radius
-- Clients that retry login in a loop now get 429 after five attempts.
+## Behavior
+| Where | Before | After |
+| --- | --- | --- |
+| `POST /login` | unlimited attempts | 429 after five per minute |
+
+## Review guide
+- `src/auth/login.ts`: the window reset logic is the only real change.
+- Clients that retry login in a loop now hit 429.
+- Tests and docs are mechanical.
 EOF
 prv describe --show    # print it (exit 1 if there is none)
 prv describe --clear   # remove it
 ```
 
-Summary and Changes are always there; Data flow, Dependencies, and Blast radius are added when the change calls for them, with ` ```mermaid ` diagrams for the first two. Each call replaces the whole description; update it after every round of changes.
+The description is for the reviewer: why the change exists (Aim), what it does (What changes), how behavior differs (Behavior), and where to look closely (Review guide). Add a ` ```mermaid ` Data flow or Dependencies diagram only when it reads faster than text. Each call replaces the whole description; update it after every round of changes.
 
 ## Development
 

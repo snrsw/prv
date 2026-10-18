@@ -36,17 +36,24 @@ Launch the prv local diff-review UI for the user.
 
    ```
    prv describe <<'EOF'
-   ## Summary
-   <one or two sentences: what changed and why>
+   ## Aim
+   <the problem and the intended outcome>
 
-   ## Changes
-   - <file or area>: <what changed>
+   ## What changes
+   - <one bullet per feature or area>
+
+   ## Behavior
+   | Where | Before | After |
+   | --- | --- | --- |
+
+   ## Review guide
+   - <where to look closely, what else is affected, what to skim>
    EOF
    ```
 
-   Add `## Data flow`, `## Dependencies` (module/function), and `## Blast radius`
-   sections only when the change calls for them; draw data flow and
-   dependencies as ` ```mermaid ` diagrams.
+   Keep it short and aimed at the reviewer; follow the prv-review skill's
+   "Describing your changes" for the details. Add a ` ```mermaid ` Data flow
+   or Dependencies diagram only when it reads faster than text.
 
    Each call replaces the whole description. The open UI picks it up on Refresh
    or when its tab regains focus.
