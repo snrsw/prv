@@ -2,8 +2,13 @@
  * Render ```mermaid code blocks inside an already-sanitized Markdown element
  * as diagrams. mermaid is large, so it is imported only when a block exists.
  * `securityLevel: "strict"` makes mermaid sanitize labels and drop click
- * handlers; its SVG is inserted in place of the code block.
+ * handlers, and its SVG is sanitized again with DOMPurify's SVG profile before
+ * it replaces the code block — the source is agent or file text. Labels are
+ * plain SVG text (`htmlLabels: false`), since that profile drops the
+ * <foreignObject> HTML labels would need.
  */
+
+import DOMPurify from "dompurify";
 
 type Mermaid = (typeof import("mermaid"))["default"];
 
@@ -23,6 +28,8 @@ function load(): Promise<Mermaid> {
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: "strict",
+      htmlLabels: false,
+      flowchart: { htmlLabels: false },
       theme: prefersDark() ? "dark" : "default",
     });
     return mermaid;
@@ -56,7 +63,9 @@ export async function renderMermaidBlocks(
       if (!isCurrent()) return;
       const figure = document.createElement("div");
       figure.className = "mermaid-diagram";
-      figure.innerHTML = svg;
+      figure.innerHTML = DOMPurify.sanitize(svg, {
+        USE_PROFILES: { svg: true, svgFilters: true },
+      });
       pre.replaceWith(figure);
     } catch (err) {
       if (!isCurrent()) return;

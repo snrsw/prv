@@ -35,7 +35,7 @@ Generate rejects rather than truncates because a cut-off description would read 
 
 # Overview pane
 
-The Overview pane sits at the top of the diff column and renders the description as Markdown. **A ` ```mermaid ` code block renders as a diagram**; one mermaid cannot parse stays as code with the error under it. The File view renders mermaid in Markdown files the same way.
+The Overview pane sits at the top of the diff column and renders the description as Markdown. **A ` ```mermaid ` code block renders as a diagram**; one mermaid cannot parse stays as code with the error under it. The diagram's SVG is sanitized like the rest of the Markdown, so labels are plain text. The File view renders mermaid in Markdown files the same way.
 
 - The header shows how long ago the description was updated. The chevron collapses the pane; the browser remembers the choice.
 - With no description, the pane explains `prv describe` and offers **Edit** and **Generate**.
