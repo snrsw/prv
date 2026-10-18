@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { AGENT_LABELS } from "../../shared/chat";
+import { AGENT_LABELS, DEFAULT_CHAT_AGENT } from "../../shared/chat";
 import { summarizeChatSettings, useChatSettings } from "../chatSettings";
+import { resolveOption, useChatModels } from "../chatModels";
 import { isSubmitKey } from "../keys";
 import { drawerWidth } from "../layout";
 import { useDiffChat } from "../useDiffChat";
@@ -123,10 +124,14 @@ export function ChatPanel({
  */
 export function ChatSettingsMenu({ disabled }: { disabled: boolean }) {
   const [settings] = useChatSettings();
+  const models = useChatModels(settings.agent ?? DEFAULT_CHAT_AGENT);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const summary = summarizeChatSettings(settings);
+  const summary = summarizeChatSettings(
+    settings,
+    settings.model ? resolveOption(models, settings.model)?.label : undefined,
+  );
 
   useEffect(() => {
     if (!open) return;

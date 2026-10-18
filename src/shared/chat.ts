@@ -14,19 +14,52 @@ export const AGENT_LABELS: Record<ChatAgent, string> = { claude: "Claude Code", 
 export const AGENT_SHORT_LABELS: Record<ChatAgent, string> = { claude: "Claude", codex: "Codex" };
 
 /** Effort levels per agent, lowest to highest: `claude --effort` and Codex's
- * `model_reasoning_effort` config value. */
+ * `model_reasoning_effort` config value. The picker falls back to these when
+ * the CLI does not report a model's own levels. */
 export const CHAT_EFFORTS_BY_AGENT = {
   claude: ["low", "medium", "high", "xhigh", "max"],
   codex: ["minimal", "low", "medium", "high", "xhigh", "max"],
 } as const satisfies Record<ChatAgent, readonly string[]>;
 
-export type ChatEffort = (typeof CHAT_EFFORTS_BY_AGENT)[ChatAgent][number];
+/**
+ * Whether the agent's CLI reports effort levels per model (Codex's model
+ * catalogue does; Claude Code has a fixed `--effort` set). Such an agent
+ * accepts any safe level token, since its CLI may add levels prv does not
+ * know — see `isChatEffort`.
+ */
+const EFFORTS_FROM_CLI: Record<ChatAgent, boolean> = { claude: false, codex: true };
+
+/** An effort level: one of `CHAT_EFFORTS_BY_AGENT`, or a level the CLI reports. */
+export type ChatEffort = string;
+
+/** One entry of the model picker, as the server reads it from the agent's CLI. */
+export type ChatModelOption = {
+  /** The value passed as `--model`. */
+  id: string;
+  label: string;
+  description?: string;
+  /** A CLI alias that means this model (Claude Code's `opus` for Opus 5.5). */
+  alias?: string;
+  /** Effort levels this model supports, lowest to highest; absent = the agent's list. */
+  efforts?: string[];
+  /** The effort the CLI uses for this model when none is configured. */
+  defaultEffort?: string;
+};
+
+/** GET /api/agents/models response: the models one agent's CLI offers. */
+export type ChatModelList = {
+  models: ChatModelOption[];
+  /** The model the CLI runs when no `--model` is passed, when configured. */
+  defaultModel?: string;
+  /** The effort the CLI's configuration applies to every model, when set. */
+  defaultEffort?: string;
+};
 
 /**
  * Model aliases offered in the picker per agent. The `claude` entries resolve
- * to the latest model of that family in the CLI; Codex has no stable aliases,
- * so its picker only offers the CLI default and a custom full model name —
- * see `isChatModel`.
+ * to the latest model of that family in the CLI. Codex has no stable aliases:
+ * its list comes from the CLI's model catalogue (`src/chat/models.ts`), and
+ * this empty preset is the fallback when the catalogue cannot be read.
  */
 export const CHAT_MODEL_PRESETS_BY_AGENT = {
   claude: ["fable", "opus", "sonnet", "haiku"],
@@ -48,11 +81,16 @@ export function isChatAgent(value: unknown): value is ChatAgent {
   return typeof value === "string" && (CHAT_AGENTS as readonly string[]).includes(value);
 }
 
-/** Whether `value` is an effort level the given agent's CLI accepts. */
+/**
+ * Whether `value` is an effort level the given agent's CLI accepts: one of its
+ * known levels or, for an agent whose CLI reports levels per model (Codex), a
+ * short lowercase token. Codex receives the level inside a `-c key="value"`
+ * argument, so the charset excludes quotes, spaces and a leading `-`.
+ */
 export function isChatEffort(value: unknown, agent: ChatAgent = DEFAULT_CHAT_AGENT): boolean {
-  return (
-    typeof value === "string" && (CHAT_EFFORTS_BY_AGENT[agent] as readonly string[]).includes(value)
-  );
+  if (typeof value !== "string") return false;
+  if ((CHAT_EFFORTS_BY_AGENT[agent] as readonly string[]).includes(value)) return true;
+  return EFFORTS_FROM_CLI[agent] && /^[a-z][a-z0-9_]{0,19}$/.test(value);
 }
 
 /**
@@ -84,7 +122,7 @@ export function sanitizeChatSettings(input: unknown): ChatSettings {
   if (isChatAgent(agent)) settings.agent = agent;
   if (isChatModel(model)) settings.model = model;
   if (isChatEffort(effort, settings.agent ?? DEFAULT_CHAT_AGENT)) {
-    settings.effort = effort as ChatEffort;
+    settings.effort = effort as string;
   }
   return settings;
 }

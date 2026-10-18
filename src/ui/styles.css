@@ -2698,6 +2698,22 @@ tr.prv-expand-clickable:hover .d2h-info {
   align-items: center;
   gap: 4px;
 }
+/* The selected model's description, under the model picker: a full-width
+ * muted line, clamped to two lines (the full text is in its title). */
+.chat-setting-hint {
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
 .chat-setting-label {
   color: var(--fg-muted);
   font-family: var(--ff-mono);

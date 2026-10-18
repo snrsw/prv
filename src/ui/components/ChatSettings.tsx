@@ -2,14 +2,18 @@ import { useState } from "react";
 import {
   AGENT_LABELS,
   CHAT_AGENTS,
-  CHAT_EFFORTS_BY_AGENT,
-  CHAT_MODEL_PRESETS_BY_AGENT,
   DEFAULT_CHAT_AGENT,
   isChatAgent,
   isChatEffort,
   isChatModel,
-  type ChatEffort,
 } from "../../shared/chat";
+import {
+  defaultEffortFor,
+  effortsFor,
+  resolveOption,
+  selectModel,
+  useChatModels,
+} from "../chatModels";
 import { useChatSettings } from "../chatSettings";
 
 const CUSTOM = "__custom__";
@@ -23,44 +27,60 @@ const MODEL_PLACEHOLDER: Record<(typeof CHAT_AGENTS)[number], string> = {
  * Compact agent + model + effort pickers. The agent picker chooses which local
  * CLI runs the turn (Claude Code or Codex); model and effort are per-agent, so
  * switching agents clears them. An empty model/effort means "CLI default" and
- * sends no flag. The model picker lists the agent's aliases (Claude only) and
- * a "Custom…" entry that reveals a text field for a full model name; the field
- * keeps its raw text locally and only commits a well-formed value.
+ * sends no flag; its option names the resolved default when the CLI reports
+ * one. The model picker lists the models the agent's CLI offers (see
+ * `useChatModels`) and a "Custom…" entry that reveals a text field for a full
+ * model name; the field keeps its raw text locally and only commits a
+ * well-formed value. A stored model the list does not offer shows as custom.
+ * The effort picker follows the selected model's own levels when known.
  */
 export function ChatSettings({ disabled }: { disabled: boolean }) {
   const [settings, setSettings] = useChatSettings();
   const agent = settings.agent ?? DEFAULT_CHAT_AGENT;
-  const presets: readonly string[] = CHAT_MODEL_PRESETS_BY_AGENT[agent];
-  const efforts: readonly string[] = CHAT_EFFORTS_BY_AGENT[agent];
-  const model = settings.model ?? "";
-  const isPreset = model === "" || presets.includes(model);
-  const [custom, setCustom] = useState(!isPreset);
-  const [draft, setDraft] = useState(isPreset ? "" : model);
+  const list = useChatModels(agent);
+  // A stored alias (`opus`, chosen before the CLI's list was read) shows as the
+  // model it names; the alias itself is still what gets sent.
+  const model = settings.model ? (resolveOption(list, settings.model)?.id ?? settings.model) : "";
+  const listed = model === "" || list.models.some((m) => m.id === model);
+  const [customChosen, setCustomChosen] = useState(false);
+  const custom = customChosen || !listed;
+  const [draft, setDraft] = useState(model);
   const draftInvalid = draft.trim() !== "" && !isChatModel(draft.trim());
+  const offered = effortsFor(agent, list, settings.model);
+  // A stored level outside the offered ones (e.g. set before the list loaded)
+  // still runs, so keep it visible rather than showing "default".
+  const efforts =
+    settings.effort && !offered.includes(settings.effort) ? [...offered, settings.effort] : offered;
+  const defaultEffort = defaultEffortFor(list, settings.model);
+  // Native <option> titles are not shown on every platform, so the running
+  // model's description gets its own line. An empty custom field runs the
+  // CLI default but should not describe it as if it had been picked.
+  const description =
+    custom && !settings.model ? undefined : resolveOption(list, settings.model)?.description;
 
   const onAgentChange = (value: string) => {
     if (!isChatAgent(value) || value === agent) return;
     // Model names and effort levels are agent-specific: start from defaults.
-    setCustom(false);
+    setCustomChosen(false);
     setDraft("");
     setSettings({ agent: value });
   };
 
   const onModelChange = (value: string) => {
     if (value === CUSTOM) {
-      setCustom(true);
+      setCustomChosen(true);
       setDraft("");
-      setSettings({ ...settings, model: undefined });
+      setSettings(selectModel(settings, undefined, list));
       return;
     }
-    setCustom(false);
-    setSettings({ ...settings, model: value || undefined });
+    setCustomChosen(false);
+    setSettings(selectModel(settings, value || undefined, list));
   };
 
   const onDraftChange = (value: string) => {
     setDraft(value);
     const trimmed = value.trim();
-    setSettings({ ...settings, model: isChatModel(trimmed) ? trimmed : undefined });
+    setSettings(selectModel(settings, isChatModel(trimmed) ? trimmed : undefined, list));
   };
 
   return (
@@ -88,10 +108,14 @@ export function ChatSettings({ disabled }: { disabled: boolean }) {
           disabled={disabled}
           onChange={(e) => onModelChange(e.target.value)}
         >
-          <option value="">default</option>
-          {presets.map((alias) => (
-            <option key={alias} value={alias}>
-              {alias}
+          <option value="">
+            {list.defaultModel
+              ? `default (${resolveOption(list, undefined)?.label ?? list.defaultModel})`
+              : "default"}
+          </option>
+          {list.models.map((option) => (
+            <option key={option.id} value={option.id} title={option.description}>
+              {option.label}
             </option>
           ))}
           <option value={CUSTOM}>custom…</option>
@@ -110,6 +134,11 @@ export function ChatSettings({ disabled }: { disabled: boolean }) {
           onChange={(e) => onDraftChange(e.target.value)}
         />
       )}
+      {description && (
+        <p className="chat-setting-hint" title={description}>
+          {description}
+        </p>
+      )}
       <label className="chat-setting">
         <span className="chat-setting-label">effort</span>
         <select
@@ -118,13 +147,10 @@ export function ChatSettings({ disabled }: { disabled: boolean }) {
           disabled={disabled}
           onChange={(e) => {
             const value = e.target.value;
-            setSettings({
-              ...settings,
-              effort: isChatEffort(value, agent) ? (value as ChatEffort) : undefined,
-            });
+            setSettings({ ...settings, effort: isChatEffort(value, agent) ? value : undefined });
           }}
         >
-          <option value="">default</option>
+          <option value="">{defaultEffort ? `default (${defaultEffort})` : "default"}</option>
           {efforts.map((level) => (
             <option key={level} value={level}>
               {level}
