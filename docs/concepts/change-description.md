@@ -4,7 +4,7 @@ title: Change description
 description: A PR-body-like overview of the local changes, stored in .prv/description.md and shown in the Overview pane above the diff.
 resource: https://github.com/snrsw/prv/blob/main/src/description/store.ts
 tags: [description, agent, cli]
-generated: { by: claude-code/claude-opus-5-5, at: 2026-10-19T05:00:00Z }
+generated: { by: claude-code/claude-opus-5-5, at: 2026-10-18T04:30:00Z }
 ---
 
 # Definition
