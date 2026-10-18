@@ -1401,6 +1401,21 @@ html.prv-col-resize * {
   padding: 0;
   font-size: var(--fs-code);
 }
+/* A rendered ```mermaid block (see src/ui/mermaid.ts). */
+.markdown-body .mermaid-diagram {
+  margin-bottom: var(--sp-3);
+  overflow-x: auto;
+  text-align: center;
+}
+.markdown-body .mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+.markdown-body .mermaid-error {
+  margin: calc(-1 * var(--sp-2)) 0 var(--sp-3);
+  color: var(--danger-fg);
+  font-size: var(--fs-ui-sm);
+}
 .markdown-body blockquote {
   padding: 0 1em;
   color: var(--fg-muted);
@@ -2409,6 +2424,39 @@ tr.prv-expand-clickable:hover .d2h-info {
 }
 .batch-summary-error {
   color: var(--danger-fg);
+}
+
+/* ---- Overview (change description) card ---- */
+
+.overview-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.overview-chevron {
+  display: inline-flex;
+  color: var(--fg-muted);
+}
+.overview-updated {
+  color: var(--fg-subtle);
+  font-size: var(--fs-ui-sm);
+}
+.overview-body {
+  padding: var(--sp-3) var(--sp-4);
+}
+/* The textarea sits directly under the header; no second divider. */
+.overview-form {
+  border-top: 0;
+}
+.overview-input {
+  font-family: var(--ff-mono);
+  resize: vertical;
 }
 
 /* ---- Review comment chips + finding body ---- */

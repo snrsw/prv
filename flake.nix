@@ -38,7 +38,7 @@
         x86_64-linux = inputs.nixpkgs.lib.fakeHash;
         aarch64-linux = inputs.nixpkgs.lib.fakeHash;
         x86_64-darwin = inputs.nixpkgs.lib.fakeHash;
-        aarch64-darwin = "sha256-DAdVEbSR4jeotvBEI8/chX+ukfKHp75JsxAJCG9GwV4=";
+        aarch64-darwin = "sha256-geWszuZo23mOjWmegmkOg5Fvsm26hXjcUThtUsUYai8=";
       };
 
       # Bun 1.3.13 fixed the sandbox compile bug; fail eval if older.

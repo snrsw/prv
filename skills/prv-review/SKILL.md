@@ -1,6 +1,6 @@
 ---
 name: prv-review
-description: Read and act on prv review comments headlessly. Use when the user asks to check, address, or resolve prv review feedback, to act on unresolved review comments, or to leave inline review comments on a diff without opening the browser UI. Requires the prv CLI on PATH.
+description: Read and act on prv review comments headlessly. Use when the user asks to check, address, or resolve prv review feedback, to act on unresolved review comments, to leave inline review comments on a diff without opening the browser UI, or to write the change description prv shows (`prv describe`) after making changes. Requires the prv CLI on PATH.
 ---
 
 # prv-review
@@ -48,6 +48,58 @@ One comment = one thread anchored to a range of diff lines:
    ```
    prv resolve <id> [--file <path>]
    ```
+
+5. After the round of changes, update the change description (see below) so
+   it covers what you just did.
+
+## Describing your changes
+
+prv shows a PR-body-like description of the local changes in the **Overview**
+pane above the diff. It lives in `.prv/description.md`. **After making changes,
+write or update it** with `prv describe`, which saves Markdown from stdin:
+
+````
+prv describe <<'EOF'
+## Aim
+<one or two sentences: the problem and the intended outcome>
+
+## What changes
+<```mermaid flowchart change map: touched components marked new / changed / removed>
+- <three to six bullets, one per feature or area: what it now does>
+
+## Behavior
+| Where | Before | After |
+| --- | --- | --- |
+| <UI / CLI / API / data> | <old> | <new> |
+
+## Review guide
+- <the one to three places with real logic or risk, and why>
+- <what else could be affected>
+- <what is mechanical and can be skimmed>
+EOF
+````
+
+Write it to cut review time: lead with the aim, stay at the level of features
+and behavior, and keep it under about 300 words. With no observable difference,
+write "No behavior change." instead of the table.
+
+Use ` ```mermaid ` diagrams actively, about 10 nodes each, marking nodes with
+`classDef new` / `changed` / `removed` and leaving context nodes plain:
+
+- What changes: a `flowchart` change map — always.
+- Behavior: a `sequenceDiagram` of the main new or changed interaction.
+- `## Data flow` (before Review guide): a `flowchart`, when data takes a new
+  or changed path.
+- `## Dependencies`: a `graph` of module or function dependencies, when they
+  change; removed edges dashed.
+
+- Each call replaces the whole description — rewrite it to cover all current
+  changes, not just the latest edit. Read the current one first with
+  `prv describe --show` (exit 1 when there is none).
+- `prv describe --file <path>` reads the Markdown from a file instead.
+- `prv describe --clear` removes the description.
+- An open prv shows the new description on Refresh or when its tab regains
+  focus.
 
 ## Leaving new comments (headless review)
 

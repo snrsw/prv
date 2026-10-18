@@ -80,6 +80,10 @@ When you are done reading, **Finish review (n)** in the topbar lists every pendi
 
 A thread is _pending_ when it is open and its last message is yours.
 
+### Overview (change description)
+
+The **Overview** pane at the top of the diff shows a PR-body-like description of the changes — summary and what changed, plus data flow, dependencies, and blast radius when they apply — rendered as Markdown (` ```mermaid ` blocks become diagrams), with when it was last updated. It is one file per repository, `.prv/description.md`, written by an agent with `prv describe` (see below), by **Generate** (the selected agent drafts it read-only from the current diff, following a prompt you can edit; Stop cancels), or by hand with **Edit**. prv re-reads it on Refresh and when the tab regains focus, so a description an agent writes while prv is open shows up without a restart. The pane collapses with its chevron.
+
 ## Use with Claude Code
 
 prv ships as a Claude Code plugin (requires the `prv` binary on PATH — install it with Nix as above):
@@ -92,7 +96,7 @@ claude plugin install prv@prv
 This adds:
 
 - **`/prv`** — launches the review UI on the current repo state, or on two refs/paths (`/prv main feature`).
-- **`prv-review` skill** — teaches the agent to read and act on review comments headlessly.
+- **`prv-review` skill** — teaches the agent to read and act on review comments headlessly, and to describe its changes with `prv describe`.
 
 ### Headless review comments (for agents and scripts)
 
@@ -111,6 +115,45 @@ A typical agent loop: list unresolved comments, make the requested change, reply
 - `prv comment` anchors to lines of the `HEAD` vs working-tree diff (changed lines plus nearby context), so CLI-created comments render in the UI on the right lines.
 - Use `--json` for machine-readable output; errors exit 1 with a message on stderr.
 
+### Change description (for agents)
+
+After making changes, an agent explains them in the Overview pane with `prv describe`, which saves Markdown from stdin (or `--file <path>`) to `.prv/description.md`:
+
+````sh
+prv describe <<'EOF'
+## Aim
+Stop password guessing on the login endpoint.
+
+## What changes
+```mermaid
+flowchart LR
+  C[client] --> L[POST /login]
+  L --> R[rate limiter]:::new
+  L --> A[auth]
+  classDef new fill:#dafbe1,stroke:#1a7f37,color:#1f2328
+````
+
+- Login rejects a sixth attempt from one IP within a minute.
+
+## Behavior
+
+| Where         | Before             | After                     |
+| ------------- | ------------------ | ------------------------- |
+| `POST /login` | unlimited attempts | 429 after five per minute |
+
+## Review guide
+
+- `src/auth/login.ts`: the window reset logic is the only real change.
+- Clients that retry login in a loop now hit 429.
+- Tests and docs are mechanical.
+  EOF
+  prv describe --show # print it (exit 1 if there is none)
+  prv describe --clear # remove it
+
+````
+
+The description is for the reviewer: why the change exists (Aim), what it does (What changes), how behavior differs (Behavior), and where to look closely (Review guide). Use ` ```mermaid ` diagrams actively — a change map in What changes, a sequence diagram for changed interactions, and Data flow or Dependencies diagrams when those change — with new / changed / removed nodes marked. Each call replaces the whole description; update it after every round of changes.
+
 ## Development
 
 The repo ships a Nix flake; `direnv allow` will drop you into a shell with `bun` and `git`.
@@ -119,7 +162,7 @@ The repo ships a Nix flake; `direnv allow` will drop you into a shell with `bun`
 bun install
 bun test
 bun run dev
-```
+````
 
 To run the source checkout against another repository, start it from that
 repository's directory: `PRV_DEV=1 bun --hot /path/to/prv/src/cli.ts`.

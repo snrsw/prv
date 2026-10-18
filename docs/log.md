@@ -2,6 +2,11 @@
 
 ## 2026-10-18
 
+- **Update**: [Change description](/concepts/change-description.md) — Generate's default prompt and the `prv describe` templates aim at the reviewer: Aim, What changes, Behavior (before/after), Review guide, with mermaid diagrams used actively (change map, sequence, data flow, dependencies).
+- **Update**: [Change description](/concepts/change-description.md) — Generate's prompt is editable, the Overview renders ` ```mermaid ` blocks as diagrams, and the empty state offers Edit instead of Write.
+- **Creation**: Added [Change description](/concepts/change-description.md) — `prv describe`, the Overview pane, and Generate (#81).
+- **Update**: [Change description](/concepts/change-description.md) states the 1 MiB size limit and what each writer does over it.
+- **Update**: [CLI targets](/notation/cli-targets.md) lists the forms of `prv describe`; [Agent activity](/notation/agent-activity.md) lists the Overview age texts.
 - **Update**: [Agent settings](/concepts/agent-settings.md) — the settings button also sits in each comment thread's send row and in the Finish review card; [Comment thread](/concepts/comment-thread.md) links to it.
 - **Update**: [Comment thread](/concepts/comment-thread.md) states when Send now needs text: a pending thread can be sent with an empty input.
 - **Update**: A thread's Comment, Ask agent and Apply with agent buttons became one split button, Send now / Add to batch (#83). Updated [Comment thread](/concepts/comment-thread.md), [Finish review](/concepts/finish-review.md), [Diff chat](/concepts/diff-chat.md) (new `auto` run mode), [Agent review](/concepts/agent-review.md) and [Keyboard shortcuts](/notation/keyboard-shortcuts.md).
