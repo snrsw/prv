@@ -38,7 +38,9 @@ export function ChatSettings({ disabled }: { disabled: boolean }) {
   const [settings, setSettings] = useChatSettings();
   const agent = settings.agent ?? DEFAULT_CHAT_AGENT;
   const list = useChatModels(agent);
-  const model = settings.model ?? "";
+  // A stored alias (`opus`, chosen before the CLI's list was read) shows as the
+  // model it names; the alias itself is still what gets sent.
+  const model = settings.model ? (resolveOption(list, settings.model)?.id ?? settings.model) : "";
   const listed = model === "" || list.models.some((m) => m.id === model);
   const [customChosen, setCustomChosen] = useState(false);
   const custom = customChosen || !listed;
@@ -107,7 +109,9 @@ export function ChatSettings({ disabled }: { disabled: boolean }) {
           onChange={(e) => onModelChange(e.target.value)}
         >
           <option value="">
-            {list.defaultModel ? `default (${list.defaultModel})` : "default"}
+            {list.defaultModel
+              ? `default (${resolveOption(list, undefined)?.label ?? list.defaultModel})`
+              : "default"}
           </option>
           {list.models.map((option) => (
             <option key={option.id} value={option.id} title={option.description}>

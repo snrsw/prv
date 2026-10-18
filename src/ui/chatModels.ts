@@ -26,7 +26,8 @@ export function resolveOption(
   model: string | undefined,
 ): ChatModelOption | undefined {
   const id = model ?? list.defaultModel;
-  return list.models.find((m) => m.id === id);
+  if (id === undefined) return undefined;
+  return list.models.find((m) => m.id === id) ?? list.models.find((m) => m.alias === id);
 }
 
 /**

@@ -50,4 +50,11 @@ describe("summarizeChatSettings", () => {
     );
     expect(summarizeChatSettings({ agent: "codex", effort: "low" })).toBe("Codex · default · low");
   });
+
+  test("shows the model's display name when one is known", () => {
+    expect(summarizeChatSettings({ model: "claude-opus-5-5" }, "Opus 5.5")).toBe(
+      "Claude · Opus 5.5",
+    );
+    expect(summarizeChatSettings({}, "Opus 5.5")).toBe("Claude · default");
+  });
 });

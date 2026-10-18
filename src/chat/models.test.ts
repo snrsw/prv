@@ -1,11 +1,12 @@
 import { test, expect, describe } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   buildClaudeModelList,
   buildCodexModelList,
   loadModelList,
+  parseClaudeCatalog,
   parseCodexModelsCache,
   parseTomlTopLevel,
 } from "./models";
@@ -130,7 +131,75 @@ describe("buildCodexModelList", () => {
   });
 });
 
+const CATALOG = {
+  version: 2,
+  catalog: {
+    surface: "cc",
+    config: {
+      models: [
+        {
+          id: "claude-opus-4-8",
+          name: "Opus 4.8",
+          section: "overflow",
+          runtime: { effort_levels: ["low", "high"], default_effort: "high" },
+        },
+        {
+          id: "claude-opus-5-5",
+          name: "Opus 5.5",
+          short_name: "Opus",
+          description: "For complex work and everyday tasks",
+          section: "main",
+          runtime: { effort_levels: ["low", "medium", "high", "xhigh", "max", "bogus level"] },
+        },
+        { id: "bad id; rm", name: "Evil", section: "main" },
+        { name: "No id" },
+      ],
+    },
+    state: { model: "claude-opus-5-5", thinking: { type: "effort", effort: "medium" } },
+  },
+};
+
+describe("parseClaudeCatalog", () => {
+  test("lists main models first with display names, descriptions and efforts", () => {
+    expect(parseClaudeCatalog(CATALOG)).toEqual([
+      {
+        id: "claude-opus-5-5",
+        label: "Opus 5.5",
+        description: "For complex work and everyday tasks",
+        alias: "opus",
+        efforts: ["low", "medium", "high", "xhigh", "max"],
+      },
+      { id: "claude-opus-4-8", label: "Opus 4.8", efforts: ["low", "high"], defaultEffort: "high" },
+    ]);
+  });
+
+  test("anything not shaped like the catalogue yields no models", () => {
+    expect(parseClaudeCatalog(undefined)).toEqual([]);
+    expect(parseClaudeCatalog({ catalog: { config: { models: "x" } } })).toEqual([]);
+  });
+});
+
 describe("buildClaudeModelList", () => {
+  test("with a catalogue, offers its models and the account default", () => {
+    const list = buildClaudeModelList(undefined, CATALOG);
+    expect(list.models.map((m) => m.label)).toEqual(["Opus 5.5", "Opus 4.8"]);
+    expect(list.defaultModel).toBe("claude-opus-5-5");
+    expect(list.defaultEffort).toBe("medium");
+  });
+
+  test("an alias in settings.json resolves to the catalogue model it names", () => {
+    const list = buildClaudeModelList({ model: "opus" }, CATALOG);
+    expect(list.defaultModel).toBe("claude-opus-5-5");
+    expect(list.models).toHaveLength(2);
+  });
+
+  test("settings.json's model overrides the catalogue default", () => {
+    const list = buildClaudeModelList({ model: "claude-opus-4-8" }, CATALOG);
+    expect(list.defaultModel).toBe("claude-opus-4-8");
+    expect(list.defaultEffort).toBeUndefined();
+    expect(list.models).toHaveLength(2);
+  });
+
   test("offers the aliases, and no default when settings.json sets none", () => {
     expect(buildClaudeModelList(undefined)).toEqual({
       models: ["fable", "opus", "sonnet", "haiku"].map((id) => ({ id, label: id })),
@@ -159,6 +228,19 @@ describe("loadModelList", () => {
     expect(codex.models).toHaveLength(2);
     const claude = await loadModelList("claude", { CLAUDE_CONFIG_DIR: dir });
     expect(claude.defaultModel).toBe("sonnet");
+  });
+
+  test("reads the newest per-account Claude catalogue, ignoring published documents", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "prv-models-"));
+    const catalogDir = join(dir, "cache", "model-catalog");
+    mkdirSync(catalogDir, { recursive: true });
+    writeFileSync(join(catalogDir, "published-abc.json"), JSON.stringify({ version: 2 }));
+    writeFileSync(join(catalogDir, "old-cc.json"), JSON.stringify({ catalog: {} }));
+    utimesSync(join(catalogDir, "old-cc.json"), new Date(0), new Date(0));
+    writeFileSync(join(catalogDir, "acct-cc.json"), JSON.stringify(CATALOG));
+    const claude = await loadModelList("claude", { CLAUDE_CONFIG_DIR: dir });
+    expect(claude.models.map((m) => m.label)).toEqual(["Opus 5.5", "Opus 4.8"]);
+    expect(claude.defaultModel).toBe("claude-opus-5-5");
   });
 
   test("missing or malformed files fall back to the presets", async () => {

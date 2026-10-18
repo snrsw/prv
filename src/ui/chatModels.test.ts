@@ -56,6 +56,12 @@ describe("resolveOption", () => {
     expect(resolveOption(CODEX, "custom-model")).toBeUndefined();
     expect(resolveOption({ models: CODEX.models }, undefined)).toBeUndefined();
   });
+
+  test("an alias finds the model it names", () => {
+    const claude = { models: [{ id: "claude-opus-5-5", label: "Opus 5.5", alias: "opus" }] };
+    expect(resolveOption(claude, "opus")?.label).toBe("Opus 5.5");
+    expect(resolveOption(claude, "sonnet")).toBeUndefined();
+  });
 });
 
 describe("defaultEffortFor", () => {

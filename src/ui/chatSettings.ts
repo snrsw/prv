@@ -61,11 +61,15 @@ export function useChatSettings(): [ChatSettings, (next: ChatSettings) => void] 
   return [settings, setChatSettings];
 }
 
-/** What the composer's settings button shows: `Claude · default`, `Codex · gpt-5 · high`. Pure. */
-export function summarizeChatSettings(settings: ChatSettings): string {
+/**
+ * What the composer's settings button shows: `Claude · Opus 5.5`,
+ * `Codex · gpt-5 · high`. `modelLabel` is the chosen model's display name from
+ * the CLI's list, shown in place of its id when known. Pure.
+ */
+export function summarizeChatSettings(settings: ChatSettings, modelLabel?: string): string {
   const parts = [
     AGENT_SHORT_LABELS[settings.agent ?? DEFAULT_CHAT_AGENT],
-    settings.model ?? "default",
+    settings.model ? (modelLabel ?? settings.model) : "default",
   ];
   if (settings.effort) parts.push(settings.effort);
   return parts.join(" · ");

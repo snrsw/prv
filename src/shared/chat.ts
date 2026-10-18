@@ -38,6 +38,8 @@ export type ChatModelOption = {
   id: string;
   label: string;
   description?: string;
+  /** A CLI alias that means this model (Claude Code's `opus` for Opus 5.5). */
+  alias?: string;
   /** Effort levels this model supports, lowest to highest; absent = the agent's list. */
   efforts?: string[];
   /** The effort the CLI uses for this model when none is configured. */
