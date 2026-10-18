@@ -2086,7 +2086,13 @@ tr.prv-expand-clickable:hover .d2h-info {
 .prv-thread-send-row {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: var(--sp-2);
+}
+/* The agent settings sit at the row's start, the send button at its end. */
+.prv-thread-send-row .chat-settings-menu,
+.prv-thread-confirm-actions .chat-settings-menu {
+  margin-right: auto;
 }
 /* One send button whose caret picks the action: Send now or Add to batch (#83). */
 .prv-split-send {
@@ -2165,6 +2171,7 @@ tr.prv-expand-clickable:hover .d2h-info {
 .prv-thread-confirm-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: var(--sp-2);
 }
 .prv-orphaned {

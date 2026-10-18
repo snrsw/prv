@@ -4,7 +4,7 @@ title: Comment thread
 description: A conversation anchored to a line range of one file, open or resolved, and pending when you spoke last.
 resource: https://github.com/snrsw/prv/blob/main/src/shared/comments.ts
 tags: [comments]
-generated: { by: claude-code/claude-opus-5-5, at: 2026-10-18T12:00:00Z }
+generated: { by: claude-code/claude-opus-5-5, at: 2026-10-18T04:45:00Z }
 ---
 
 # Definition
@@ -44,6 +44,7 @@ The thread input has one split send button. Its main part runs the selected acti
 - Send now runs in the `auto` [run mode](/concepts/diff-chat.md), which may edit files. The diff refreshes when the run ends, and Stop cancels it.
 - Add to batch needs text. Send now needs text unless the thread is pending: with an empty input, Send now sends the thread's unanswered comments as they are and adds no new message.
 - While a [Finish review](/concepts/finish-review.md) run is addressing a pending thread, Send now is disabled on that thread.
+- The settings button at the start of the send row picks the agent, model, and effort Send now uses; see [Agent settings](/concepts/agent-settings.md).
 - Resolve and Reopen change `status`.
 
 The badges and labels for these states are in [Comment states](/notation/comment-states.md). Threads are saved in the [comment store](/concepts/comment-store.md).

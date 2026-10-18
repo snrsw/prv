@@ -3,6 +3,7 @@ import type { Comment } from "../../shared/comments";
 import { commentLocation, commentSummary } from "../batchComments";
 import { summarizeBatchResults, type BatchRun } from "../useBatch";
 import { ChatMessageList } from "./ChatMessageList";
+import { ChatSettingsMenu } from "./ChatPanel";
 
 /**
  * "Finish review": the card above the diff that hands every pending thread to
@@ -134,6 +135,8 @@ export function BatchPanel({
                 to review. Continue?
               </span>
               <div className="prv-thread-confirm-actions">
+                {/* The agent/model/effort the batch runs with (app-wide). */}
+                <ChatSettingsMenu disabled={false} />
                 <button type="button" className="chat-send" onClick={onSend}>
                   Send to agent ({pending.length})
                 </button>

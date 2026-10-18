@@ -6,6 +6,7 @@ import { buildThreadContext } from "../lineContext";
 import { splitFindingBody } from "../reviewComments";
 import { appendUserMessage, persistedIsAhead, splitPendingTail } from "../threadTranscript";
 import { ChatMessageList } from "./ChatMessageList";
+import { ChatSettingsMenu } from "./ChatPanel";
 import { isPendingComment, type Comment, type StoredMessage } from "../../shared/comments";
 import { SEND_ACTIONS, setSendAction, useSendAction, type SendAction } from "../sendAction";
 import type { FileDiff } from "../types";
@@ -233,6 +234,9 @@ export function CommentThread({
               }}
             />
             <div className="prv-thread-send-row">
+              {/* Which agent/model/effort Send now uses — the same app-wide
+                  choice as the chat panel's, so changing it here changes both. */}
+              <ChatSettingsMenu disabled={streaming} />
               {streaming ? (
                 <button type="button" className="chat-send" onClick={stop}>
                   Stop
