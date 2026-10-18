@@ -1,10 +1,10 @@
 ---
 type: UiNotation
 title: Diff lines
-description: Row markers, hunk headers, expanders, and line tints in the diff and File view.
+description: Row markers, hunk headers, expanders, and line tints in the diff and File view, and the Rendered/Source toggle for Markdown files.
 resource: https://github.com/snrsw/prv/blob/main/src/shared/diffLines.ts
 tags: [ui, diff]
-generated: { by: claude-code/claude-opus-5-5, at: 2026-10-18T00:00:00Z }
+generated: { by: claude-code/claude-opus-5-5, at: 2026-10-18T12:00:00Z }
 ---
 
 # Row markers
@@ -52,3 +52,12 @@ The File view shows the whole file and marks changed blocks in the gutter.
 | Yellow, dashed bar | Replaced lines                 | `Replaced N line(s) with M` |
 | Red, solid bar     | Deleted lines (old side)       | `Deleted N line(s)`         |
 | Red seam with `▶`  | Lines removed between two rows | `N line(s) removed here`    |
+
+# Markdown files in the File view
+
+A `.md`, `.markdown`, or `.mdx` file opens in the File view rendered as Markdown. The card header then shows a **Rendered / Source** toggle next to the Diff / File tabs. prv remembers the choice per file, together with Viewed and Diff / File.
+
+| Toggle   | What the File view shows                                                                                                                      |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rendered | The formatted page. No gutter and no `+` button. When the diff changed the file, a note reads `N change(s) in this file — see them in Source` |
+| Source   | The line-numbered file with the gutter marks above and the `+` button for line comments                                                       |
