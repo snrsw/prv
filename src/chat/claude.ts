@@ -115,13 +115,21 @@ export function parseClaudeEvent(line: string): ChatEvent[] {
 
 const BASE_ARGS = ["--print", "--verbose", "--output-format", "stream-json"];
 
+const EDIT_PROFILE = [
+  "--permission-mode",
+  "acceptEdits",
+  "--allowedTools",
+  "Read,Edit,Write,Grep,Glob",
+];
+
 /**
- * Permission profile per mode. `ask` is strictly read-only; `apply` lets the
- * agent edit files (Read/Edit/Write/Grep/Glob) but never run Bash.
+ * Permission profile per mode. `ask` is strictly read-only; `apply` and
+ * `auto` let the agent edit files (Read/Edit/Write/Grep/Glob) but never run Bash.
  */
 const PROFILE_ARGS: Record<TurnMode, string[]> = {
   ask: ["--permission-mode", "plan", "--disallowedTools", "Edit,Write,Bash"],
-  apply: ["--permission-mode", "acceptEdits", "--allowedTools", "Read,Edit,Write,Grep,Glob"],
+  apply: EDIT_PROFILE,
+  auto: EDIT_PROFILE,
 };
 
 /**

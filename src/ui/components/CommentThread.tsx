@@ -4,27 +4,30 @@ import { dropEmptyAssistants, stripEphemeral, useDiffChat } from "../useDiffChat
 import { isSubmitKey } from "../keys";
 import { buildThreadContext } from "../lineContext";
 import { splitFindingBody } from "../reviewComments";
-import { appendUserMessage, persistedIsAhead } from "../threadTranscript";
+import { appendUserMessage, persistedIsAhead, splitPendingTail } from "../threadTranscript";
 import { ChatMessageList } from "./ChatMessageList";
+import { ChatSettingsMenu } from "./ChatPanel";
 import { isPendingComment, type Comment, type StoredMessage } from "../../shared/comments";
+import { SEND_ACTIONS, setSendAction, useSendAction, type SendAction } from "../sendAction";
 import type { FileDiff } from "../types";
 
 /** How the parent placed this thread in the diff. */
 export type ThreadPlacement = "anchored" | "moved" | "file-level";
 
-/** Why the per-thread agent buttons are off while a batch runs. */
+/** Why "Send now" is off while a batch runs. */
 const BATCH_BUSY_HINT = "A “Finish review” run is addressing this comment";
 
 /**
  * An inline GitHub-style comment thread for a (possibly multi-line, mixed +/-)
  * diff range, backed by a persisted Comment.
  *
- * Saving a comment is just a write to the store — like GitHub, the agent is
- * not called per comment; the pending threads go out together from the
- * "Finish review" card. "Ask agent" is read-only Q&A on this thread alone, and
- * "Apply with agent" (after confirmation) lets the agent edit files for it,
- * then refreshes the diff. `label` and `context` are computed by the parent
- * from the diff. Agent-review comments additionally render a badge row and
+ * The composer has one split send button (#83) whose caret picks its action,
+ * remembered app-wide. "Add to batch" is just a write to the store — like
+ * GitHub, the agent is not called per comment; the pending threads go out
+ * together from the "Finish review" card. "Send now" runs the agent on this
+ * thread at once: it decides whether the comment asks for a file edit or only
+ * an answer, and the diff refreshes when the turn ends. `label` and `context`
+ * are computed by the parent from the diff. Agent-review comments additionally render a badge row and
  * their finding body as markdown.
  */
 export function CommentThread({
@@ -55,9 +58,9 @@ export function CommentThread({
   const persist = (messages: StoredMessage[]) => onUpdate((c) => ({ ...c, messages }));
   const { messages, streaming, stalled, send, stop, seed } = useDiffChat(comment.messages, persist);
   const [input, setInput] = useState("");
-  const [confirmingApply, setConfirmingApply] = useState(false);
+  const [action] = useSendAction();
   const endRef = useRef<HTMLDivElement>(null);
-  const applyPendingRef = useRef(false);
+  const refreshPendingRef = useRef(false);
 
   const resolved = comment.status === "resolved";
   const isReview = comment.source === "review";
@@ -66,7 +69,7 @@ export function CommentThread({
   // race that one and answer it twice.
   const claimedByBatch = batchRunning && pending;
 
-  // The store is this thread's authority: the Comment button writes to it
+  // The store is this thread's authority: "Add to batch" writes to it
   // without going through the agent, and a "Finish review" run appends the
   // agent's reply to every pending thread while these cards are mounted. Adopt
   // the persisted transcript whenever it holds something the live one doesn't
@@ -92,34 +95,39 @@ export function CommentThread({
    * above pull it into the live transcript, so the message has exactly one
    * writer (the store) and cannot be persisted twice or lost.
    */
-  const onComment = () => {
+  const addToBatch = () => {
     if (input.trim() === "" || streaming) return;
     onUpdate((c) => ({ ...c, messages: appendUserMessage(c.messages, input) }));
     setInput("");
   };
 
-  const onAsk = () => {
-    if (input.trim() === "" || streaming || claimedByBatch) return;
-    send(input, threadContext, "ask");
-    setInput("");
+  /**
+   * Run the agent on this thread now; it may edit files, so refresh after.
+   * With an empty input a pending thread is sent as it stands: its unanswered
+   * comments become the question and are not appended to the thread again.
+   */
+  const sendNow = () => {
+    if (streaming || claimedByBatch) return;
+    if (input.trim() !== "") {
+      refreshPendingRef.current = true;
+      send(input, threadContext, "auto");
+      setInput("");
+    } else if (pending) {
+      refreshPendingRef.current = true;
+      const { earlier, pending: question } = splitPendingTail(comment.messages);
+      send(question, buildThreadContext(context, earlier), "auto", false);
+    }
   };
 
-  const runApply = () => {
-    setConfirmingApply(false);
-    const lastUser = [...comment.messages, ...messages]
-      .filter((m): m is StoredMessage => m.role === "user")
-      .pop();
-    const instruction = input.trim() || lastUser?.text || "Make the change discussed above.";
-    applyPendingRef.current = true;
-    send(instruction, threadContext, "apply");
-    setInput("");
-  };
+  const submit = action === "now" ? sendNow : addToBatch;
+  const submitDisabled =
+    action === "now" ? claimedByBatch || (input.trim() === "" && !pending) : input.trim() === "";
 
-  // When an apply turn finishes, refresh the diff so the edits show.
+  // When a "Send now" turn finishes, refresh the diff so any edits show.
   const wasStreaming = useRef(false);
   useEffect(() => {
-    if (wasStreaming.current && !streaming && applyPendingRef.current) {
-      applyPendingRef.current = false;
+    if (wasStreaming.current && !streaming && refreshPendingRef.current) {
+      refreshPendingRef.current = false;
       onApplied();
     }
     wasStreaming.current = streaming;
@@ -204,84 +212,138 @@ export function CommentThread({
             </div>
           )}
 
-          {confirmingApply ? (
-            <div className="prv-thread-confirm">
-              <span>
-                The agent will edit files in your repo. Changes are git-tracked and shown as a diff
-                to review. Continue?
-              </span>
-              <div className="prv-thread-confirm-actions">
-                <button type="button" className="chat-send" onClick={runApply}>
-                  Yes, apply
+          <div className="chat-input-row prv-thread-input">
+            <textarea
+              className="chat-input"
+              value={input}
+              placeholder={messages.length === 0 ? "Comment on these lines…" : "Reply…"}
+              rows={2}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (
+                  isSubmitKey({
+                    key: e.key,
+                    shiftKey: e.shiftKey,
+                    isComposing: e.nativeEvent.isComposing,
+                    keyCode: e.keyCode,
+                  })
+                ) {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+            />
+            <div className="prv-thread-send-row">
+              {/* Which agent/model/effort Send now uses — the same app-wide
+                  choice as the chat panel's, so changing it here changes both. */}
+              <ChatSettingsMenu disabled={streaming} />
+              {streaming ? (
+                <button type="button" className="chat-send" onClick={stop}>
+                  Stop
                 </button>
-                <button
-                  type="button"
-                  className="prv-thread-btn"
-                  onClick={() => setConfirmingApply(false)}
-                >
-                  Cancel
-                </button>
-              </div>
+              ) : (
+                <SendSplitButton
+                  action={action}
+                  disabled={submitDisabled}
+                  title={action === "now" && claimedByBatch ? BATCH_BUSY_HINT : undefined}
+                  onSubmit={submit}
+                />
+              )}
             </div>
-          ) : (
-            <div className="chat-input-row prv-thread-input">
-              <textarea
-                className="chat-input"
-                value={input}
-                placeholder={messages.length === 0 ? "Comment on these lines…" : "Reply…"}
-                rows={2}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (
-                    isSubmitKey({
-                      key: e.key,
-                      shiftKey: e.shiftKey,
-                      isComposing: e.nativeEvent.isComposing,
-                      keyCode: e.keyCode,
-                    })
-                  ) {
-                    e.preventDefault();
-                    onComment();
-                  }
-                }}
-              />
-              <div className="prv-thread-send-row">
-                <button
-                  type="button"
-                  className="prv-thread-btn"
-                  disabled={streaming || claimedByBatch || input.trim() === ""}
-                  title={claimedByBatch ? BATCH_BUSY_HINT : "Answer here without editing files"}
-                  onClick={onAsk}
-                >
-                  Ask agent
-                </button>
-                <button
-                  type="button"
-                  className="prv-thread-btn"
-                  disabled={streaming || claimedByBatch}
-                  title={claimedByBatch ? BATCH_BUSY_HINT : undefined}
-                  onClick={() => setConfirmingApply(true)}
-                >
-                  Apply with agent
-                </button>
-                {streaming ? (
-                  <button type="button" className="chat-send" onClick={stop}>
-                    Stop
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="chat-send"
-                    onClick={onComment}
-                    disabled={input.trim() === ""}
-                  >
-                    Comment
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
+          </div>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The composer's split button: the main part runs the selected action, the
+ * caret opens a two-item menu that changes it. The menu closes on an outside
+ * press or Escape, like the chat panel's settings popover.
+ */
+function SendSplitButton({
+  action,
+  disabled,
+  title,
+  onSubmit,
+}: {
+  action: SendAction;
+  disabled: boolean;
+  title?: string;
+  onSubmit: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const caretRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocPointerDown = (e: PointerEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDocPointerDown);
+    return () => document.removeEventListener("pointerdown", onDocPointerDown);
+  }, [open]);
+
+  const choose = (next: SendAction) => {
+    setSendAction(next);
+    setOpen(false);
+    caretRef.current?.focus();
+  };
+
+  return (
+    <div
+      className="prv-split-send"
+      ref={containerRef}
+      onKeyDown={(e) => {
+        if (e.key !== "Escape" || !open) return;
+        e.preventDefault();
+        setOpen(false);
+        caretRef.current?.focus();
+      }}
+    >
+      <button
+        type="button"
+        className="chat-send prv-split-send-main"
+        disabled={disabled}
+        title={title ?? SEND_ACTIONS[action].description}
+        onClick={onSubmit}
+      >
+        {SEND_ACTIONS[action].label}
+      </button>
+      <button
+        ref={caretRef}
+        type="button"
+        className="chat-send prv-split-send-caret"
+        aria-label="Choose send action"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        ▾
+      </button>
+      {open && (
+        <div className="prv-split-send-menu" role="menu" aria-label="Send action">
+          {(["now", "batch"] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              role="menuitemradio"
+              aria-checked={option === action}
+              className={"prv-split-send-item" + (option === action ? " is-selected" : "")}
+              onClick={() => choose(option)}
+            >
+              <span className="prv-split-send-check" aria-hidden="true">
+                {option === action ? "✓" : ""}
+              </span>
+              <span className="prv-split-send-text">
+                <span className="prv-split-send-label">{SEND_ACTIONS[option].label}</span>
+                <span className="prv-split-send-desc">{SEND_ACTIONS[option].description}</span>
+              </span>
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );

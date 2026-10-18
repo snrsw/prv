@@ -4,8 +4,8 @@
  * always fed via stdin (the `-` positional).
  *
  * Read-only is the `read-only` sandbox: the agent may run shell commands but
- * the OS sandbox rejects every write. `apply` mode uses `workspace-write`, so
- * edits land in the repo (and nowhere else). Approvals are pinned to `never`
+ * the OS sandbox rejects every write. `apply` and `auto` use `workspace-write`,
+ * so edits land in the repo (and nowhere else). Approvals are pinned to `never`
  * because `codex exec` has no one to ask — an approval prompt would otherwise
  * silently decline the edit.
  *
@@ -24,6 +24,7 @@ const BASE_ARGS = ["exec", "--json", "--color", "never", "-c", 'approval_policy=
 const SANDBOX_ARGS: Record<TurnMode, string[]> = {
   ask: ["--sandbox", "read-only"],
   apply: ["--sandbox", "workspace-write"],
+  auto: ["--sandbox", "workspace-write"],
 };
 
 /**

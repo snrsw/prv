@@ -129,3 +129,22 @@ test("closing the socket mid-turn aborts the in-flight turn", async () => {
 
   expect(seenTurns[before]?.signal?.aborted).toBe(true);
 });
+
+test("an ask frame runs in auto mode only when it says auto; anything else is read-only", async () => {
+  const turnFor = async (mode: unknown): Promise<RunTurnArgs | undefined> => {
+    const before = seenTurns.length;
+    const ws = await openSocket();
+    const framesPromise = collectFrames(ws, (frame) => {
+      if (frame.type === "chunk") ws.send(JSON.stringify({ type: "stop" }));
+    });
+    ws.send(JSON.stringify({ type: "ask", question: "q", diff: "d", mode }));
+    await framesPromise;
+    ws.close();
+    return seenTurns[before];
+  };
+  const auto = await turnFor("auto");
+  expect(auto?.mode).toBe("auto");
+  expect(auto?.prompt).toContain("Comment: q");
+  expect((await turnFor("apply"))?.mode).toBe("ask");
+  expect((await turnFor(undefined))?.mode).toBe("ask");
+});

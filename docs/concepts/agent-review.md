@@ -4,7 +4,7 @@ title: Agent review
 description: Three read-only review agents run in parallel over the diff and leave their findings as comment threads.
 resource: https://github.com/snrsw/prv/blob/main/src/review/runner.ts
 tags: [review, agent]
-generated: { by: claude-code/claude-opus-5-5, at: 2026-10-18T00:00:00Z }
+generated: { by: claude-code/claude-opus-5-5, at: 2026-10-18T12:00:00Z }
 sources:
   - id: decisions
     resource: https://github.com/snrsw/prv/blob/main/decisions.md
@@ -26,7 +26,7 @@ An agent review is one run started by the **Review** button. It starts three rea
 - **Re-running stacks new findings on top of the old ones; prv does not deduplicate them.**
 - Clear agent comments removes open findings that no one has replied to.
 - Stop cancels the run.
-- A finding is a normal thread: you can reply, Ask agent, Apply with agent, resolve, or delete it. A reply makes it pending for [Finish review](/concepts/finish-review.md).
+- A finding is a normal thread: you can reply with Add to batch (the thread becomes pending for [Finish review](/concepts/finish-review.md)) or Send now, resolve, or delete it.
 
 The agent and model come from [agent settings](/concepts/agent-settings.md). Severity values, lenses, and run phases are in [Review findings](/notation/review-findings.md).[^decisions]
 

@@ -122,7 +122,7 @@ export function ChatPanel({
  * popover above the button that closes on an outside press or Escape, the
  * way the topbar's `SidePicker` does.
  */
-function ChatSettingsMenu({ disabled }: { disabled: boolean }) {
+export function ChatSettingsMenu({ disabled }: { disabled: boolean }) {
   const [settings] = useChatSettings();
   const models = useChatModels(settings.agent ?? DEFAULT_CHAT_AGENT);
   const [open, setOpen] = useState(false);
