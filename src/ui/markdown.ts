@@ -1,8 +1,8 @@
 import { marked } from "marked";
 
-const MARKDOWN_EXTS = new Set(["md", "mdx"]);
+const MARKDOWN_EXTS = new Set(["md", "markdown", "mdx"]);
 
-/** True for files prv should be able to render as Markdown (.md / .mdx). */
+/** True for files prv should be able to render as Markdown (.md / .markdown / .mdx). */
 export function isMarkdownPath(path: string): boolean {
   const dot = path.lastIndexOf(".");
   if (dot < 0) return false;
