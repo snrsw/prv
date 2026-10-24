@@ -1,6 +1,6 @@
 {
   "name": "prv",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "description": "Pull-Request like View — local GitHub-style diff viewer for AI-agent changes and git ref comparisons.",
   "bin": {
