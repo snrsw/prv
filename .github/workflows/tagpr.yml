@@ -7,6 +7,8 @@ on:
 jobs:
   tagpr:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.run-tagpr.outputs.tag }}
     permissions:
       contents: write
       pull-requests: write
@@ -16,6 +18,17 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: Songmu/tagpr@v1
+      - id: run-tagpr
+        uses: Songmu/tagpr@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  flakehub:
+    needs: tagpr
+    if: needs.tagpr.outputs.tag != ''
+    permissions:
+      id-token: write
+      contents: read
+    uses: ./.github/workflows/flakehub.yml
+    with:
+      tag: ${{ needs.tagpr.outputs.tag }}
