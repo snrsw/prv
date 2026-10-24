@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.0.2](https://github.com/snrsw/prv/compare/v0.0.1...v0.0.2) - 2026-10-24
+
+### Other Changes
+- 👷 Publish release tags to FlakeHub by @snrsw in https://github.com/snrsw/prv/pull/91
+- 🔧 Update Bun to 1.4.2 by @snrsw in https://github.com/snrsw/prv/pull/93
+
 ## [v0.0.1](https://github.com/snrsw/prv/commits/v0.0.1) - 2026-10-18
 
 ### Other Changes
