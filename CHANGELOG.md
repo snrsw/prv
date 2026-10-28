@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.0.3](https://github.com/snrsw/prv/compare/v0.0.2...v0.0.3) - 2026-10-28
+
+### Other Changes
+- 🐛 Drop x86_64-darwin so the FlakeHub publish succeeds by @snrsw in https://github.com/snrsw/prv/pull/94
+
 ## [v0.0.2](https://github.com/snrsw/prv/compare/v0.0.1...v0.0.2) - 2026-10-24
 
 ### Other Changes
