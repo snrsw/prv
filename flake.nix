@@ -14,7 +14,6 @@
       supportedSystems = [
         "x86_64-linux"
         "aarch64-linux"
-        "x86_64-darwin"
         "aarch64-darwin"
       ];
       forEachSupportedSystem =
@@ -37,7 +36,6 @@
       depsHashes = {
         x86_64-linux = inputs.nixpkgs.lib.fakeHash;
         aarch64-linux = inputs.nixpkgs.lib.fakeHash;
-        x86_64-darwin = inputs.nixpkgs.lib.fakeHash;
         aarch64-darwin = "sha256-geWszuZo23mOjWmegmkOg5Fvsm26hXjcUThtUsUYai8=";
       };
 
