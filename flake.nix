@@ -34,8 +34,8 @@
       #   nix build .#packages.<system>.deps
       # and paste the `got:` sha256 here.
       depsHashes = {
-        x86_64-linux = inputs.nixpkgs.lib.fakeHash;
-        aarch64-linux = inputs.nixpkgs.lib.fakeHash;
+        x86_64-linux = "sha256-geWszuZo23mOjWmegmkOg5Fvsm26hXjcUThtUsUYai8=";
+        aarch64-linux = "sha256-geWszuZo23mOjWmegmkOg5Fvsm26hXjcUThtUsUYai8=";
         aarch64-darwin = "sha256-geWszuZo23mOjWmegmkOg5Fvsm26hXjcUThtUsUYai8=";
       };
 
